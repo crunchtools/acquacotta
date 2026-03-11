@@ -1,0 +1,14 @@
+[Unit]
+Description=Acquacotta Flask/Gunicorn application
+After=network.target
+Before=httpd.service
+
+[Service]
+Type=simple
+WorkingDirectory=/app
+ExecStart=/usr/local/bin/acquacotta-start.sh
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
