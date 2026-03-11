@@ -1,0 +1,27 @@
+name: Validate Constitution
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - '.specify/memory/constitution.md'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - '.specify/memory/constitution.md'
+  workflow_dispatch:
+
+jobs:
+  validate-constitution:
+    name: Constitution Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: crunchtools/constitution
+          path: .constitution
+
+      - name: Validate constitution
+        run: python3 .constitution/validate-constitution.py .specify/memory/constitution.md --verbose
