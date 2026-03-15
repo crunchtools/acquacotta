@@ -1,0 +1,5 @@
+ignore_patterns:
+  - "vendor/**"
+  - "*.min.js"
+  - ".gourmand-cache/**"
+  - "*.lock"
