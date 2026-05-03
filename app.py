@@ -17,6 +17,7 @@ import json
 import os
 from http import HTTPStatus
 from pathlib import Path
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 # Allow OAuth scope changes (users may have previously granted different scopes)
 os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"
@@ -26,6 +27,7 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 import sheets_storage
@@ -315,16 +317,27 @@ def auth_google():
             include_granted_scopes="true",
             prompt="select_account",  # Fast login for returning users
         )
-        session["oauth_state"] = state
-        # Store PKCE code_verifier for the callback (required by Google)
-        session["code_verifier"] = flow.code_verifier
-        app.logger.info(
-            f"OAuth: Stored code_verifier in session (length: {len(flow.code_verifier) if flow.code_verifier else 0})"
-        )
-        # Store user-provided spreadsheet ID to use after callback
+
+        # Bundle PKCE code_verifier + CSRF nonce into a signed state parameter.
+        # Google echoes `state` back in the callback URL, so it survives the redirect
+        # chain regardless of cookie behavior. No session/cookie dependency for PKCE.
         requested_spreadsheet_id = request.args.get("spreadsheet_id", "").strip()
+        state_payload = {
+            "s": state,  # Original CSRF nonce
+            "cv": flow.code_verifier,  # PKCE code_verifier
+        }
         if requested_spreadsheet_id:
-            session["requested_spreadsheet_id"] = requested_spreadsheet_id
+            state_payload["sid"] = requested_spreadsheet_id
+
+        s = URLSafeTimedSerializer(app.config["SECRET_KEY"])
+        signed_state = s.dumps(state_payload)
+
+        # Replace the state parameter in the authorization URL with our signed blob
+        parsed = urlparse(authorization_url)
+        params = parse_qs(parsed.query)
+        params["state"] = [signed_state]
+        authorization_url = urlunparse(parsed._replace(query=urlencode(params, doseq=True)))
+
         return redirect(authorization_url)
     except Exception as e:
         import traceback
@@ -332,33 +345,53 @@ def auth_google():
         return f"<pre>Error: {e}\n\n{traceback.format_exc()}</pre>", HTTPStatus.INTERNAL_SERVER_ERROR
 
 
+def _validate_oauth_callback():
+    """Validate and decode the signed OAuth state from the callback URL.
+
+    Returns (state_data, code, error_response) — error_response is None on success.
+    """
+    callback_state = request.args.get("state")
+    if not callback_state:
+        app.logger.warning("OAuth callback: no state parameter in callback URL")
+        return None, None, (jsonify({"error": "Missing OAuth state"}), HTTPStatus.BAD_REQUEST)
+
+    s = URLSafeTimedSerializer(app.config["SECRET_KEY"])
+    try:
+        state_data = s.loads(callback_state, max_age=600)  # 10-minute expiry
+    except SignatureExpired:
+        app.logger.info("OAuth callback: state expired, restarting flow")
+        return None, None, redirect("/auth/google")
+    except BadSignature:
+        app.logger.warning("OAuth callback: invalid state signature — possible CSRF")
+        return None, None, (jsonify({"error": "Invalid OAuth state"}), HTTPStatus.BAD_REQUEST)
+
+    code = request.args.get("code")
+    if not code:
+        return None, None, (jsonify({"error": "Missing authorization code"}), HTTPStatus.BAD_REQUEST)
+
+    return state_data, code, None
+
+
 @app.route("/auth/callback")
 def auth_callback():
     """Handle Google OAuth callback."""
     try:
-        # Validate OAuth state and PKCE verifier — both must be present from the initial auth request.
-        # If either is missing the session was cleared (browser restart, cookie expiry) mid-flow;
-        # the stale authorization code is unusable so restart cleanly.
-        callback_state = request.args.get("state")
-        stored_state = session.pop("oauth_state", None)  # Pop to ensure one-time use
-        code_verifier = session.pop("code_verifier", None)
+        # Decode the signed state parameter — contains PKCE code_verifier and CSRF nonce.
+        # The state travels through Google's redirect (not cookies), so it's guaranteed to
+        # survive regardless of browser cookie behavior, privacy extensions, or session loss.
+        state_data, code, error = _validate_oauth_callback()
+        if error:
+            return error
 
-        if stored_state is None or code_verifier is None:
-            app.logger.info("OAuth callback: session cleared mid-flow (browser restart/expiry), restarting OAuth flow")
-            return redirect("/auth/google")
-
-        if not callback_state or callback_state != stored_state:
-            app.logger.warning("OAuth state mismatch - possible CSRF attack")
-            return jsonify({"error": "Invalid OAuth state"}), HTTPStatus.BAD_REQUEST
+        code_verifier = state_data["cv"]
+        requested_spreadsheet_id = state_data.get("sid")
 
         flow = get_google_flow()
         if not flow:
             return jsonify({"error": "Google OAuth not configured"}), HTTPStatus.INTERNAL_SERVER_ERROR
 
         flow.code_verifier = code_verifier
-        app.logger.info(f"OAuth callback: Retrieved code_verifier from session (length: {len(code_verifier)})")
-        app.logger.info(f"OAuth callback: Session keys present: {list(session.keys())}")
-        flow.fetch_token(authorization_response=request.url)
+        flow.fetch_token(code=code)
         credentials = flow.credentials
 
         # Store credentials in session
@@ -383,8 +416,13 @@ def auth_callback():
                 include_granted_scopes="false",  # Request fresh scopes
                 prompt="consent",  # Force consent screen to get new scopes
             )
-            session["oauth_state"] = state  # Use consistent key name
-            session["code_verifier"] = flow.code_verifier
+            # Same signed-state pattern as auth_google()
+            reauth_payload = {"s": state, "cv": flow.code_verifier}
+            signed_state = URLSafeTimedSerializer(app.config["SECRET_KEY"]).dumps(reauth_payload)
+            parsed = urlparse(authorization_url)
+            params = parse_qs(parsed.query)
+            params["state"] = [signed_state]
+            authorization_url = urlunparse(parsed._replace(query=urlencode(params, doseq=True)))
             return redirect(authorization_url)
 
         # Get user info
@@ -396,7 +434,7 @@ def auth_callback():
         session["user_picture"] = user_info.get("picture")
 
         # Priority: 1) User-provided spreadsheet ID, 2) Previously stored ID, 3) Create new
-        requested_spreadsheet_id = session.pop("requested_spreadsheet_id", None)
+        # requested_spreadsheet_id was already extracted from signed state_data above
         stored_spreadsheet_id = get_stored_spreadsheet_id(user_email)
 
         spreadsheet_id_to_use = requested_spreadsheet_id or stored_spreadsheet_id
