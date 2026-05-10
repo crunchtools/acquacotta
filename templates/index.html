@@ -507,10 +507,10 @@
             </div>
         </header>
         <nav role="tablist" aria-label="Main navigation">
-            <button class="active" data-view="timer" role="tab" aria-selected="true" aria-controls="timer-view" id="tab-timer" title="Start a pomodoro timer or log completed work sessions">Timer</button>
-            <button data-view="reports" role="tab" aria-selected="false" aria-controls="reports-view" id="tab-reports" title="View charts and statistics of your completed pomodoros">Reports</button>
-            <button data-view="history" role="tab" aria-selected="false" aria-controls="history-view" id="tab-history" title="Browse and edit your pomodoro history">History</button>
-            <button data-view="settings" role="tab" aria-selected="false" aria-controls="settings-view" id="tab-settings" title="Configure timer presets, breaks, and display options">Settings</button>
+            <button class="active" data-view="timer" role="tab" aria-selected="true" aria-controls="timer-view" id="tab-timer" tabindex="0" title="Start a pomodoro timer or log completed work sessions">Timer</button>
+            <button data-view="reports" role="tab" aria-selected="false" aria-controls="reports-view" id="tab-reports" tabindex="-1" title="View charts and statistics of your completed pomodoros">Reports</button>
+            <button data-view="history" role="tab" aria-selected="false" aria-controls="history-view" id="tab-history" tabindex="-1" title="Browse and edit your pomodoro history">History</button>
+            <button data-view="settings" role="tab" aria-selected="false" aria-controls="settings-view" id="tab-settings" tabindex="-1" title="Configure timer presets, breaks, and display options">Settings</button>
         </nav>
 
         <!-- Timer View -->
@@ -2042,11 +2042,13 @@
                 document.querySelectorAll('nav button').forEach(b => {
                     b.classList.remove('active');
                     b.setAttribute('aria-selected', 'false');
+                    b.setAttribute('tabindex', '-1');
                 });
                 document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
                 const activeBtn = document.querySelector(`nav button[data-view="${view}"]`);
                 activeBtn.classList.add('active');
                 activeBtn.setAttribute('aria-selected', 'true');
+                activeBtn.setAttribute('tabindex', '0');
                 document.getElementById(view + '-view').classList.add('active');
                 // Clear the URL parameter
                 window.history.replaceState({}, '', '/');
@@ -2749,11 +2751,13 @@
             document.querySelectorAll('nav button').forEach(btn => {
                 btn.classList.remove('active');
                 btn.setAttribute('aria-selected', 'false');
+                btn.setAttribute('tabindex', '-1');
             });
             document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
             const histBtn = document.querySelector('nav button[data-view="history"]');
             histBtn.classList.add('active');
             histBtn.setAttribute('aria-selected', 'true');
+            histBtn.setAttribute('tabindex', '0');
             document.getElementById('history-view').classList.add('active');
 
             // Load history and wait for it to complete
@@ -4645,13 +4649,17 @@
             }
         }
 
-        // Update aria-selected on nav tab switches
+        // Update aria-selected and roving tabindex on nav tab switches
         (function() {
             const navButtons = document.querySelectorAll('nav[role="tablist"] button[role="tab"]');
             navButtons.forEach(btn => {
                 btn.addEventListener('click', () => {
-                    navButtons.forEach(b => b.setAttribute('aria-selected', 'false'));
+                    navButtons.forEach(b => {
+                        b.setAttribute('aria-selected', 'false');
+                        b.setAttribute('tabindex', '-1');
+                    });
                     btn.setAttribute('aria-selected', 'true');
+                    btn.setAttribute('tabindex', '0');
                 });
             });
 
