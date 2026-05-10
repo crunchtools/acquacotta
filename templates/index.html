@@ -4671,10 +4671,20 @@
                     const current = tabs.indexOf(e.currentTarget);
                     if (current === -1) return;
                     let next = -1;
-                    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+                    if (e.key === 'ArrowRight') {
                         next = (current + 1) % tabs.length;
-                    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+                    } else if (e.key === 'ArrowLeft') {
                         next = (current - 1 + tabs.length) % tabs.length;
+                    } else if (e.key === 'ArrowDown') {
+                        // Move focus into the associated tabpanel
+                        e.preventDefault();
+                        const panelId = e.currentTarget.getAttribute('aria-controls');
+                        const panel = document.getElementById(panelId);
+                        if (panel) {
+                            const firstFocusable = panel.querySelector('button, [href], input:not([type="hidden"]), select, textarea, [tabindex]:not([tabindex="-1"])');
+                            if (firstFocusable) firstFocusable.focus();
+                        }
+                        return;
                     } else if (e.key === 'Home') {
                         next = 0;
                     } else if (e.key === 'End') {
