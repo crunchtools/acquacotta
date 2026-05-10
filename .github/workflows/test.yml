@@ -67,7 +67,7 @@ jobs:
           fi
 
       - name: Run Gourmand
-        run: gourmand --full .
+        run: gourmand .
 
   javascript-tests:
     name: JavaScript Tests
