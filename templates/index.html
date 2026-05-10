@@ -2024,9 +2024,15 @@
         // Navigation
         document.querySelectorAll('nav button').forEach(btn => {
             btn.addEventListener('click', () => {
-                document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('nav button').forEach(b => {
+                    b.classList.remove('active');
+                    b.setAttribute('aria-selected', 'false');
+                    b.setAttribute('tabindex', '-1');
+                });
                 document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
                 btn.classList.add('active');
+                btn.setAttribute('aria-selected', 'true');
+                btn.setAttribute('tabindex', '0');
                 document.getElementById(btn.dataset.view + '-view').classList.add('active');
                 if (btn.dataset.view === 'timer') loadWeeklyOverview();
                 if (btn.dataset.view === 'history') loadHistory();
@@ -4649,20 +4655,8 @@
             }
         }
 
-        // Update aria-selected and roving tabindex on nav tab switches
+        // Arrow key navigation within tablist (roving tabindex managed by click handlers above)
         (function() {
-            const navButtons = document.querySelectorAll('nav[role="tablist"] button[role="tab"]');
-            navButtons.forEach(btn => {
-                btn.addEventListener('click', () => {
-                    navButtons.forEach(b => {
-                        b.setAttribute('aria-selected', 'false');
-                        b.setAttribute('tabindex', '-1');
-                    });
-                    btn.setAttribute('aria-selected', 'true');
-                    btn.setAttribute('tabindex', '0');
-                });
-            });
-
             // Arrow key navigation within tablist
             const tabList = document.querySelector('nav[role="tablist"]');
             if (tabList) {
@@ -4722,10 +4716,12 @@
                 }
             }
 
+            // Only allow Escape to close modals that are safe to dismiss
+            const escapableModals = ['add-modal', 'edit-modal'];
             function handleModalEscape(e) {
                 if (e.key === 'Escape') {
                     const activeModal = document.querySelector('.modal-overlay.active');
-                    if (activeModal) {
+                    if (activeModal && escapableModals.includes(activeModal.id)) {
                         activeModal.classList.remove('active');
                         if (lastFocusedElement) {
                             lastFocusedElement.focus();
@@ -4843,6 +4839,7 @@
                     if (e.key === 'ArrowUp' || e.key === 'ArrowRight') {
                         e.preventDefault();
                         remainingSeconds = Math.min((remainingSeconds || 0) + step, 60 * 60);
+                        totalSeconds = remainingSeconds;
                         updateTimerDisplay();
                         const mins = Math.ceil(remainingSeconds / 60);
                         timerDisplay.setAttribute('aria-valuenow', mins);
@@ -4850,6 +4847,7 @@
                     } else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') {
                         e.preventDefault();
                         remainingSeconds = Math.max((remainingSeconds || 0) - step, 60);
+                        totalSeconds = remainingSeconds;
                         updateTimerDisplay();
                         const mins = Math.ceil(remainingSeconds / 60);
                         timerDisplay.setAttribute('aria-valuenow', mins);
