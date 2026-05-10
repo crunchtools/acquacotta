@@ -20,7 +20,7 @@
             --bg-secondary: #16213e;
             --bg-tertiary: #0f3460;
             --text-primary: #eaeaea;
-            --text-secondary: #a0a0a0;
+            --text-secondary: #b0b0b0;
             --accent: #e94560;
             --accent-hover: #ff6b6b;
             --success: #4ecca3;
@@ -95,7 +95,9 @@
             border-radius: 8px; color: var(--text-primary);
             padding: 0.75rem; font-size: 1rem; width: 100%;
         }
-        input:focus, select:focus { outline: none; border-color: var(--accent); }
+        input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-color: var(--accent); }
+        button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+        a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
         label { display: block; margin-bottom: 0.5rem; color: var(--text-secondary); font-size: 0.875rem; }
         .form-group { margin-bottom: 1rem; }
         h2 { margin-bottom: 1rem; }
@@ -463,12 +465,28 @@
             .duration-presets button,
             .break-presets button { min-width: 50px; height: 38px; font-size: 0.75rem; }
         }
+        /* Skip navigation link */
+        .skip-link {
+            position: absolute; top: -40px; left: 0; padding: 0.5rem 1rem;
+            background: var(--accent); color: white; z-index: 200;
+            text-decoration: none; font-weight: 600; border-radius: 0 0 8px 0;
+        }
+        .skip-link:focus { top: 0; }
+
+        /* Screen-reader-only utility */
+        .sr-only {
+            position: absolute; width: 1px; height: 1px;
+            padding: 0; margin: -1px; overflow: hidden;
+            clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+        }
     </style>
     <script src="{{ url_for('static', filename='js/utils.js') }}"></script>
     <script src="{{ url_for('static', filename='js/storage.js') }}"></script>
 </head>
 <body>
+    <a href="#main-content" class="skip-link">Skip to main content</a>
     <div class="container">
+    <main id="main-content">
         <header style="display: flex; justify-content: space-between; align-items: center; padding: 0.25rem 0; margin-bottom: 0.5rem;">
             <div style="display: flex; align-items: center; gap: 0.75rem;">
                 <img src="/static/favicon.svg" alt="Acquacotta" style="width: 40px; height: 40px; display: block;">
@@ -478,7 +496,7 @@
                 </div>
             </div>
             <div style="display: flex; align-items: center; gap: 1rem;">
-                <div id="storage-indicator" style="display: none; font-size: 0.625rem; color: var(--text-secondary); text-align: right;" title="Your data is stored locally on this device only">
+                <div id="storage-indicator" role="status" style="display: none; font-size: 0.625rem; color: var(--text-secondary); text-align: right;" title="Your data is stored locally on this device only">
                     <span id="storage-indicator-dot" style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #f59e0b; margin-right: 4px; vertical-align: middle;"></span>
                     <span id="storage-mode-text">Local Storage</span>
                 </div>
@@ -488,31 +506,31 @@
                 </div>
             </div>
         </header>
-        <nav>
-            <button class="active" data-view="timer" title="Start a pomodoro timer or log completed work sessions">Timer</button>
-            <button data-view="reports" title="View charts and statistics of your completed pomodoros">Reports</button>
-            <button data-view="history" title="Browse and edit your pomodoro history">History</button>
-            <button data-view="settings" title="Configure timer presets, breaks, and display options">Settings</button>
+        <nav role="tablist" aria-label="Main navigation">
+            <button class="active" data-view="timer" role="tab" aria-selected="true" aria-controls="timer-view" id="tab-timer" title="Start a pomodoro timer or log completed work sessions">Timer</button>
+            <button data-view="reports" role="tab" aria-selected="false" aria-controls="reports-view" id="tab-reports" title="View charts and statistics of your completed pomodoros">Reports</button>
+            <button data-view="history" role="tab" aria-selected="false" aria-controls="history-view" id="tab-history" title="Browse and edit your pomodoro history">History</button>
+            <button data-view="settings" role="tab" aria-selected="false" aria-controls="settings-view" id="tab-settings" title="Configure timer presets, breaks, and display options">Settings</button>
         </nav>
 
         <!-- Timer View -->
-        <div id="timer-view" class="view active">
+        <div id="timer-view" class="view active" role="tabpanel" aria-labelledby="tab-timer">
             <div class="timer-row">
                 <!-- Weekly Overview -->
                 <div class="weekly-overview">
                     <div style="display: flex; justify-content: center; align-items: center; gap: 1rem; margin-bottom: 1rem;">
-                        <button class="secondary" onclick="navigateWeek(-1)" style="padding: 0.25rem 0.75rem;">&larr;</button>
+                        <button class="secondary" onclick="navigateWeek(-1)" style="padding: 0.25rem 0.75rem;" aria-label="Previous week">&larr;</button>
                         <div style="display: flex; align-items: center; gap: 0.5rem;">
                             <h3 id="week-overview-label" style="margin: 0; color: var(--text-secondary); min-width: 150px; text-align: center;">This Week</h3>
                             <button class="secondary" onclick="goToCurrentWeek()" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" title="Go to current week">Today</button>
                         </div>
-                        <button class="secondary" onclick="navigateWeek(1)" style="padding: 0.25rem 0.75rem;">&rarr;</button>
+                        <button class="secondary" onclick="navigateWeek(1)" style="padding: 0.25rem 0.75rem;" aria-label="Next week">&rarr;</button>
                     </div>
                     <div class="week-grid" id="week-grid" title="Each block represents one or more pomodoros (typically 25 minutes of focused work each). Click to add entries.">
                         <!-- Days will be populated by JavaScript -->
                     </div>
                     <div class="week-chart-container" style="margin: 1rem 0 0.5rem 0;">
-                        <canvas id="week-type-chart"></canvas>
+                        <canvas id="week-type-chart" role="img" aria-label="Weekly overview chart showing time by type"></canvas>
                     </div>
                     <div style="text-align: center; color: var(--text-secondary); font-size: 0.85rem; margin: 0 0 0.5rem 0;">
                         <span>Total Pomodoros: <span id="week-pomo-count">0</span></span>
@@ -522,7 +540,7 @@
 
                 <div class="timer-container">
                     <div class="timer-display" title="Drag to set time, or use an external physical timer and log your pomodoros manually">
-                        <svg viewBox="0 0 280 280" class="timer-ring">
+                        <svg viewBox="0 0 280 280" class="timer-ring" aria-hidden="true">
                             <circle class="timer-ring-bg" cx="140" cy="140" r="120"/>
                             <circle id="timer-progress" class="timer-ring-progress" cx="140" cy="140" r="120"
                                 stroke-dasharray="0 754" stroke-dashoffset="0"/>
@@ -559,8 +577,8 @@
                                 <line x1="140" y1="28" x2="140" y2="36" stroke="var(--text-secondary)" transform="rotate(75.6 140 140)"/>
                             </g>
                         </svg>
-                        <div class="timer-text">
-                            <div id="timer-time" class="timer-time">25:00</div>
+                        <div class="timer-text" role="timer" aria-label="Pomodoro timer">
+                            <div id="timer-time" class="timer-time" aria-live="off">25:00</div>
                             <div id="timer-status" class="timer-status">Ready</div>
                         </div>
                     </div>
@@ -582,10 +600,13 @@
                     </div>
                     <!-- Pomodoro Details -->
                     <div class="timer-details">
+                        <label for="timer-pomo-name" class="sr-only">Task description</label>
                         <input type="text" id="timer-pomo-name" placeholder="What are you working on? (optional)" style="width: 100%; margin-bottom: 0.5rem;">
                         <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+                            <label for="timer-pomo-type" class="sr-only">Pomodoro type</label>
                             <select id="timer-pomo-type" style="flex: 1;"></select>
                         </div>
+                        <label for="timer-pomo-notes" class="sr-only">Notes</label>
                         <textarea id="timer-pomo-notes" placeholder="Notes (optional)" rows="2" style="width: 100%; resize: none;"></textarea>
                     </div>
                     <div class="timer-controls">
@@ -594,7 +615,7 @@
                         <button id="btn-resume" class="primary" style="display:none;">Resume</button>
                         <button id="btn-stop" class="secondary" style="display:none;">Stop</button>
                         <button id="btn-discard" class="secondary" style="display:none;">Discard</button>
-                        <button id="btn-pip" title="Pop-out timer (Picture-in-Picture)" onclick="togglePipWindow()">
+                        <button id="btn-pip" title="Pop-out timer (Picture-in-Picture)" aria-label="Pop-out timer" onclick="togglePipWindow()">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                 <rect x="2" y="3" width="20" height="14" rx="2"/><rect x="12" y="9" width="8" height="6" rx="1" fill="currentColor" opacity="0.3"/>
                             </svg>
@@ -605,7 +626,7 @@
         </div>
 
         <!-- History View -->
-        <div id="history-view" class="view">
+        <div id="history-view" class="view" role="tabpanel" aria-labelledby="tab-history">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
                 <h2>History</h2>
                 <button class="secondary" onclick="showAddModal()">+ Add Manual</button>
@@ -614,7 +635,7 @@
         </div>
 
         <!-- Reports View -->
-        <div id="reports-view" class="view">
+        <div id="reports-view" class="view" role="tabpanel" aria-labelledby="tab-reports">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
                 <h2>Reports</h2>
                 <button class="secondary" onclick="exportData()">Export CSV</button>
@@ -625,12 +646,12 @@
                 <button data-period="month">Month</button>
             </div>
             <div class="period-nav">
-                <button class="secondary" onclick="navigatePeriod(-1)">&larr;</button>
+                <button class="secondary" onclick="navigatePeriod(-1)" aria-label="Previous period">&larr;</button>
                 <div style="display: flex; align-items: center; gap: 0.5rem;">
                     <span id="period-label" style="text-align: center;"></span>
                     <button class="secondary" onclick="goToCurrentPeriod()" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" title="Go to current period">Today</button>
                 </div>
-                <button class="secondary" onclick="navigatePeriod(1)">&rarr;</button>
+                <button class="secondary" onclick="navigatePeriod(1)" aria-label="Next period">&rarr;</button>
             </div>
             <div class="summary-cards">
                 <div class="card summary-card">
@@ -648,16 +669,16 @@
             </div>
             <div class="card">
                 <h3>Daily Activity (Minutes)</h3>
-                <div class="chart-container"><canvas id="chart-daily"></canvas></div>
+                <div class="chart-container"><canvas id="chart-daily" role="img" aria-label="Daily activity chart showing minutes per day"></canvas></div>
             </div>
             <div class="card">
                 <h3>By Type (Minutes)</h3>
-                <div class="chart-container"><canvas id="chart-type"></canvas></div>
+                <div class="chart-container"><canvas id="chart-type" role="img" aria-label="Time breakdown by pomodoro type"></canvas></div>
             </div>
         </div>
 
         <!-- Settings View -->
-        <div id="settings-view" class="view">
+        <div id="settings-view" class="view" role="tabpanel" aria-labelledby="tab-settings">
             <h2>Settings</h2>
             <div class="card" id="google-account-card">
                 <h3>Google Sheets Sync (Optional)</h3>
@@ -904,16 +925,20 @@
             <p style="color: var(--text-secondary); font-size: 0.75rem; text-align: center; margin-top: 1rem;">Settings are saved automatically</p>
         </div>
 
+        <!-- Aria live region for status announcements -->
+        <div id="a11y-status" aria-live="polite" aria-atomic="true" class="sr-only"></div>
+
+        </main>
         <footer style="text-align: center; padding: 0.5rem 0; margin-top: 0.5rem; border-top: 1px solid var(--border-color);">
-            <a href="/privacy" style="color: var(--text-secondary); font-size: 0.625rem; text-decoration: none; margin: 0 1rem;">Privacy Policy</a>
-            <a href="/terms" style="color: var(--text-secondary); font-size: 0.625rem; text-decoration: none; margin: 0 1rem;">Terms of Service</a>
+            <a href="/privacy" style="color: var(--text-secondary); font-size: 0.75rem; text-decoration: none; margin: 0 1rem;">Privacy Policy</a>
+            <a href="/terms" style="color: var(--text-secondary); font-size: 0.75rem; text-decoration: none; margin: 0 1rem;">Terms of Service</a>
         </footer>
     </div>
 
     <!-- Add Manual Modal -->
-    <div id="add-modal" class="modal-overlay">
+    <div id="add-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="add-modal-title">
         <div class="modal">
-            <h2>Add Manual Pomodoro</h2>
+            <h2 id="add-modal-title">Add Manual Pomodoro</h2>
             <div class="form-group">
                 <label for="add-name">Description (optional)</label>
                 <input type="text" id="add-name" placeholder="What did you work on?">
@@ -928,7 +953,7 @@
                     <input type="date" id="add-date">
                 </div>
                 <div class="form-group">
-                    <label>Start Time</label>
+                    <label for="add-time">Start Time</label>
                     <input type="text" id="add-time" placeholder="09:00">
                 </div>
             </div>
@@ -952,9 +977,9 @@
     </div>
 
     <!-- Migration Modal (manual trigger from settings) -->
-    <div id="migrate-modal" class="modal-overlay">
+    <div id="migrate-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="migrate-modal-title">
         <div class="modal">
-            <h2>Migrate Local Data</h2>
+            <h2 id="migrate-modal-title">Migrate Local Data</h2>
             <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1rem;">
                 This will copy your local pomodoros to Google Sheets. Duplicates will be skipped.
             </p>
@@ -983,7 +1008,7 @@
     </div>
 
     <!-- Initial Sync Modal (shown on login to choose sync direction) -->
-    <div id="initial-sync-modal" class="modal-overlay">
+    <div id="initial-sync-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="sync-modal-title">
         <div class="modal">
             <h2 id="sync-modal-title">Sync Your Data</h2>
             <p id="sync-modal-desc" style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1rem;"></p>
@@ -993,9 +1018,9 @@
     </div>
 
     <!-- Local Data Migration Modal (shown on login when localStorage has data) -->
-    <div id="local-migration-modal" class="modal-overlay">
+    <div id="local-migration-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="local-migration-modal-title">
         <div class="modal">
-            <h2>Upload Local Data?</h2>
+            <h2 id="local-migration-modal-title">Upload Local Data?</h2>
             <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1rem;">
                 You have pomodoros stored locally from before you logged in.
             </p>
@@ -1014,9 +1039,9 @@
     </div>
 
     <!-- Clear Local Data Confirmation Modal -->
-    <div id="clear-data-modal" class="modal-overlay">
+    <div id="clear-data-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="clear-data-modal-title">
         <div class="modal">
-            <h2>Clear All Local Data?</h2>
+            <h2 id="clear-data-modal-title">Clear All Local Data?</h2>
             <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1rem;">
                 This will permanently delete all your locally stored pomodoros and settings.
             </p>
@@ -1031,9 +1056,9 @@
     </div>
 
     <!-- Edit Pomodoro Modal -->
-    <div id="edit-modal" class="modal-overlay">
+    <div id="edit-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="edit-modal-title">
         <div class="modal">
-            <h2>Edit Pomodoro</h2>
+            <h2 id="edit-modal-title">Edit Pomodoro</h2>
             <input type="hidden" id="edit-id">
             <div class="form-group">
                 <label for="edit-name">Description (optional)</label>
@@ -1049,7 +1074,7 @@
                     <input type="date" id="edit-date">
                 </div>
                 <div class="form-group">
-                    <label>Start Time</label>
+                    <label for="edit-time">Start Time</label>
                     <input type="text" id="edit-time" placeholder="09:00">
                 </div>
             </div>
@@ -1068,7 +1093,7 @@
         </div>
     </div>
 
-    <footer style="text-align: center; padding: 0.25rem 0; margin: 0; color: var(--text-secondary); font-size: 0.625rem; line-height: 1;">
+    <footer style="text-align: center; padding: 0.25rem 0; margin: 0; color: var(--text-secondary); font-size: 0.75rem; line-height: 1;">
         <a href="https://www.youtube.com/watch?v=aQ_xKuXo0D0" target="_blank" rel="noopener" style="color: var(--text-secondary);">What is the Pomodoro Technique?</a>
         <span style="margin: 0 0.5rem;">|</span>
         <a href="https://github.com/fatherlinux/Acquacotta" target="_blank" rel="noopener" style="color: var(--text-secondary);">GitHub</a>
@@ -2014,9 +2039,14 @@
             const params = new URLSearchParams(window.location.search);
             const view = params.get('view');
             if (view && ['timer', 'reports', 'history', 'settings'].includes(view)) {
-                document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('nav button').forEach(b => {
+                    b.classList.remove('active');
+                    b.setAttribute('aria-selected', 'false');
+                });
                 document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-                document.querySelector(`nav button[data-view="${view}"]`).classList.add('active');
+                const activeBtn = document.querySelector(`nav button[data-view="${view}"]`);
+                activeBtn.classList.add('active');
+                activeBtn.setAttribute('aria-selected', 'true');
                 document.getElementById(view + '-view').classList.add('active');
                 // Clear the URL parameter
                 window.history.replaceState({}, '', '/');
@@ -2716,9 +2746,14 @@
         // Navigate to a specific pomodoro in History tab and highlight it
         async function navigateToPomodoro(id) {
             // Switch to History tab
-            document.querySelectorAll('nav button').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('nav button').forEach(btn => {
+                btn.classList.remove('active');
+                btn.setAttribute('aria-selected', 'false');
+            });
             document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-            document.querySelector('nav button[data-view="history"]').classList.add('active');
+            const histBtn = document.querySelector('nav button[data-view="history"]');
+            histBtn.classList.add('active');
+            histBtn.setAttribute('aria-selected', 'true');
             document.getElementById('history-view').classList.add('active');
 
             // Load history and wait for it to complete
@@ -4597,6 +4632,224 @@
                 updateClock();
             }
         });
+
+        // ── Accessibility enhancements ──
+
+        // Announce status changes to screen readers
+        function announceStatus(message) {
+            const el = document.getElementById('a11y-status');
+            if (el) {
+                el.textContent = '';
+                // Brief delay so the browser registers the change
+                setTimeout(() => { el.textContent = message; }, 100);
+            }
+        }
+
+        // Update aria-selected on nav tab switches
+        (function() {
+            const navButtons = document.querySelectorAll('nav[role="tablist"] button[role="tab"]');
+            navButtons.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    navButtons.forEach(b => b.setAttribute('aria-selected', 'false'));
+                    btn.setAttribute('aria-selected', 'true');
+                });
+            });
+
+            // Arrow key navigation within tablist
+            const tabList = document.querySelector('nav[role="tablist"]');
+            if (tabList) {
+                tabList.addEventListener('keydown', (e) => {
+                    const tabs = Array.from(tabList.querySelectorAll('[role="tab"]'));
+                    const current = tabs.indexOf(document.activeElement);
+                    if (current === -1) return;
+                    let next = -1;
+                    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+                        next = (current + 1) % tabs.length;
+                    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+                        next = (current - 1 + tabs.length) % tabs.length;
+                    } else if (e.key === 'Home') {
+                        next = 0;
+                    } else if (e.key === 'End') {
+                        next = tabs.length - 1;
+                    }
+                    if (next !== -1) {
+                        e.preventDefault();
+                        tabs[next].focus();
+                        tabs[next].click();
+                    }
+                });
+            }
+        })();
+
+        // Modal focus management and focus trapping
+        (function() {
+            let lastFocusedElement = null;
+
+            function getFocusableElements(modal) {
+                return modal.querySelectorAll(
+                    'button, [href], input:not([type="hidden"]), select, textarea, [tabindex]:not([tabindex="-1"])'
+                );
+            }
+
+            function trapFocus(e) {
+                const activeModal = document.querySelector('.modal-overlay.active');
+                if (!activeModal) return;
+                const focusable = getFocusableElements(activeModal);
+                if (focusable.length === 0) return;
+                const first = focusable[0];
+                const last = focusable[focusable.length - 1];
+
+                if (e.key === 'Tab') {
+                    if (e.shiftKey) {
+                        if (document.activeElement === first) {
+                            e.preventDefault();
+                            last.focus();
+                        }
+                    } else {
+                        if (document.activeElement === last) {
+                            e.preventDefault();
+                            first.focus();
+                        }
+                    }
+                }
+            }
+
+            function handleModalEscape(e) {
+                if (e.key === 'Escape') {
+                    const activeModal = document.querySelector('.modal-overlay.active');
+                    if (activeModal) {
+                        activeModal.classList.remove('active');
+                        if (lastFocusedElement) {
+                            lastFocusedElement.focus();
+                            lastFocusedElement = null;
+                        }
+                    }
+                }
+            }
+
+            document.addEventListener('keydown', trapFocus);
+            document.addEventListener('keydown', handleModalEscape);
+
+            // Patch modal show functions to manage focus
+            const origShowAddModal = window.showAddModal;
+            window.showAddModal = function() {
+                lastFocusedElement = document.activeElement;
+                origShowAddModal.apply(this, arguments);
+                setTimeout(() => {
+                    const modal = document.getElementById('add-modal');
+                    const first = modal.querySelector('input, select, button');
+                    if (first) first.focus();
+                }, 100);
+            };
+
+            const origShowAddModalForDate = window.showAddModalForDate;
+            window.showAddModalForDate = function() {
+                lastFocusedElement = document.activeElement;
+                origShowAddModalForDate.apply(this, arguments);
+                setTimeout(() => {
+                    const modal = document.getElementById('add-modal');
+                    const first = modal.querySelector('input, select, button');
+                    if (first) first.focus();
+                }, 100);
+            };
+
+            const origShowEditModal = window.showEditModal;
+            window.showEditModal = async function() {
+                lastFocusedElement = document.activeElement;
+                await origShowEditModal.apply(this, arguments);
+                setTimeout(() => {
+                    const modal = document.getElementById('edit-modal');
+                    const first = modal.querySelector('input:not([type="hidden"]), select, button');
+                    if (first) first.focus();
+                }, 100);
+            };
+
+            // Restore focus on modal hide
+            const origHideAddModal = window.hideAddModal;
+            window.hideAddModal = function() {
+                origHideAddModal.apply(this, arguments);
+                if (lastFocusedElement) {
+                    lastFocusedElement.focus();
+                    lastFocusedElement = null;
+                }
+            };
+
+            const origHideEditModal = window.hideEditModal;
+            window.hideEditModal = function() {
+                origHideEditModal.apply(this, arguments);
+                if (lastFocusedElement) {
+                    lastFocusedElement.focus();
+                    lastFocusedElement = null;
+                }
+            };
+        })();
+
+        // Timer status announcements (announce state changes, not every tick)
+        (function() {
+            const origStartTimer = window.startTimer;
+            window.startTimer = function() {
+                origStartTimer.apply(this, arguments);
+                announceStatus('Timer started');
+            };
+
+            const origPauseTimer = window.pauseTimer;
+            window.pauseTimer = function() {
+                origPauseTimer.apply(this, arguments);
+                announceStatus('Timer paused');
+            };
+
+            const origResumeTimer = window.resumeTimer;
+            window.resumeTimer = function() {
+                origResumeTimer.apply(this, arguments);
+                announceStatus('Timer resumed');
+            };
+
+            const origStopTimer = window.stopTimer;
+            window.stopTimer = async function() {
+                await origStopTimer.apply(this, arguments);
+                announceStatus('Timer stopped, pomodoro logged');
+            };
+
+            const origDiscardTimer = window.discardTimer;
+            window.discardTimer = function() {
+                origDiscardTimer.apply(this, arguments);
+                announceStatus('Timer discarded');
+            };
+        })();
+
+        // Keyboard support for timer dial (arrow keys to adjust time)
+        (function() {
+            const timerDisplay = document.querySelector('.timer-display');
+            if (timerDisplay) {
+                timerDisplay.setAttribute('tabindex', '0');
+                timerDisplay.setAttribute('role', 'slider');
+                timerDisplay.setAttribute('aria-label', 'Timer duration');
+                timerDisplay.setAttribute('aria-valuemin', '0');
+                timerDisplay.setAttribute('aria-valuemax', '60');
+                timerDisplay.setAttribute('aria-valuenow', '25');
+                timerDisplay.setAttribute('aria-valuetext', '25 minutes');
+
+                timerDisplay.addEventListener('keydown', (e) => {
+                    if (typeof timerState !== 'undefined' && timerState !== 'idle') return;
+                    const step = 60; // 1 minute in seconds
+                    if (e.key === 'ArrowUp' || e.key === 'ArrowRight') {
+                        e.preventDefault();
+                        remainingSeconds = Math.min((remainingSeconds || 0) + step, 60 * 60);
+                        updateTimerDisplay();
+                        const mins = Math.ceil(remainingSeconds / 60);
+                        timerDisplay.setAttribute('aria-valuenow', mins);
+                        timerDisplay.setAttribute('aria-valuetext', mins + ' minutes');
+                    } else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') {
+                        e.preventDefault();
+                        remainingSeconds = Math.max((remainingSeconds || 0) - step, 60);
+                        updateTimerDisplay();
+                        const mins = Math.ceil(remainingSeconds / 60);
+                        timerDisplay.setAttribute('aria-valuenow', mins);
+                        timerDisplay.setAttribute('aria-valuetext', mins + ' minutes');
+                    }
+                });
+            }
+        })();
 
         (async () => {
             await checkAuthStatus();
