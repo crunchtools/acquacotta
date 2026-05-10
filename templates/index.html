@@ -2978,6 +2978,14 @@
                     saveEditedPomodoro();
                 }
             });
+
+            // Submit add modal on Enter key (except in textarea)
+            document.getElementById('add-modal').addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') {
+                    e.preventDefault();
+                    addManualPomodoro();
+                }
+            });
         });
 
         async function addManualPomodoro() {
@@ -4657,12 +4665,10 @@
 
         // Arrow key navigation within tablist (roving tabindex managed by click handlers above)
         (function() {
-            // Arrow key navigation within tablist
-            const tabList = document.querySelector('nav[role="tablist"]');
-            if (tabList) {
-                tabList.addEventListener('keydown', (e) => {
-                    const tabs = Array.from(tabList.querySelectorAll('[role="tab"]'));
-                    const current = tabs.indexOf(document.activeElement);
+            const tabs = Array.from(document.querySelectorAll('nav[role="tablist"] [role="tab"]'));
+            tabs.forEach(tab => {
+                tab.addEventListener('keydown', (e) => {
+                    const current = tabs.indexOf(e.currentTarget);
                     if (current === -1) return;
                     let next = -1;
                     if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
@@ -4680,7 +4686,7 @@
                         tabs[next].click();
                     }
                 });
-            }
+            });
         })();
 
         // Modal focus management and focus trapping
