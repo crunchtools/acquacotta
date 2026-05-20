@@ -63,10 +63,18 @@ The application follows [Semantic Versioning](https://semver.org/) (semver):
 - **Minor** (x.Y.0): New features or significant enhancements (e.g., new UI capabilities)
 - **Patch** (x.y.Z): Bug fixes, performance improvements, or minor tweaks
 
-Version tags trigger container builds via GitHub Actions. After merging a PR:
-1. Determine version bump type based on changes
-2. Create and push git tag (e.g., `v1.14.0`)
-3. Verify container build succeeds
+Container builds via GitHub Actions MUST trigger on BOTH:
+- `push: branches: [main]` — every merge to `main` rebuilds `:latest` automatically, so production never lags behind `main`.
+- `push: tags: [v*]` — version tags additionally publish an immutable `:vX.Y.Z` tag.
+
+Container image tags MUST be unique to this repository. No other repository — including archived siblings or forks — may publish to the same `quay.io/crunchtools/<image>` tag. A zombie repo sharing a tag will silently overwrite production. (See 2026-05-19 incident: `acquacotta-old`'s weekly cron clobbered the OAuth fix six times in a row.)
+
+Deployed systemd units on lotor MUST include `--label io.containers.autoupdate=registry` and `--label PODMAN_SYSTEMD_UNIT=<unit>.service` so the nightly `podman-auto-update.timer` pulls new `:latest` images automatically.
+
+After merging a PR:
+1. Confirm the merge-to-`main` build pushed `:latest` to quay.
+2. Determine version bump type based on changes; tag (e.g., `v1.14.0`) and push to also publish a `:vX.Y.Z` tag.
+3. Lotor auto-update reconciles overnight; force-pull with `podman auto-update` on lotor if urgent.
 
 ## Governance
 
@@ -78,4 +86,4 @@ This constitution supersedes informal practices and ad-hoc decisions. Amendments
 
 All development decisions MUST align with these principles. When principles conflict, prioritize in order: Privacy, User Data Ownership, Simplicity, Timer Agnosticism, Offline-First, Container-Ready.
 
-**Version**: 1.2.0 | **Ratified**: 2025-12-27 | **Last Amended**: 2025-12-27
+**Version**: 1.3.0 | **Ratified**: 2025-12-27 | **Last Amended**: 2026-05-19
