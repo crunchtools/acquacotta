@@ -1,5 +1,15 @@
 # Acquacotta Constitution
 
+> **Version:** 1.3.0
+> **Ratified:** 2025-12-27
+> **Status:** Active
+> **Inherits:** [crunchtools/constitution](https://github.com/crunchtools/constitution) v1.6.0
+> **Profile:** Web Application
+
+## License
+
+AGPL-3.0-or-later. See the universal [crunchtools/constitution](https://github.com/crunchtools/constitution).
+
 ## Core Principles
 
 ### I. Privacy by Design
@@ -75,6 +85,27 @@ After merging a PR:
 1. Confirm the merge-to-`main` build pushed `:latest` to quay.
 2. Determine version bump type based on changes; tag (e.g., `v1.14.0`) and push to also publish a `:vX.Y.Z` tag.
 3. Lotor auto-update reconciles overnight; force-pull with `podman auto-update` on lotor if urgent.
+
+## Deployment & Operations
+
+### Host Layout
+Deployed on lotor at `/srv/acquacotta.crunchtools.com/` following the standard
+`code/` / `config/` / `data/` convention; the container bind-mounts these
+directories and publishes `127.0.0.1:8080:80` behind the crunchtools reverse proxy.
+
+### Monitoring
+Monitored by Zabbix: a web scenario against `https://acquacotta.crunchtools.com`,
+a container-port check on `:8080`, and a Gunicorn process check.
+
+### Testing
+| Test | What it verifies |
+|------|------------------|
+| **Build test** | CI builds the image from the Containerfile on every push and PR |
+| **Smoke test** | Container starts and the Flask app answers a health check on `:8080` |
+
+### Cascade Rebuild
+Rebuilds weekly and on `repository_dispatch` when the parent image updates
+(parent-image-updated cascade), picking up base-image security fixes.
 
 ## Governance
 
