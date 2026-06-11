@@ -10,6 +10,8 @@ on:
       - 'requirements-dev.txt'
       - 'static/acquacotta-http.conf'
       - 'static/entrypoint.sh'
+  repository_dispatch:
+    types: [parent-image-updated]
   workflow_dispatch:
 
 env:
