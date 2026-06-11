@@ -4,7 +4,7 @@
 #
 # Build: podman build -f Containerfile.base -t quay.io/crunchtools/acquacotta-base .
 
-FROM registry.access.redhat.com/ubi10/ubi:latest
+FROM quay.io/crunchtools/ubi10-core:latest
 
 # Install system packages (slow)
 RUN dnf install -y python3.12 python3.12-pip httpd procps-ng && dnf clean all
