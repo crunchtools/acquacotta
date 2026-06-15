@@ -1,0 +1,14 @@
+[Unit]
+Description=Gunicorn WSGI server for Acquacotta
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/app
+PassEnvironment=FLASK_SECRET_KEY GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET XDG_DATA_HOME FLASK_HOST
+ExecStart=/usr/local/bin/gunicorn --bind 127.0.0.1:5000 --workers 2 --access-logfile - --error-logfile - app:app
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

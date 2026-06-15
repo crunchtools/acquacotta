@@ -7,7 +7,7 @@
 FROM quay.io/crunchtools/ubi10-core:latest
 
 # Install system packages (slow)
-RUN dnf install -y python3.12 python3.12-pip httpd procps-ng && dnf clean all
+RUN dnf install -y python3.12 python3.12-pip httpd procps-ng systemd && dnf clean all
 
 WORKDIR /app
 
@@ -19,10 +19,14 @@ RUN pip3.12 install --no-cache-dir -r requirements.txt
 COPY static/acquacotta-http.conf /etc/httpd/conf.d/acquacotta.conf
 RUN rm -f /etc/httpd/conf.d/ssl.conf /etc/httpd/conf.d/welcome.conf
 
-# Entrypoint script
-COPY static/entrypoint.sh /entrypoint.sh
-RUN chmod 755 /entrypoint.sh
+# Gunicorn systemd unit
+COPY static/gunicorn.service /etc/systemd/system/gunicorn.service
+
+# Enable services — systemd starts them on boot
+RUN systemctl enable httpd gunicorn
 
 ENV FLASK_HOST=127.0.0.1
 
 EXPOSE 80
+
+ENTRYPOINT ["/sbin/init"]
