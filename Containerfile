@@ -13,5 +13,3 @@ COPY app.py .
 COPY sheets_storage.py .
 COPY templates/ templates/
 COPY static/ static/
-
-CMD ["/entrypoint.sh"]
