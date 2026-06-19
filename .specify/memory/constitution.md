@@ -1,6 +1,6 @@
 # Acquacotta Constitution
 
-> **Version:** 1.3.0
+> **Version:** 2.0.0
 > **Ratified:** 2025-12-27
 > **Status:** Active
 > **Inherits:** [crunchtools/constitution](https://github.com/crunchtools/constitution) v1.6.0
@@ -19,7 +19,7 @@ The application collects no analytics, telemetry, or usage data. Google OAuth is
 Users own and control their data. All pomodoro records and settings are stored in the user's personal Google Sheets, accessible and editable outside the application. The application creates no proprietary data formats or vendor lock-in. Users can export their data to CSV at any time. Deleting the application leaves user data intact in their Google Drive.
 
 ### III. Simplicity & Focus
-Acquacotta is a Pomodoro timer and time tracker - nothing more. Features MUST directly support: starting/stopping timers, categorizing completed work, and viewing time reports. Feature requests that deviate from core Pomodoro methodology require explicit justification. The UI MUST remain minimal and distraction-free. Avoid feature creep - say no to features that add complexity without proportional value.
+Acquacotta is a personal daily productivity cockpit — timer, time tracking, and extensible plugins for todos, checklists, briefings, and integrations. The core MUST remain minimal and distraction-free. Plugins extend the cockpit without bloating it — each plugin owns its own data and UI surface. Features MUST directly support daily personal productivity: tracking time, managing tasks, reviewing progress, or integrating with external systems. Feature requests that deviate from daily personal productivity require explicit justification. Avoid feature creep — say no to features that add complexity without proportional value.
 
 ### IV. Timer Agnosticism
 Users MUST be able to use the built-in timer OR an external physical timer (e.g., a desk timer) with equal effectiveness. The application MUST NOT assume the internal timer is always used. Manual entry of pomodoros MUST be a first-class feature, not an afterthought. The UI MUST make it equally easy to: (a) start the internal timer and log on completion, or (b) log a completed pomodoro after using an external timer. Time tracking is the core value - the timer is optional tooling.
@@ -117,4 +117,4 @@ This constitution supersedes informal practices and ad-hoc decisions. Amendments
 
 All development decisions MUST align with these principles. When principles conflict, prioritize in order: Privacy, User Data Ownership, Simplicity, Timer Agnosticism, Offline-First, Container-Ready.
 
-**Version**: 1.3.0 | **Ratified**: 2025-12-27 | **Last Amended**: 2026-05-19
+**Version**: 2.0.0 | **Ratified**: 2025-12-27 | **Last Amended**: 2026-06-19

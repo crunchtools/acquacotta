@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Acquacotta is a Pomodoro time tracking web application. Before making changes, understand the project's governing principles and specifications.
+Acquacotta is a personal daily productivity cockpit with Pomodoro time tracking at its core. Before making changes, understand the project's governing principles and specifications.
 
 ## Required Reading
 
@@ -18,7 +18,7 @@ All work must align with these principles (in priority order):
 
 1. **Privacy by Design** - No analytics, no telemetry, minimal OAuth scopes
 2. **User Data Ownership** - Data lives in user's Google Sheets, not our servers
-3. **Simplicity & Focus** - Pomodoro timer and time tracking only, no feature creep
+3. **Simplicity & Focus** - Core stays minimal; plugins extend without bloating
 4. **Timer Agnosticism** - Internal timer and external physical timers are equally supported
 5. **Offline-First** - IndexedDB cache for all reads, background sync to Google Sheets
 6. **Container-Ready** - Single container, env var config, no persistent volumes
