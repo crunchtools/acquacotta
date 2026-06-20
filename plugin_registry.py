@@ -50,9 +50,7 @@ def register(plugin_type, plugin_id, module, metadata):
     contract = PLUGIN_TYPES[plugin_type]["contract"]
     missing = [fn for fn in contract if not callable(getattr(module, fn, None))]
     if missing:
-        raise ValueError(
-            f"Plugin '{plugin_id}' missing required functions: {', '.join(missing)}"
-        )
+        raise ValueError(f"Plugin '{plugin_id}' missing required functions: {', '.join(missing)}")
 
     if plugin_type not in _plugins:
         _plugins[plugin_type] = {}

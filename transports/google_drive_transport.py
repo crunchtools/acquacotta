@@ -15,11 +15,15 @@ class GoogleDriveTransport:
 
     def _find_file(self, filename):
         """Find a file by name in the Acquacotta folder. Returns file ID or None."""
-        resp = self._service.files().list(
-            q=f"name='{filename}' and '{self._folder_id}' in parents and trashed=false",
-            fields="files(id)",
-            spaces="drive",
-        ).execute()
+        resp = (
+            self._service.files()
+            .list(
+                q=f"name='{filename}' and '{self._folder_id}' in parents and trashed=false",
+                fields="files(id)",
+                spaces="drive",
+            )
+            .execute()
+        )
         files = resp.get("files", [])
         return files[0]["id"] if files else None
 
@@ -65,30 +69,36 @@ class GoogleDriveTransport:
         """
         if self._folder_id:
             try:
-                self._service.files().get(
-                    fileId=self._folder_id, fields="id,trashed"
-                ).execute()
+                self._service.files().get(fileId=self._folder_id, fields="id,trashed").execute()
                 return self._folder_id
             except HttpError:
                 pass
 
-        resp = self._service.files().list(
-            q=f"name='{ACQUACOTTA_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false",
-            fields="files(id)",
-            spaces="drive",
-        ).execute()
+        resp = (
+            self._service.files()
+            .list(
+                q=f"name='{ACQUACOTTA_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false",
+                fields="files(id)",
+                spaces="drive",
+            )
+            .execute()
+        )
         folders = resp.get("files", [])
         if folders:
             self._folder_id = folders[0]["id"]
             return self._folder_id
 
-        folder = self._service.files().create(
-            body={
-                "name": ACQUACOTTA_FOLDER_NAME,
-                "mimeType": "application/vnd.google-apps.folder",
-            },
-            fields="id",
-        ).execute()
+        folder = (
+            self._service.files()
+            .create(
+                body={
+                    "name": ACQUACOTTA_FOLDER_NAME,
+                    "mimeType": "application/vnd.google-apps.folder",
+                },
+                fields="id",
+            )
+            .execute()
+        )
         self._folder_id = folder["id"]
         return self._folder_id
 

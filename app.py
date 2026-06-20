@@ -437,27 +437,37 @@ def _provision_sheets(credentials, user_email, requested_id):
 
     if not id_to_use:
         drive_service = build("drive", "v3", credentials=credentials)
-        spreadsheet = drive_service.files().create(
-            body={"name": "Acquacotta - Pomodoro Tracker", "mimeType": "application/vnd.google-apps.spreadsheet"},
-            fields="id",
-        ).execute()
+        spreadsheet = (
+            drive_service.files()
+            .create(
+                body={"name": "Acquacotta - Pomodoro Tracker", "mimeType": "application/vnd.google-apps.spreadsheet"},
+                fields="id",
+            )
+            .execute()
+        )
         new_id = spreadsheet["id"]
         save_location(user_email, "sheets", new_id)
 
         sheets_service = build("sheets", "v4", credentials=credentials)
         sheets_service.spreadsheets().batchUpdate(
             spreadsheetId=new_id,
-            body={"requests": [
-                {"updateSheetProperties": {"properties": {"sheetId": 0, "title": "Pomodoros"}, "fields": "title"}},
-                {"addSheet": {"properties": {"title": "Settings"}}},
-            ]},
+            body={
+                "requests": [
+                    {"updateSheetProperties": {"properties": {"sheetId": 0, "title": "Pomodoros"}, "fields": "title"}},
+                    {"addSheet": {"properties": {"title": "Settings"}}},
+                ]
+            },
         ).execute()
         sheets_service.spreadsheets().values().update(
-            spreadsheetId=new_id, range="Pomodoros!A1:G1", valueInputOption="RAW",
+            spreadsheetId=new_id,
+            range="Pomodoros!A1:G1",
+            valueInputOption="RAW",
             body={"values": [["id", "name", "type", "start_time", "end_time", "duration_minutes", "notes"]]},
         ).execute()
         sheets_service.spreadsheets().values().update(
-            spreadsheetId=new_id, range="Settings!A1:B1", valueInputOption="RAW",
+            spreadsheetId=new_id,
+            range="Settings!A1:B1",
+            valueInputOption="RAW",
             body={"values": [["key", "value"]]},
         ).execute()
         return new_id, False
@@ -741,11 +751,13 @@ def update_spreadsheet():
 @app.route("/api/plugins")
 def api_list_plugins():
     """List all registered plugins with their status."""
-    return jsonify({
-        "plugins": plugin_registry.list_plugins(),
-        "types": plugin_registry.list_plugin_types(),
-        "active_storage": plugin_registry.get_active_storage_id(),
-    })
+    return jsonify(
+        {
+            "plugins": plugin_registry.list_plugins(),
+            "types": plugin_registry.list_plugin_types(),
+            "active_storage": plugin_registry.get_active_storage_id(),
+        }
+    )
 
 
 @app.route("/api/plugins/toggle", methods=["POST"])
@@ -770,10 +782,12 @@ def api_toggle_plugin():
     else:
         return jsonify({"error": f"Toggle not yet supported for type: {plugin_type}"}), HTTPStatus.BAD_REQUEST
 
-    return jsonify({
-        "status": "ok",
-        "active_storage": plugin_registry.get_active_storage_id(),
-    })
+    return jsonify(
+        {
+            "status": "ok",
+            "active_storage": plugin_registry.get_active_storage_id(),
+        }
+    )
 
 
 # =============================================================================

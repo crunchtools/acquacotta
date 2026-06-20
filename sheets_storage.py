@@ -27,6 +27,8 @@ def build_context(credentials, request_creds):
         "service": service,
         "location": request_creds.get("spreadsheet_id"),
     }
+
+
 SETTINGS_MIN_COLUMNS = 2  # key, value
 
 
@@ -494,12 +496,7 @@ def clear_pomodoros(sheets_service, spreadsheet_id):
     if sheet_id is None:
         return {"status": "error", "error": "Pomodoros sheet not found", "cleared": 0}
 
-    values = (
-        sheets_service.spreadsheets()
-        .values()
-        .get(spreadsheetId=spreadsheet_id, range="Pomodoros!A:A")
-        .execute()
-    )
+    values = sheets_service.spreadsheets().values().get(spreadsheetId=spreadsheet_id, range="Pomodoros!A:A").execute()
     row_count = len(values.get("values", []))
 
     if row_count <= 1:
