@@ -922,6 +922,12 @@
                 </div>
                 <button class="secondary" onclick="sortTypesAlphabetically()" style="width: 100%;">Sort A-Z</button>
             </div>
+            <div class="card">
+                <h3>Plugins</h3>
+                <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1rem;">Extend Acquacotta with additional functionality</p>
+                <div id="plugins-list"></div>
+                <div id="plugins-loading" style="color: var(--text-secondary); font-size: 0.875rem;">Loading plugins...</div>
+            </div>
             <p style="color: var(--text-secondary); font-size: 0.75rem; text-align: center; margin-top: 1rem;">Settings are saved automatically</p>
         </div>
 
@@ -3530,6 +3536,94 @@
             // Update break info display
             updateBreakInfo();
             updateBreakButtonStyles();
+
+            // Load plugin list
+            loadPlugins();
+        }
+
+        async function loadPlugins() {
+            const container = document.getElementById('plugins-list');
+            const loading = document.getElementById('plugins-loading');
+            try {
+                const resp = await fetch('/api/plugins');
+                if (!resp.ok) throw new Error('Failed to load plugins');
+                const data = await resp.json();
+                loading.style.display = 'none';
+
+                if (!data.plugins || data.plugins.length === 0) {
+                    container.innerHTML = '<p style="color: var(--text-secondary); font-size: 0.875rem;">No plugins installed</p>';
+                    return;
+                }
+
+                container.innerHTML = data.plugins.map(plugin => {
+                    const isActive = plugin.active;
+                    const typeBadge = `<span style="display: inline-block; padding: 0.125rem 0.5rem; border-radius: 4px; font-size: 0.75rem; background: var(--bg-tertiary); color: var(--text-secondary);">${plugin.plugin_type}</span>`;
+                    const toggleId = `plugin-toggle-${plugin.id}`;
+                    const toggleChecked = isActive ? 'checked' : '';
+                    return `<div class="type-item" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+                        <div style="flex: 1;">
+                            <div style="font-weight: 500;">${plugin.name}</div>
+                            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem;">${plugin.description}</div>
+                            <div style="display: flex; gap: 0.5rem; align-items: center; margin-top: 0.375rem;">
+                                ${typeBadge}
+                                <span style="font-size: 0.75rem; color: var(--text-secondary);">v${plugin.version}</span>
+                            </div>
+                        </div>
+                        <label style="display: flex; align-items: center; cursor: pointer; gap: 0.5rem; margin-left: 1rem;">
+                            <span style="font-size: 0.75rem; color: ${isActive ? 'var(--success)' : 'var(--text-secondary)'};">${isActive ? 'On' : 'Off'}</span>
+                            <input type="checkbox" id="${toggleId}" ${toggleChecked}
+                                data-plugin-id="${plugin.id}" data-plugin-type="${plugin.plugin_type}"
+                                onchange="togglePlugin(this)" style="width: auto; cursor: pointer;">
+                        </label>
+                    </div>`;
+                }).join('');
+
+                updateSyncCardVisibility(data.active_storage);
+            } catch (e) {
+                loading.textContent = 'Could not load plugins';
+            }
+        }
+
+        async function togglePlugin(checkbox) {
+            const pluginId = checkbox.dataset.pluginId;
+            const pluginType = checkbox.dataset.pluginType;
+            const enable = checkbox.checked;
+
+            try {
+                const resp = await fetch('/api/plugins/toggle', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin_id: pluginId, plugin_type: pluginType, enable }),
+                });
+                if (!resp.ok) {
+                    checkbox.checked = !enable;
+                    return;
+                }
+                const data = await resp.json();
+                updateSyncCardVisibility(data.active_storage);
+                loadPlugins();
+            } catch (e) {
+                checkbox.checked = !enable;
+            }
+        }
+
+        function updateSyncCardVisibility(activeStorage) {
+            const syncCard = document.getElementById('google-account-card');
+            if (syncCard) {
+                syncCard.style.display = activeStorage ? '' : 'none';
+            }
+
+            const indicator = document.getElementById('storage-indicator');
+            const indicatorDot = document.getElementById('storage-indicator-dot');
+            const modeText = document.getElementById('storage-mode-text');
+            if (!activeStorage && indicator) {
+                indicator.style.display = 'block';
+                indicatorDot.style.background = '#f59e0b';
+                modeText.textContent = 'Local Storage';
+                indicator.title = 'No storage plugin active — data is stored locally only';
+            } else if (activeStorage && indicator) {
+                updateStorageIndicator();
+            }
         }
 
         // Timer preset sliders

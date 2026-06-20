@@ -12,7 +12,7 @@ All data storage and CRUD operations happen in the browser's IndexedDB.
 import json
 from unittest.mock import patch
 
-import sheets_storage
+import storage_api
 
 
 class TestIndexRoute:
@@ -95,88 +95,100 @@ class TestSheetsProxyEndpoints:
         response = client.get("/api/sheets/export")
         assert response.status_code == 401
 
-    def test_get_pomodoros_with_auth(self, authenticated_session, mock_sheets_service):
-        """GET /api/sheets/pomodoros should proxy to Sheets when authenticated."""
-        with patch("app.get_sheets_service", return_value=mock_sheets_service):
-            with patch.object(
-                sheets_storage,
-                "get_pomodoros",
-                return_value=[
-                    {
-                        "id": "test-1",
-                        "name": "Test",
-                        "type": "Content",
-                        "start_time": "2024-01-15T10:00:00Z",
-                        "end_time": "2024-01-15T10:25:00Z",
-                        "duration_minutes": 25,
-                        "notes": None,
-                    }
-                ],
-            ) as mock_get:
-                response = authenticated_session.get("/api/sheets/pomodoros")
-                assert response.status_code == 200
-                data = json.loads(response.data)
-                assert len(data) == 1
-                assert data[0]["name"] == "Test"
-                mock_get.assert_called_once()
+    def test_get_pomodoros_with_auth(self, authenticated_session):
+        """GET /api/sheets/pomodoros should proxy to storage backend when authenticated."""
+        with patch.object(
+            storage_api,
+            "get_pomodoros",
+            return_value=[
+                {
+                    "id": "test-1",
+                    "name": "Test",
+                    "type": "Content",
+                    "start_time": "2024-01-15T10:00:00Z",
+                    "end_time": "2024-01-15T10:25:00Z",
+                    "duration_minutes": 25,
+                    "notes": None,
+                }
+            ],
+        ) as mock_get:
+            response = authenticated_session.get("/api/sheets/pomodoros")
+            assert response.status_code == 200
+            data = json.loads(response.data)
+            assert len(data) == 1
+            assert data[0]["name"] == "Test"
+            mock_get.assert_called_once()
 
-    def test_create_pomodoro_with_auth(self, authenticated_session, mock_sheets_service, sample_pomodoro):
-        """POST /api/sheets/pomodoros should proxy to Sheets when authenticated."""
-        with patch("app.get_sheets_service", return_value=mock_sheets_service):
-            with patch.object(sheets_storage, "save_pomodoro") as mock_save:
-                response = authenticated_session.post(
-                    "/api/sheets/pomodoros",
-                    json=sample_pomodoro,
-                    content_type="application/json",
-                )
-                assert response.status_code == 200
-                mock_save.assert_called_once()
+    def test_create_pomodoro_with_auth(self, authenticated_session, sample_pomodoro):
+        """POST /api/sheets/pomodoros should proxy to storage backend when authenticated."""
+        with patch.object(storage_api, "save_pomodoro") as mock_save:
+            response = authenticated_session.post(
+                "/api/sheets/pomodoros",
+                json=sample_pomodoro,
+                content_type="application/json",
+            )
+            assert response.status_code == 200
+            mock_save.assert_called_once()
 
-    def test_update_pomodoro_with_auth(self, authenticated_session, mock_sheets_service, sample_pomodoro):
-        """PUT /api/sheets/pomodoros/<id> should proxy to Sheets when authenticated."""
-        with patch("app.get_sheets_service", return_value=mock_sheets_service):
-            with patch.object(sheets_storage, "update_pomodoro", return_value=True) as mock_update:
-                response = authenticated_session.put(
-                    "/api/sheets/pomodoros/test-uuid-1234",
-                    json=sample_pomodoro,
-                    content_type="application/json",
-                )
-                assert response.status_code == 200
-                mock_update.assert_called_once()
+    def test_update_pomodoro_with_auth(self, authenticated_session, sample_pomodoro):
+        """PUT /api/sheets/pomodoros/<id> should proxy to storage backend when authenticated."""
+        with patch.object(storage_api, "update_pomodoro", return_value=True) as mock_update:
+            response = authenticated_session.put(
+                "/api/sheets/pomodoros/test-uuid-1234",
+                json=sample_pomodoro,
+                content_type="application/json",
+            )
+            assert response.status_code == 200
+            mock_update.assert_called_once()
 
-    def test_delete_pomodoro_with_auth(self, authenticated_session, mock_sheets_service):
-        """DELETE /api/sheets/pomodoros/<id> should proxy to Sheets when authenticated."""
-        with patch("app.get_sheets_service", return_value=mock_sheets_service):
-            with patch.object(sheets_storage, "delete_pomodoro", return_value=True) as mock_delete:
-                response = authenticated_session.delete("/api/sheets/pomodoros/test-uuid-1234")
-                assert response.status_code == 200
-                mock_delete.assert_called_once()
+    def test_delete_pomodoro_with_auth(self, authenticated_session):
+        """DELETE /api/sheets/pomodoros/<id> should proxy to storage backend when authenticated."""
+        with patch.object(storage_api, "delete_pomodoro", return_value=True) as mock_delete:
+            response = authenticated_session.delete("/api/sheets/pomodoros/test-uuid-1234")
+            assert response.status_code == 200
+            mock_delete.assert_called_once()
 
-    def test_get_settings_with_auth(self, authenticated_session, mock_sheets_service):
-        """GET /api/sheets/settings should proxy to Sheets when authenticated."""
-        with patch("app.get_sheets_service", return_value=mock_sheets_service):
-            with patch.object(
-                sheets_storage,
-                "get_settings",
-                return_value={"timer_preset_4": 25, "short_break_minutes": 5},
-            ) as mock_get:
-                response = authenticated_session.get("/api/sheets/settings")
-                assert response.status_code == 200
-                data = json.loads(response.data)
-                assert data["timer_preset_4"] == 25
-                mock_get.assert_called_once()
+    def test_get_settings_with_auth(self, authenticated_session):
+        """GET /api/sheets/settings should proxy to storage backend when authenticated."""
+        with patch.object(
+            storage_api,
+            "get_settings",
+            return_value={"timer_preset_4": 25, "short_break_minutes": 5},
+        ) as mock_get:
+            response = authenticated_session.get("/api/sheets/settings")
+            assert response.status_code == 200
+            data = json.loads(response.data)
+            assert data["timer_preset_4"] == 25
+            mock_get.assert_called_once()
 
-    def test_save_settings_with_auth(self, authenticated_session, mock_sheets_service, sample_settings):
-        """POST /api/sheets/settings should proxy to Sheets when authenticated."""
-        with patch("app.get_sheets_service", return_value=mock_sheets_service):
-            with patch.object(sheets_storage, "save_settings") as mock_save:
-                response = authenticated_session.post(
-                    "/api/sheets/settings",
-                    json=sample_settings,
-                    content_type="application/json",
-                )
-                assert response.status_code == 200
-                mock_save.assert_called_once()
+    def test_save_settings_with_auth(self, authenticated_session, sample_settings):
+        """POST /api/sheets/settings should proxy to storage backend when authenticated."""
+        with patch.object(storage_api, "save_settings") as mock_save:
+            response = authenticated_session.post(
+                "/api/sheets/settings",
+                json=sample_settings,
+                content_type="application/json",
+            )
+            assert response.status_code == 200
+            mock_save.assert_called_once()
+
+
+class TestPluginsAPI:
+    """Tests for the plugin registry API."""
+
+    def test_list_plugins(self, client):
+        """GET /api/plugins should return registered plugins."""
+        response = client.get("/api/plugins")
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert "plugins" in data
+        assert "types" in data
+        assert "active_storage" in data
+        assert data["active_storage"] == "sheets"
+        sheets_plugin = next(p for p in data["plugins"] if p["id"] == "sheets")
+        assert sheets_plugin["name"] == "Google Sheets"
+        assert sheets_plugin["plugin_type"] == "storage"
+        assert sheets_plugin["active"] is True
 
 
 class TestClearInitialSync:
