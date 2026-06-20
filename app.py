@@ -282,13 +282,13 @@ def _storage_context():
     backend = plugin_registry.get_active_storage()
     if backend is None:
         return None
-    credentials = get_credentials()
-    if not credentials:
+    service = get_sheets_service()
+    if not service:
         return None
-    request_creds = get_credentials_from_request()
-    if not request_creds:
+    location = get_spreadsheet_id_from_request()
+    if not location:
         return None
-    return backend.build_context(credentials, request_creds)
+    return {"service": service, "location": location}
 
 
 def is_logged_in():
