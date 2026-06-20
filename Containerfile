@@ -10,6 +10,8 @@ WORKDIR /app
 
 # Copy only application code (fast)
 COPY app.py .
+COPY plugin_registry.py .
+COPY storage_api.py .
 COPY sheets_storage.py .
 COPY templates/ templates/
 COPY static/ static/

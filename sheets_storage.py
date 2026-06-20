@@ -2,9 +2,29 @@
 
 import json
 
+PLUGIN_METADATA = {
+    "id": "sheets",
+    "name": "Google Sheets",
+    "description": "Store data in your Google Sheets spreadsheet",
+    "version": "1.0.0",
+    "type": "storage",
+    "author": "crunchtools",
+}
+
 # Column counts for Sheets data validation
 POMODORO_MIN_COLUMNS = 6  # id, name, type, start_time, end_time, duration_minutes
 POMODORO_TOTAL_COLUMNS = 7  # includes optional notes column
+
+
+def build_context(credentials, request_creds):
+    """Build Sheets-specific storage context from credentials."""
+    from googleapiclient.discovery import build
+
+    service = build("sheets", "v4", credentials=credentials)
+    return {
+        "service": service,
+        "location": request_creds.get("spreadsheet_id"),
+    }
 SETTINGS_MIN_COLUMNS = 2  # key, value
 
 
@@ -442,3 +462,63 @@ def save_settings(sheets_service, spreadsheet_id, settings_data, replace_all=Fal
             insertDataOption="INSERT_ROWS",
             body={"values": appends},
         ).execute()
+
+
+def count_pomodoros(sheets_service, spreadsheet_id):
+    """Count pomodoros efficiently by fetching only the ID column."""
+    sheets_response = (
+        sheets_service.spreadsheets()
+        .values()
+        .get(
+            spreadsheetId=spreadsheet_id,
+            range="Pomodoros!A:A",
+        )
+        .execute()
+    )
+    rows = sheets_response.get("values", [])
+    return max(0, len(rows) - 1)
+
+
+def clear_pomodoros(sheets_service, spreadsheet_id):
+    """Clear all pomodoro data rows (keeps headers)."""
+    spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+
+    sheet_id = None
+    for sheet in spreadsheet["sheets"]:
+        if sheet["properties"]["title"] == "Pomodoros":
+            sheet_id = sheet["properties"]["sheetId"]
+            break
+
+    if sheet_id is None:
+        return {"status": "error", "error": "Pomodoros sheet not found", "cleared": 0}
+
+    values = (
+        sheets_service.spreadsheets()
+        .values()
+        .get(spreadsheetId=spreadsheet_id, range="Pomodoros!A:A")
+        .execute()
+    )
+    row_count = len(values.get("values", []))
+
+    if row_count <= 1:
+        return {"status": "ok", "cleared": 0}
+
+    sheets_service.spreadsheets().batchUpdate(
+        spreadsheetId=spreadsheet_id,
+        body={
+            "requests": [
+                {
+                    "deleteDimension": {
+                        "range": {
+                            "sheetId": sheet_id,
+                            "dimension": "ROWS",
+                            "startIndex": 1,
+                            "endIndex": row_count,
+                        }
+                    }
+                }
+            ]
+        },
+    ).execute()
+
+    return {"status": "ok", "cleared": row_count - 1}

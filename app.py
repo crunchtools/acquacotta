@@ -30,7 +30,13 @@ from googleapiclient.errors import HttpError
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from werkzeug.middleware.proxy_fix import ProxyFix
 
+import plugin_registry
 import sheets_storage
+import storage_api
+
+# Register built-in plugins
+plugin_registry.register("storage", "sheets", sheets_storage, sheets_storage.PLUGIN_METADATA)
+plugin_registry.activate_storage("sheets")
 
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
@@ -269,6 +275,16 @@ def get_drive_service():
     if not credentials:
         return None
     return build("drive", "v3", credentials=credentials)
+
+
+def _storage_context():
+    """Build storage context for the active backend, or None if no backend is active."""
+    backend = plugin_registry.get_active_storage()
+    if backend is None:
+        return None
+    credentials = get_credentials()
+    request_creds = get_credentials_from_request()
+    return backend.build_context(credentials, request_creds)
 
 
 def is_logged_in():
@@ -672,9 +688,51 @@ def update_spreadsheet():
 
 
 # =============================================================================
-# Google Sheets Proxy Endpoints
-# The server proxies all data operations to Google Sheets.
-# No user data is stored on the server.
+# Plugin API
+# =============================================================================
+
+
+@app.route("/api/plugins")
+def api_list_plugins():
+    """List all registered plugins with their status."""
+    return jsonify({
+        "plugins": plugin_registry.list_plugins(),
+        "types": plugin_registry.list_plugin_types(),
+        "active_storage": plugin_registry.get_active_storage_id(),
+    })
+
+
+@app.route("/api/plugins/toggle", methods=["POST"])
+def api_toggle_plugin():
+    """Enable or disable a plugin."""
+    data = request.get_json(silent=True)
+    if not data or "plugin_id" not in data or "plugin_type" not in data:
+        return jsonify({"error": "plugin_id and plugin_type required"}), HTTPStatus.BAD_REQUEST
+
+    plugin_type = data["plugin_type"]
+    plugin_id = data["plugin_id"]
+    enable = data.get("enable", True)
+
+    if plugin_type == "storage":
+        if enable:
+            try:
+                plugin_registry.activate_storage(plugin_id)
+            except ValueError as e:
+                return jsonify({"error": str(e)}), HTTPStatus.BAD_REQUEST
+        else:
+            plugin_registry.deactivate_storage()
+    else:
+        return jsonify({"error": f"Toggle not yet supported for type: {plugin_type}"}), HTTPStatus.BAD_REQUEST
+
+    return jsonify({
+        "status": "ok",
+        "active_storage": plugin_registry.get_active_storage_id(),
+    })
+
+
+# =============================================================================
+# Storage Proxy Endpoints
+# Routes proxy data operations through the active storage plugin.
 # =============================================================================
 
 
@@ -685,11 +743,10 @@ def proxy_get_pomodoros():
         return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
 
     try:
-        service = get_sheets_service()
-        spreadsheet_id = get_spreadsheet_id_from_request()
+        ctx = _storage_context()
         start_date = request.args.get("start_date")
         end_date = request.args.get("end_date")
-        pomodoros = sheets_storage.get_pomodoros(service, spreadsheet_id, start_date, end_date)
+        pomodoros = storage_api.get_pomodoros(ctx, start_date, end_date)
         return jsonify(pomodoros)
     except HttpError as e:
         return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
@@ -697,26 +754,13 @@ def proxy_get_pomodoros():
 
 @app.route("/api/sheets/pomodoros/count")
 def proxy_get_pomodoro_count():
-    """Get count of pomodoros in Google Sheets - efficient, only fetches IDs."""
+    """Get count of pomodoros - efficient, only fetches IDs."""
     if not is_logged_in():
         return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
 
     try:
-        service = get_sheets_service()
-        spreadsheet_id = get_spreadsheet_id_from_request()
-        # Only fetch the ID column to count rows efficiently
-        sheets_response = (
-            service.spreadsheets()
-            .values()
-            .get(
-                spreadsheetId=spreadsheet_id,
-                range="Pomodoros!A:A",
-            )
-            .execute()
-        )
-        rows = sheets_response.get("values", [])
-        # Subtract 1 for header row, ensure non-negative
-        count = max(0, len(rows) - 1)
+        ctx = _storage_context()
+        count = storage_api.count_pomodoros(ctx)
         return jsonify({"count": count})
     except HttpError as e:
         return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
@@ -737,14 +781,13 @@ def proxy_create_pomodoro():
         return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
 
     try:
-        service = get_sheets_service()
-        if not service:
-            return jsonify({"error": "Failed to create Sheets service - invalid credentials"}), HTTPStatus.UNAUTHORIZED
-        spreadsheet_id = get_spreadsheet_id_from_request()
-        if not spreadsheet_id:
-            return jsonify({"error": "No spreadsheet ID provided"}), HTTPStatus.BAD_REQUEST
+        ctx = _storage_context()
+        if not ctx.get("service"):
+            return jsonify({"error": "Failed to create storage service - invalid credentials"}), HTTPStatus.UNAUTHORIZED
+        if not ctx.get("location"):
+            return jsonify({"error": "No storage location provided"}), HTTPStatus.BAD_REQUEST
         pomodoro = get_request_data()
-        sheets_storage.save_pomodoro(service, spreadsheet_id, pomodoro)
+        storage_api.save_pomodoro(ctx, pomodoro)
         return jsonify({"status": "ok", "id": pomodoro.get("id")})
     except HttpError as e:
         return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
@@ -762,15 +805,14 @@ def proxy_create_pomodoros_batch():
         return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
 
     try:
-        service = get_sheets_service()
-        if not service:
-            return jsonify({"error": "Failed to create Sheets service"}), HTTPStatus.UNAUTHORIZED
-        spreadsheet_id = get_spreadsheet_id_from_request()
-        if not spreadsheet_id:
-            return jsonify({"error": "No spreadsheet ID provided"}), HTTPStatus.BAD_REQUEST
+        ctx = _storage_context()
+        if not ctx.get("service"):
+            return jsonify({"error": "Failed to create storage service"}), HTTPStatus.UNAUTHORIZED
+        if not ctx.get("location"):
+            return jsonify({"error": "No storage location provided"}), HTTPStatus.BAD_REQUEST
         batch_request = get_request_data()
         pomodoros = batch_request.get("pomodoros", [])
-        count = sheets_storage.save_pomodoros_batch(service, spreadsheet_id, pomodoros)
+        count = storage_api.save_pomodoros_batch(ctx, pomodoros)
         return jsonify({"status": "ok", "count": count})
     except HttpError as e:
         return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
@@ -788,10 +830,9 @@ def proxy_update_pomodoro(pomodoro_id):
         return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
 
     try:
-        service = get_sheets_service()
-        spreadsheet_id = get_spreadsheet_id_from_request()
+        ctx = _storage_context()
         update_fields = get_request_data()
-        success = sheets_storage.update_pomodoro(service, spreadsheet_id, pomodoro_id, update_fields)
+        success = storage_api.update_pomodoro(ctx, pomodoro_id, update_fields)
         if success:
             return jsonify({"status": "ok"})
         return jsonify({"error": "Pomodoro not found"}), HTTPStatus.NOT_FOUND
@@ -801,14 +842,13 @@ def proxy_update_pomodoro(pomodoro_id):
 
 @app.route("/api/sheets/pomodoros/<pomodoro_id>", methods=["DELETE"])
 def proxy_delete_pomodoro(pomodoro_id):
-    """Proxy delete to Google Sheets - stateless, credentials from request."""
+    """Proxy delete to storage backend - stateless, credentials from request."""
     if not is_logged_in():
         return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
 
     try:
-        service = get_sheets_service()
-        spreadsheet_id = get_spreadsheet_id_from_request()
-        success = sheets_storage.delete_pomodoro(service, spreadsheet_id, pomodoro_id)
+        ctx = _storage_context()
+        success = storage_api.delete_pomodoro(ctx, pomodoro_id)
         if success:
             return jsonify({"status": "ok"})
         return jsonify({"error": "Pomodoro not found"}), HTTPStatus.NOT_FOUND
@@ -823,9 +863,8 @@ def proxy_get_settings():
         return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
 
     try:
-        service = get_sheets_service()
-        spreadsheet_id = get_spreadsheet_id_from_request()
-        settings = sheets_storage.get_settings(service, spreadsheet_id, DEFAULT_SETTINGS)
+        ctx = _storage_context()
+        settings = storage_api.get_settings(ctx, DEFAULT_SETTINGS)
         return jsonify(settings)
     except HttpError as e:
         return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
@@ -833,17 +872,16 @@ def proxy_get_settings():
 
 @app.route("/api/sheets/settings", methods=["POST"])
 def proxy_save_settings():
-    """Proxy settings write to Google Sheets - stateless."""
+    """Proxy settings write to storage backend - stateless."""
     if not is_logged_in():
         return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
 
     try:
-        service = get_sheets_service()
-        spreadsheet_id = get_spreadsheet_id_from_request()
+        ctx = _storage_context()
         settings_payload = get_request_data()
         # Check for replace_all flag (used by "Overwrite Google" button)
         replace_all = settings_payload.pop("_replace_all", False) if isinstance(settings_payload, dict) else False
-        sheets_storage.save_settings(service, spreadsheet_id, settings_payload, replace_all=replace_all)
+        storage_api.save_settings(ctx, settings_payload, replace_all=replace_all)
         return jsonify({"status": "ok"})
     except HttpError as e:
         return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
@@ -856,9 +894,8 @@ def proxy_deduplicate_pomodoros():
         return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
 
     try:
-        service = get_sheets_service()
-        spreadsheet_id = get_spreadsheet_id_from_request()
-        dedup_result = sheets_storage.deduplicate_pomodoros(service, spreadsheet_id)
+        ctx = _storage_context()
+        dedup_result = storage_api.deduplicate_pomodoros(ctx)
         return jsonify(dedup_result)
     except HttpError as e:
         return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
@@ -871,9 +908,8 @@ def proxy_export_csv():
         return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
 
     try:
-        service = get_sheets_service()
-        spreadsheet_id = get_spreadsheet_id_from_request()
-        pomodoros = sheets_storage.get_pomodoros(service, spreadsheet_id)
+        ctx = _storage_context()
+        pomodoros = storage_api.get_pomodoros(ctx)
 
         lines = ["id,name,type,start_time,end_time,duration_minutes,notes"]
         for p in pomodoros:
@@ -900,48 +936,11 @@ def proxy_clear_sheets():
         return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
 
     try:
-        service = get_sheets_service()
-        spreadsheet_id = get_spreadsheet_id_from_request()
-
-        # Get the sheet ID for Pomodoros sheet
-        spreadsheet = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
-        pomodoros_sheet_id = None
-        for sheet in spreadsheet["sheets"]:
-            if sheet["properties"]["title"] == "Pomodoros":
-                pomodoros_sheet_id = sheet["properties"]["sheetId"]
-                break
-
-        if pomodoros_sheet_id is None:
-            return jsonify({"error": "Pomodoros sheet not found"}), HTTPStatus.NOT_FOUND
-
-        # Get current row count
-        values = service.spreadsheets().values().get(spreadsheetId=spreadsheet_id, range="Pomodoros!A:A").execute()
-        row_count = len(values.get("values", []))
-
-        if row_count <= 1:
-            # Only header or empty, nothing to clear
-            return jsonify({"status": "ok", "cleared": 0})
-
-        # Delete all data rows (keep header at row 1)
-        service.spreadsheets().batchUpdate(
-            spreadsheetId=spreadsheet_id,
-            body={
-                "requests": [
-                    {
-                        "deleteDimension": {
-                            "range": {
-                                "sheetId": pomodoros_sheet_id,
-                                "dimension": "ROWS",
-                                "startIndex": 1,  # After header
-                                "endIndex": row_count,
-                            }
-                        }
-                    }
-                ]
-            },
-        ).execute()
-
-        return jsonify({"status": "ok", "cleared": row_count - 1})
+        ctx = _storage_context()
+        result = storage_api.clear_pomodoros(ctx)
+        if result.get("error"):
+            return jsonify({"error": result["error"]}), HTTPStatus.NOT_FOUND
+        return jsonify(result)
     except HttpError as e:
         return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
 
