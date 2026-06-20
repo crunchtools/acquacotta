@@ -164,13 +164,15 @@ def get_stored_location(email, plugin_id):
     """Get stored storage location for a user+plugin combination."""
     mapping_path = _user_mapping_path()
     if mapping_path.exists():
-        with open(mapping_path) as f:
-            mapping = json.load(f)
-            user_entry = mapping.get(email, {})
-            if isinstance(user_entry, str):
-                # Legacy format: bare spreadsheet_id string
-                return user_entry if plugin_id == "sheets" else None
-            return user_entry.get(plugin_id)
+        try:
+            with open(mapping_path) as f:
+                mapping = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            return None
+        user_entry = mapping.get(email, {})
+        if isinstance(user_entry, str):
+            return user_entry if plugin_id == "sheets" else None
+        return user_entry.get(plugin_id)
     return None
 
 
@@ -179,11 +181,13 @@ def save_location(email, plugin_id, location_id):
     mapping_path = _user_mapping_path()
     mapping = {}
     if mapping_path.exists():
-        with open(mapping_path) as f:
-            mapping = json.load(f)
+        try:
+            with open(mapping_path) as f:
+                mapping = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            mapping = {}
     user_entry = mapping.get(email, {})
     if isinstance(user_entry, str):
-        # Migrate legacy format
         user_entry = {"sheets": user_entry}
     user_entry[plugin_id] = location_id
     mapping[email] = user_entry
@@ -466,9 +470,13 @@ def _provision_json_google_drive(credentials, user_email, _requested_id):
     from transports.google_drive_transport import GoogleDriveTransport
 
     stored_id = get_stored_location(user_email, "json-google-drive")
-    drive_service = build("drive", "v3", credentials=credentials)
-    transport = GoogleDriveTransport(drive_service, stored_id)
-    folder_id = transport.ensure_directory()
+    try:
+        drive_service = build("drive", "v3", credentials=credentials)
+        transport = GoogleDriveTransport(drive_service, stored_id)
+        folder_id = transport.ensure_directory()
+    except Exception as e:
+        app.logger.error(f"Failed to provision Google Drive storage: {e}")
+        raise
     existed = stored_id == folder_id and stored_id is not None
     save_location(user_email, "json-google-drive", folder_id)
     return folder_id, existed

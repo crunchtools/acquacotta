@@ -2,6 +2,7 @@
 
 import io
 
+from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseUpload
 
 
@@ -69,7 +70,7 @@ class GoogleDriveTransport:
                     fileId=self._folder_id, fields="id,trashed"
                 ).execute()
                 return self._folder_id
-            except Exception:
+            except HttpError:
                 pass
 
         resp = self._service.files().list(
