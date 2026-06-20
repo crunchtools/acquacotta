@@ -728,7 +728,7 @@ def update_spreadsheet():
     # Update session and persisted mapping
     session["spreadsheet_id"] = new_id
     if session.get("user_email"):
-        save_spreadsheet_id(session["user_email"], new_id)
+        save_location(session["user_email"], "sheets", new_id)
 
     return jsonify({"status": "ok", "spreadsheet_id": new_id})
 

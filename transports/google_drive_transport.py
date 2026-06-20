@@ -5,7 +5,6 @@ import io
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseUpload
 
-
 ACQUACOTTA_FOLDER_NAME = "Acquacotta"
 
 

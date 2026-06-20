@@ -112,7 +112,7 @@ def list_plugins(plugin_type=None):
     for ptype in types_to_list:
         if ptype not in _plugins:
             continue
-        for pid, info in _plugins[ptype].items():
+        for _pid, info in _plugins[ptype].items():
             entry = dict(info["metadata"])
             entry["active"] = info["active"]
             entry["plugin_type"] = ptype
