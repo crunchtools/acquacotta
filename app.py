@@ -283,7 +283,11 @@ def _storage_context():
     if backend is None:
         return None
     credentials = get_credentials()
+    if not credentials:
+        return None
     request_creds = get_credentials_from_request()
+    if not request_creds:
+        return None
     return backend.build_context(credentials, request_creds)
 
 
@@ -937,11 +941,16 @@ def proxy_clear_sheets():
 
     try:
         ctx = _storage_context()
+        if not ctx:
+            return jsonify({"error": "No storage backend active"}), HTTPStatus.BAD_REQUEST
         result = storage_api.clear_pomodoros(ctx)
         if result.get("error"):
             return jsonify({"error": result["error"]}), HTTPStatus.NOT_FOUND
         return jsonify(result)
     except HttpError as e:
+        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+    except Exception as e:
+        app.logger.error(f"Error in proxy_clear_sheets: {e}")
         return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
 
 
