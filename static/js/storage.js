@@ -67,11 +67,15 @@
     const SYNC_RETRY_DELAYS = [1000, 2000, 5000, 10000, 30000]; // Exponential backoff
     const MAX_SYNC_RETRIES = 5;
 
+    // Storage location field names — each plugin declares its own in PLUGIN_METADATA.frontend_fields
+    const LOCATION_FIELDS = ['spreadsheet_id', 'folder_id'];
+
     // Storage state
     let db = null;
     let authStatus = null;
     let storedCredentials = null;  // OAuth credentials from IndexedDB (ephemeral)
-    let cachedSpreadsheetId = null;  // Spreadsheet ID from SETTINGS (persistent)
+    let cachedSpreadsheetId = null;  // Legacy alias — kept for backwards compat
+    let cachedLocationFields = {};   // All plugin location fields from SETTINGS
     let isOnline = navigator.onLine;
     let syncInProgress = false;
     let syncLockPromise = null;  // Promise-based lock to prevent race conditions
@@ -235,43 +239,39 @@
      * Make authenticated API call with stored credentials
      * Spreadsheet ID comes from SETTINGS (persistent), credentials from AUTH (ephemeral)
      */
+    function _buildCredentialsPayload() {
+        const payload = {
+            token: storedCredentials.token,
+            refresh_token: storedCredentials.refresh_token,
+            token_uri: storedCredentials.token_uri,
+            client_id: storedCredentials.client_id,
+            client_secret: storedCredentials.client_secret,
+            scopes: storedCredentials.scopes,
+        };
+        // Include all cached location fields (spreadsheet_id, folder_id, etc.)
+        Object.assign(payload, cachedLocationFields);
+        return payload;
+    }
+
     async function authenticatedFetch(url, options = {}) {
         if (!storedCredentials) {
             throw new Error('Not logged in');
         }
-        if (!cachedSpreadsheetId) {
-            throw new Error('No spreadsheet configured');
+        const hasLocation = Object.values(cachedLocationFields).some(v => v);
+        if (!hasLocation) {
+            throw new Error('No storage location configured');
         }
 
-        // Add credentials to request body for POST/PUT, or as header for GET/DELETE
         const method = (options.method || 'GET').toUpperCase();
 
         if (method === 'GET' || method === 'DELETE') {
-            // For GET/DELETE, send credentials as Authorization header (base64 encoded JSON)
             options.headers = options.headers || {};
-            options.headers['X-Credentials'] = btoa(JSON.stringify({
-                token: storedCredentials.token,
-                refresh_token: storedCredentials.refresh_token,
-                token_uri: storedCredentials.token_uri,
-                client_id: storedCredentials.client_id,
-                client_secret: storedCredentials.client_secret,
-                scopes: storedCredentials.scopes,
-                spreadsheet_id: cachedSpreadsheetId
-            }));
+            options.headers['X-Credentials'] = btoa(JSON.stringify(_buildCredentialsPayload()));
         } else {
-            // For POST/PUT, merge credentials into body
             options.headers = options.headers || {};
             options.headers['Content-Type'] = 'application/json';
             const body = options.body ? JSON.parse(options.body) : {};
-            body._credentials = {
-                token: storedCredentials.token,
-                refresh_token: storedCredentials.refresh_token,
-                token_uri: storedCredentials.token_uri,
-                client_id: storedCredentials.client_id,
-                client_secret: storedCredentials.client_secret,
-                scopes: storedCredentials.scopes,
-                spreadsheet_id: cachedSpreadsheetId
-            };
+            body._credentials = _buildCredentialsPayload();
             options.body = JSON.stringify(body);
         }
 
@@ -605,13 +605,11 @@
                 await putInStore(STORES.SETTINGS, { key, value, synced: true });
             }
 
-            // Preserve spreadsheet_id in SETTINGS (it's not in Sheet, it's the ID of the Sheet itself)
-            if (cachedSpreadsheetId) {
-                await putInStore(STORES.SETTINGS, {
-                    key: 'spreadsheet_id',
-                    value: cachedSpreadsheetId,
-                    synced: true
-                });
+            // Preserve storage location fields (they're not in the backend data)
+            for (const [field, value] of Object.entries(cachedLocationFields)) {
+                if (value) {
+                    await putInStore(STORES.SETTINGS, { key: field, value, synced: true });
+                }
             }
 
             // Update last sync time
@@ -646,23 +644,31 @@
             // Load credentials from AUTH store (ephemeral - OAuth tokens only)
             const creds = await loadCredentials();
 
-            // Load spreadsheet_id from SETTINGS store (persistent)
-            const spreadsheetIdSetting = await getFromStore(STORES.SETTINGS, 'spreadsheet_id');
-            cachedSpreadsheetId = spreadsheetIdSetting ? spreadsheetIdSetting.value : null;
+            // Load all storage location fields from SETTINGS store (persistent)
+            cachedLocationFields = {};
+            for (const field of LOCATION_FIELDS) {
+                const setting = await getFromStore(STORES.SETTINGS, field);
+                if (setting && setting.value) {
+                    cachedLocationFields[field] = setting.value;
+                }
+            }
+            // Legacy alias for backwards compat
+            cachedSpreadsheetId = cachedLocationFields.spreadsheet_id || null;
 
-            // Load spreadsheet_existed from SETTINGS store
-            const spreadsheetExistedSetting = await getFromStore(STORES.SETTINGS, 'spreadsheet_existed');
-            const spreadsheetExisted = spreadsheetExistedSetting ? spreadsheetExistedSetting.value : false;
+            // Load storage_existed from SETTINGS store
+            const storageExistedSetting = await getFromStore(STORES.SETTINGS, 'storage_existed');
+            const storageExisted = storageExistedSetting ? storageExistedSetting.value : false;
 
-            // Build auth status from credentials (AUTH) + spreadsheet_id (SETTINGS)
-            if (creds && creds.token && cachedSpreadsheetId) {
+            // Build auth status from credentials (AUTH) + location fields (SETTINGS)
+            const hasLocation = Object.values(cachedLocationFields).some(v => v);
+            if (creds && creds.token && hasLocation) {
                 authStatus = {
                     logged_in: true,
                     email: creds.user_email,
                     name: creds.user_name,
                     picture: creds.user_picture,
                     spreadsheet_id: cachedSpreadsheetId,
-                    needs_initial_sync: !spreadsheetExisted
+                    needs_initial_sync: !storageExisted
                 };
             } else {
                 authStatus = {
@@ -733,19 +739,19 @@
                                 for (const [key, value] of Object.entries(sheetsSettings)) {
                                     await putInStore(STORES.SETTINGS, { key, value, synced: true });
                                 }
-                                // Re-save spreadsheet_id after clearing
-                                await putInStore(STORES.SETTINGS, {
-                                    key: 'spreadsheet_id',
-                                    value: cachedSpreadsheetId,
-                                    synced: true
-                                });
+                                // Re-save location fields after clearing
+                                for (const [field, value] of Object.entries(cachedLocationFields)) {
+                                    if (value) {
+                                        await putInStore(STORES.SETTINGS, { key: field, value, synced: true });
+                                    }
+                                }
                             }
                         }
                         await putInStore(STORES.SYNC_STATUS, { key: 'initial_sync_done', value: true });
                     }
 
-                    // Mark spreadsheet as existing
-                    await putInStore(STORES.SETTINGS, { key: 'spreadsheet_existed', value: true, synced: true });
+                    // Mark storage as existing
+                    await putInStore(STORES.SETTINGS, { key: 'storage_existed', value: true, synced: true });
 
                     // Process any queued pushes
                     await processSyncQueue();
@@ -826,28 +832,24 @@
         },
 
         /**
-         * Update spreadsheet ID in IndexedDB (SETTINGS store only)
+         * Update a storage location field in IndexedDB (SETTINGS store only)
+         * @param {string} field - Field name (e.g., 'spreadsheet_id', 'folder_id')
+         * @param {string} newId - New location ID
+         * @returns {Promise}
+         */
+        updateLocationField: async function(field, newId) {
+            await putInStore(STORES.SETTINGS, { key: field, value: newId, synced: false });
+            cachedLocationFields[field] = newId;
+            if (field === 'spreadsheet_id') cachedSpreadsheetId = newId;
+        },
+
+        /**
+         * Update spreadsheet ID in IndexedDB (legacy compat wrapper)
          * @param {string} newId - New spreadsheet ID
          * @returns {Promise}
          */
         updateSpreadsheetId: async function(newId) {
-            // Update SETTINGS store (persistent)
-            await putInStore(STORES.SETTINGS, {
-                key: 'spreadsheet_id',
-                value: newId,
-                synced: false
-            });
-
-            // Update cached value for current session
-            cachedSpreadsheetId = newId;
-
-            // Queue sync to save spreadsheet_id to Google Sheets Settings
-            await addToSyncQueue('update', 'settings', 'spreadsheet_id', {
-                spreadsheet_id: newId
-            });
-
-            // Process the queue
-            await processSyncQueue();
+            await this.updateLocationField('spreadsheet_id', newId);
         },
 
         /**

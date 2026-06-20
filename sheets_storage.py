@@ -9,6 +9,8 @@ PLUGIN_METADATA = {
     "version": "1.0.0",
     "type": "storage",
     "author": "crunchtools",
+    "frontend_fields": ["spreadsheet_id"],
+    "auth_flow": "google_oauth",
 }
 
 # Column counts for Sheets data validation

@@ -1,18 +1,10 @@
 """Acquacotta Storage API — dispatch layer for storage backend plugins."""
 
-from googleapiclient.errors import HttpError
-
 import plugin_registry
 
 
-class StorageUnavailable(HttpError):
+class StorageUnavailable(Exception):
     """Raised when no storage backend is active or context is missing."""
-
-    def __init__(self):
-        super().__init__(
-            resp=type("resp", (), {"status": 503, "reason": "No storage backend active"})(),
-            content=b"No storage backend active",
-        )
 
 
 def _require_context(ctx):

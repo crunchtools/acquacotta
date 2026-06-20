@@ -13,5 +13,8 @@ COPY app.py .
 COPY plugin_registry.py .
 COPY storage_api.py .
 COPY sheets_storage.py .
+COPY json_storage_core.py .
+COPY json_google_drive_storage.py .
+COPY transports/ transports/
 COPY templates/ templates/
 COPY static/ static/
