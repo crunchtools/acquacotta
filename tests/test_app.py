@@ -184,13 +184,13 @@ class TestPluginsAPI:
         assert "plugins" in data
         assert "types" in data
         assert "active_storage" in data
-        assert data["active_storage"] == "json-google-drive"
-        json_plugin = next(p for p in data["plugins"] if p["id"] == "json-google-drive")
-        assert json_plugin["name"] == "JSON on Google Drive"
-        assert json_plugin["plugin_type"] == "storage"
-        assert json_plugin["active"] is True
+        assert data["active_storage"] == "sheets"
         sheets_plugin = next(p for p in data["plugins"] if p["id"] == "sheets")
-        assert sheets_plugin["active"] is False
+        assert sheets_plugin["name"] == "Google Sheets"
+        assert sheets_plugin["plugin_type"] == "storage"
+        assert sheets_plugin["active"] is True
+        json_plugin = next(p for p in data["plugins"] if p["id"] == "json-google-drive")
+        assert json_plugin["active"] is False
 
 
 class TestClearInitialSync:
