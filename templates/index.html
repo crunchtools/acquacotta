@@ -3602,7 +3602,12 @@
                     return;
                 }
                 const data = await resp.json();
+                // Refresh plugin info and auth UI to reflect the new active plugin
+                activePluginInfo = await fetch('/api/plugins').then(r => r.json()).then(d =>
+                    d.plugins.find(p => p.active && p.plugin_type === 'storage') || null
+                );
                 updateSyncCardVisibility(data.active_storage);
+                updateAuthUI();
                 loadPlugins();
             } catch (e) {
                 checkbox.checked = !enable;
