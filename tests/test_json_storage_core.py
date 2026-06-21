@@ -8,7 +8,6 @@ import json
 
 import json_storage_core as core
 
-
 # =============================================================================
 # parse_pomodoros
 # =============================================================================
@@ -392,16 +391,30 @@ class TestFullRoundtrip:
     def test_lifecycle(self):
         pomodoros = []
 
-        pomodoros, _ = core.add_pomodoro(pomodoros, {
-            "id": "p1", "name": "Task 1", "type": "Content",
-            "start_time": "2026-01-15T10:00:00Z", "end_time": "2026-01-15T10:25:00Z",
-            "duration_minutes": 25, "notes": None,
-        })
-        pomodoros, _ = core.add_pomodoro(pomodoros, {
-            "id": "p2", "name": "Task 2", "type": "Product",
-            "start_time": "2026-01-15T11:00:00Z", "end_time": "2026-01-15T11:25:00Z",
-            "duration_minutes": 25, "notes": "Important",
-        })
+        pomodoros, _ = core.add_pomodoro(
+            pomodoros,
+            {
+                "id": "p1",
+                "name": "Task 1",
+                "type": "Content",
+                "start_time": "2026-01-15T10:00:00Z",
+                "end_time": "2026-01-15T10:25:00Z",
+                "duration_minutes": 25,
+                "notes": None,
+            },
+        )
+        pomodoros, _ = core.add_pomodoro(
+            pomodoros,
+            {
+                "id": "p2",
+                "name": "Task 2",
+                "type": "Product",
+                "start_time": "2026-01-15T11:00:00Z",
+                "end_time": "2026-01-15T11:25:00Z",
+                "duration_minutes": 25,
+                "notes": "Important",
+            },
+        )
 
         serialized = core.serialize_pomodoros(pomodoros)
         restored = core.parse_pomodoros(serialized)
@@ -421,7 +434,10 @@ class TestFullRoundtrip:
         assert final_parsed[0]["name"] == "Updated Task"
 
     def test_large_batch(self):
-        pomodoros = [{"id": str(i), "name": f"Task {i}", "start_time": f"2026-01-{15 + (i % 15):02d}T10:00:00Z"} for i in range(1000)]
+        pomodoros = [
+            {"id": str(i), "name": f"Task {i}", "start_time": f"2026-01-{15 + (i % 15):02d}T10:00:00Z"}
+            for i in range(1000)
+        ]
         serialized = core.serialize_pomodoros(pomodoros)
         restored = core.parse_pomodoros(serialized)
         assert len(restored) == 1000

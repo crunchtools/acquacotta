@@ -9,7 +9,6 @@ from unittest.mock import MagicMock, patch
 import json_google_drive_storage as storage
 from transports.google_drive_transport import GoogleDriveTransport
 
-
 # =============================================================================
 # Transport tests
 # =============================================================================
@@ -143,10 +142,14 @@ def _mock_transport(file_contents=None):
 class TestGetPomodoros:
     @patch("json_google_drive_storage._transport")
     def test_returns_pomodoros(self, mock_transport_fn):
-        data = json.dumps({"pomodoros": [
-            {"id": "1", "start_time": "2026-01-15T10:00:00Z"},
-            {"id": "2", "start_time": "2026-01-20T10:00:00Z"},
-        ]})
+        data = json.dumps(
+            {
+                "pomodoros": [
+                    {"id": "1", "start_time": "2026-01-15T10:00:00Z"},
+                    {"id": "2", "start_time": "2026-01-20T10:00:00Z"},
+                ]
+            }
+        )
         mock_transport_fn.return_value = _mock_transport(data)
         result = storage.get_pomodoros("svc", "folder", start_date="2026-01-16")
         assert len(result) == 1
