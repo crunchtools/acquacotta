@@ -5,9 +5,9 @@ Sovereign Sandbox v2: Stateless Server + IndexedDB
 
 The server is stateless - it only handles:
 1. OAuth authentication with Google
-2. Proxying API calls to Google Sheets
+2. Proxying API calls to the active storage plugin (JSON on Drive, Google Sheets, etc.)
 
-All user data lives in the browser's IndexedDB and optionally in their Google Sheets.
+All user data lives in the browser's IndexedDB and optionally on the user's Google Drive.
 The server never stores any user pomodoro data.
 
 Credit: kirkjerk (localStorage approach idea, extended to IndexedDB)
@@ -30,13 +30,18 @@ from googleapiclient.errors import HttpError
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from werkzeug.middleware.proxy_fix import ProxyFix
 
+import json_google_drive_storage
 import plugin_registry
 import sheets_storage
 import storage_api
+from storage_api import StorageUnavailable
 
 # Register built-in plugins
 plugin_registry.register("storage", "sheets", sheets_storage, sheets_storage.PLUGIN_METADATA)
-plugin_registry.activate_storage("sheets")
+plugin_registry.register(
+    "storage", "json-google-drive", json_google_drive_storage, json_google_drive_storage.PLUGIN_METADATA
+)
+plugin_registry.activate_storage("json-google-drive")
 
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
@@ -146,29 +151,47 @@ DEFAULT_SETTINGS = {
 DEFAULT_PORT = 5000
 
 
-def get_user_spreadsheet_mapping_path():
-    """Get path to the user-to-spreadsheet mapping file."""
-    return DATA_DIR / "user_spreadsheets.json"
+def _user_mapping_path():
+    """Get path to the user-to-storage-location mapping file."""
+    new_path = DATA_DIR / "user_storage.json"
+    if not new_path.exists():
+        legacy_path = DATA_DIR / "user_spreadsheets.json"
+        if legacy_path.exists():
+            legacy_path.rename(new_path)
+    return new_path
 
 
-def get_stored_spreadsheet_id(email):
-    """Get stored spreadsheet_id for a user email."""
-    mapping_path = get_user_spreadsheet_mapping_path()
+def get_stored_location(email, plugin_id):
+    """Get stored storage location for a user+plugin combination."""
+    mapping_path = _user_mapping_path()
     if mapping_path.exists():
-        with open(mapping_path) as f:
-            mapping = json.load(f)
-            return mapping.get(email)
+        try:
+            with open(mapping_path) as f:
+                mapping = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            return None
+        user_entry = mapping.get(email, {})
+        if isinstance(user_entry, str):
+            return user_entry if plugin_id == "sheets" else None
+        return user_entry.get(plugin_id)
     return None
 
 
-def save_spreadsheet_id(email, spreadsheet_id):
-    """Save spreadsheet_id for a user email."""
-    mapping_path = get_user_spreadsheet_mapping_path()
+def save_location(email, plugin_id, location_id):
+    """Save storage location for a user+plugin combination."""
+    mapping_path = _user_mapping_path()
     mapping = {}
     if mapping_path.exists():
-        with open(mapping_path) as f:
-            mapping = json.load(f)
-    mapping[email] = spreadsheet_id
+        try:
+            with open(mapping_path) as f:
+                mapping = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            mapping = {}
+    user_entry = mapping.get(email, {})
+    if isinstance(user_entry, str):
+        user_entry = {"sheets": user_entry}
+    user_entry[plugin_id] = location_id
+    mapping[email] = user_entry
     with open(mapping_path, "w") as f:
         json.dump(mapping, f)
 
@@ -249,15 +272,20 @@ def get_credentials():
             scopes=creds_data.get("scopes", []),
         )
 
-        # Refresh token if expired
-        if credentials.expired and credentials.refresh_token:
+        # Only attempt refresh if we have the necessary fields
+        if credentials.expired and credentials.refresh_token and credentials.client_id:
             from google.auth.transport.requests import Request
 
             credentials.refresh(Request())
 
         return credentials
     except Exception as e:
-        app.logger.error(f"Error creating credentials: {e}")
+        has_token = bool(creds_data.get("token"))
+        has_refresh = bool(creds_data.get("refresh_token"))
+        has_client = bool(creds_data.get("client_id"))
+        app.logger.error(
+            f"Error creating credentials: {e} (token={has_token}, refresh_token={has_refresh}, client_id={has_client})"
+        )
         return None
 
 
@@ -282,19 +310,26 @@ def _storage_context():
     backend = plugin_registry.get_active_storage()
     if backend is None:
         return None
-    service = get_sheets_service()
-    if not service:
+    credentials = get_credentials()
+    if not credentials:
         return None
-    location = get_spreadsheet_id_from_request()
-    if not location:
+    request_creds = get_credentials_from_request()
+    if not request_creds:
         return None
-    return {"service": service, "location": location}
+    return backend.build_context(credentials, request_creds)
 
 
 def is_logged_in():
     """Check if request has valid credentials (stateless)."""
     creds = get_credentials_from_request()
-    return creds is not None and creds.get("token") and creds.get("spreadsheet_id")
+    if not creds or not creds.get("token"):
+        return False
+    backend = plugin_registry.get_active_storage()
+    if backend is None:
+        return True
+    metadata = getattr(backend, "PLUGIN_METADATA", {})
+    required_fields = metadata.get("frontend_fields", [])
+    return all(creds.get(f) for f in required_fields)
 
 
 # =============================================================================
@@ -335,7 +370,7 @@ def auth_google():
         authorization_url, state = flow.authorization_url(
             access_type="offline",
             include_granted_scopes="true",
-            prompt="select_account",  # Fast login for returning users
+            prompt="consent",  # Always get refresh_token for stateless architecture
         )
 
         # Bundle PKCE code_verifier + CSRF nonce into a signed state parameter.
@@ -390,6 +425,89 @@ def _validate_oauth_callback():
         return None, None, (jsonify({"error": "Missing authorization code"}), HTTPStatus.BAD_REQUEST)
 
     return state_data, code, None
+
+
+def _provision_sheets(credentials, user_email, requested_id):
+    """Provision a Google Sheets backend. Returns (spreadsheet_id, existed)."""
+    stored_id = get_stored_location(user_email, "sheets")
+    id_to_use = requested_id or stored_id
+
+    if id_to_use:
+        try:
+            sheets_service = build("sheets", "v4", credentials=credentials)
+            sheets_service.spreadsheets().get(spreadsheetId=id_to_use).execute()
+            save_location(user_email, "sheets", id_to_use)
+            return id_to_use, True
+        except HttpError:
+            id_to_use = None
+
+    if not id_to_use:
+        drive_service = build("drive", "v3", credentials=credentials)
+        spreadsheet = (
+            drive_service.files()
+            .create(
+                body={"name": "Acquacotta - Pomodoro Tracker", "mimeType": "application/vnd.google-apps.spreadsheet"},
+                fields="id",
+            )
+            .execute()
+        )
+        new_id = spreadsheet["id"]
+        save_location(user_email, "sheets", new_id)
+
+        sheets_service = build("sheets", "v4", credentials=credentials)
+        sheets_service.spreadsheets().batchUpdate(
+            spreadsheetId=new_id,
+            body={
+                "requests": [
+                    {"updateSheetProperties": {"properties": {"sheetId": 0, "title": "Pomodoros"}, "fields": "title"}},
+                    {"addSheet": {"properties": {"title": "Settings"}}},
+                ]
+            },
+        ).execute()
+        sheets_service.spreadsheets().values().update(
+            spreadsheetId=new_id,
+            range="Pomodoros!A1:G1",
+            valueInputOption="RAW",
+            body={"values": [["id", "name", "type", "start_time", "end_time", "duration_minutes", "notes"]]},
+        ).execute()
+        sheets_service.spreadsheets().values().update(
+            spreadsheetId=new_id,
+            range="Settings!A1:B1",
+            valueInputOption="RAW",
+            body={"values": [["key", "value"]]},
+        ).execute()
+        return new_id, False
+
+    return id_to_use, True
+
+
+def _provision_json_google_drive(credentials, user_email, _requested_id):
+    """Provision a JSON-on-Google-Drive backend. Returns (folder_id, existed)."""
+    from transports.google_drive_transport import GoogleDriveTransport
+
+    stored_id = get_stored_location(user_email, "json-google-drive")
+    try:
+        drive_service = build("drive", "v3", credentials=credentials)
+        transport = GoogleDriveTransport(drive_service, stored_id)
+        folder_id = transport.ensure_directory()
+    except Exception as e:
+        app.logger.error(f"Failed to provision Google Drive storage: {e}")
+        raise
+    existed = stored_id == folder_id and stored_id is not None
+    save_location(user_email, "json-google-drive", folder_id)
+    return folder_id, existed
+
+
+def _provision_storage(plugin_id, credentials, user_email, requested_id):
+    """Provision the active storage backend. Returns (location_id, existed)."""
+    provisioners = {
+        "sheets": _provision_sheets,
+        "json-google-drive": _provision_json_google_drive,
+    }
+    provisioner = provisioners.get(plugin_id)
+    if not provisioner:
+        raise ValueError(f"No provisioner for storage plugin: {plugin_id}")
+    return provisioner(credentials, user_email, requested_id)
 
 
 @app.route("/auth/callback")
@@ -453,85 +571,11 @@ def auth_callback():
         session["user_name"] = user_info.get("name")
         session["user_picture"] = user_info.get("picture")
 
-        # Priority: 1) User-provided spreadsheet ID, 2) Previously stored ID, 3) Create new
-        # requested_spreadsheet_id was already extracted from signed state_data above
-        stored_spreadsheet_id = get_stored_spreadsheet_id(user_email)
-
-        spreadsheet_id_to_use = requested_spreadsheet_id or stored_spreadsheet_id
-
-        if spreadsheet_id_to_use:
-            # Verify we can access this spreadsheet
-            # Note: Use credentials directly here since we're in OAuth callback, not using request-based auth
-            try:
-                sheets_service = build("sheets", "v4", credentials=credentials)
-                sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id_to_use).execute()
-                session["spreadsheet_id"] = spreadsheet_id_to_use
-                session["spreadsheet_existed"] = True
-                # Save/update the mapping for future logins
-                save_spreadsheet_id(user_email, spreadsheet_id_to_use)
-            except HttpError:
-                # Can't access spreadsheet (deleted, permissions changed, wrong ID)
-                spreadsheet_id_to_use = None
-
-        if not spreadsheet_id_to_use:
-            # Create new spreadsheet using Drive API (required for drive.file scope)
-            # Note: Use credentials directly here since we're in OAuth callback, not using request-based auth
-            drive_service = build("drive", "v3", credentials=credentials)
-            file_metadata = {
-                "name": "Acquacotta - Pomodoro Tracker",
-                "mimeType": "application/vnd.google-apps.spreadsheet",
-            }
-            spreadsheet = (
-                drive_service.files()
-                .create(
-                    body=file_metadata,
-                    fields="id",
-                )
-                .execute()
-            )
-            new_spreadsheet_id = spreadsheet["id"]
-            spreadsheet_existed = False
-
-            # Save the mapping for future logins
-            save_spreadsheet_id(user_email, new_spreadsheet_id)
-
-            # Now use Sheets API to set up the sheets (we have access since we created the file)
-            sheets_service = build("sheets", "v4", credentials=credentials)
-
-            # Rename default Sheet1 to Pomodoros and add Settings sheet
-            sheets_service.spreadsheets().batchUpdate(
-                spreadsheetId=new_spreadsheet_id,
-                body={
-                    "requests": [
-                        {
-                            "updateSheetProperties": {
-                                "properties": {"sheetId": 0, "title": "Pomodoros"},
-                                "fields": "title",
-                            }
-                        },
-                        {"addSheet": {"properties": {"title": "Settings"}}},
-                    ]
-                },
-            ).execute()
-
-            # Add headers to Pomodoros sheet
-            sheets_service.spreadsheets().values().update(
-                spreadsheetId=new_spreadsheet_id,
-                range="Pomodoros!A1:G1",
-                valueInputOption="RAW",
-                body={"values": [["id", "name", "type", "start_time", "end_time", "duration_minutes", "notes"]]},
-            ).execute()
-
-            # Add headers to Settings sheet
-            sheets_service.spreadsheets().values().update(
-                spreadsheetId=new_spreadsheet_id,
-                range="Settings!A1:B1",
-                valueInputOption="RAW",
-                body={"values": [["key", "value"]]},
-            ).execute()
-        else:
-            new_spreadsheet_id = spreadsheet_id_to_use
-            spreadsheet_existed = True
+        # Determine which storage plugin is active and provision accordingly
+        active_storage_id = plugin_registry.get_active_storage_id()
+        location_id, location_existed = _provision_storage(
+            active_storage_id, credentials, user_email, requested_spreadsheet_id
+        )
 
         # Build credentials data for frontend storage (AUTH store - ephemeral)
         credentials_data = {
@@ -547,13 +591,28 @@ def auth_callback():
         }
 
         # Settings data (SETTINGS store - persistent)
-        settings_data = {
-            "spreadsheet_id": new_spreadsheet_id,
-            "spreadsheet_existed": spreadsheet_existed,
-        }
+        # Write the plugin's frontend_fields so the browser sends them with API requests
+        backend = plugin_registry.get_active_storage()
+        metadata = getattr(backend, "PLUGIN_METADATA", {})
+        frontend_fields = metadata.get("frontend_fields", [])
+
+        settings_data = {"storage_existed": location_existed}
+        for field in frontend_fields:
+            settings_data[field] = location_id
 
         # Clear server session - credentials will live in browser IndexedDB
         session.clear()
+
+        # Build the JS that writes plugin-specific settings to IndexedDB
+        settings_js_lines = []
+        for field in frontend_fields:
+            settings_js_lines.append(
+                f"        settingsStore.put({{ key: '{field}', value: settings.{field}, synced: true }});"
+            )
+        settings_js_lines.append(
+            "        settingsStore.put({ key: 'storage_existed', value: settings.storage_existed, synced: true });"
+        )
+        settings_js = "\n".join(settings_js_lines)
 
         # Return HTML page that stores credentials in IndexedDB then redirects
         # Note: DB_VERSION must match storage.js (currently 2)
@@ -598,11 +657,10 @@ dbRequest.onsuccess = (e) => {{
     const authTx = db.transaction('auth', 'readwrite');
     authTx.objectStore('auth').put({{ key: 'credentials', ...credentials }});
     authTx.oncomplete = () => {{
-        // Store settings (persistent) - spreadsheet_id lives here
+        // Store plugin-specific settings (persistent)
         const settingsTx = db.transaction('settings', 'readwrite');
         const settingsStore = settingsTx.objectStore('settings');
-        settingsStore.put({{ key: 'spreadsheet_id', value: settings.spreadsheet_id, synced: true }});
-        settingsStore.put({{ key: 'spreadsheet_existed', value: settings.spreadsheet_existed, synced: true }});
+{settings_js}
         settingsTx.oncomplete = () => {{
             window.location.href = '/?view=settings';
         }};
@@ -686,9 +744,54 @@ def update_spreadsheet():
     # Update session and persisted mapping
     session["spreadsheet_id"] = new_id
     if session.get("user_email"):
-        save_spreadsheet_id(session["user_email"], new_id)
+        save_location(session["user_email"], "sheets", new_id)
 
     return jsonify({"status": "ok", "spreadsheet_id": new_id})
+
+
+# =============================================================================
+# Storage Provisioning
+# =============================================================================
+
+
+@app.route("/api/storage/provision", methods=["POST"])
+def api_provision_storage():
+    """Provision the active storage backend using existing credentials.
+
+    Called automatically when the frontend detects a plugin switch — the user
+    has valid Google tokens but is missing the new plugin's location field
+    (e.g., has spreadsheet_id but not folder_id). This endpoint provisions the
+    new backend (creates the Drive folder, etc.) and returns the location fields
+    the frontend should store in IndexedDB.
+    """
+    credentials = get_credentials()
+    if not credentials:
+        return jsonify({"error": "Not authenticated"}), HTTPStatus.UNAUTHORIZED
+
+    request_creds = get_credentials_from_request()
+    user_email = request_creds.get("user_email") if request_creds else None
+    if not user_email:
+        return jsonify({"error": "No user email in credentials"}), HTTPStatus.BAD_REQUEST
+
+    active_id = plugin_registry.get_active_storage_id()
+    if not active_id:
+        return jsonify({"error": "No storage plugin active"}), HTTPStatus.BAD_REQUEST
+
+    try:
+        location_id, existed = _provision_storage(active_id, credentials, user_email, None)
+    except Exception as e:
+        app.logger.error(f"Storage provisioning failed: {e}")
+        return jsonify({"error": f"Provisioning failed: {e}"}), HTTPStatus.INTERNAL_SERVER_ERROR
+
+    backend = plugin_registry.get_active_storage()
+    metadata = getattr(backend, "PLUGIN_METADATA", {})
+    frontend_fields = metadata.get("frontend_fields", [])
+
+    result = {"status": "ok", "existed": existed, "plugin_id": active_id}
+    for field in frontend_fields:
+        result[field] = location_id
+
+    return jsonify(result)
 
 
 # =============================================================================
@@ -699,11 +802,13 @@ def update_spreadsheet():
 @app.route("/api/plugins")
 def api_list_plugins():
     """List all registered plugins with their status."""
-    return jsonify({
-        "plugins": plugin_registry.list_plugins(),
-        "types": plugin_registry.list_plugin_types(),
-        "active_storage": plugin_registry.get_active_storage_id(),
-    })
+    return jsonify(
+        {
+            "plugins": plugin_registry.list_plugins(),
+            "types": plugin_registry.list_plugin_types(),
+            "active_storage": plugin_registry.get_active_storage_id(),
+        }
+    )
 
 
 @app.route("/api/plugins/toggle", methods=["POST"])
@@ -728,10 +833,12 @@ def api_toggle_plugin():
     else:
         return jsonify({"error": f"Toggle not yet supported for type: {plugin_type}"}), HTTPStatus.BAD_REQUEST
 
-    return jsonify({
-        "status": "ok",
-        "active_storage": plugin_registry.get_active_storage_id(),
-    })
+    return jsonify(
+        {
+            "status": "ok",
+            "active_storage": plugin_registry.get_active_storage_id(),
+        }
+    )
 
 
 # =============================================================================
@@ -766,7 +873,7 @@ def proxy_get_pomodoro_count():
         ctx = _storage_context()
         count = storage_api.count_pomodoros(ctx)
         return jsonify({"count": count})
-    except HttpError as e:
+    except (HttpError, StorageUnavailable) as e:
         return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
 
 

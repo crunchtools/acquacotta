@@ -67,13 +67,18 @@
     const SYNC_RETRY_DELAYS = [1000, 2000, 5000, 10000, 30000]; // Exponential backoff
     const MAX_SYNC_RETRIES = 5;
 
+    // Storage location field names — each plugin declares its own in PLUGIN_METADATA.frontend_fields
+    const LOCATION_FIELDS = ['spreadsheet_id', 'folder_id'];
+
     // Storage state
     let db = null;
     let authStatus = null;
     let storedCredentials = null;  // OAuth credentials from IndexedDB (ephemeral)
-    let cachedSpreadsheetId = null;  // Spreadsheet ID from SETTINGS (persistent)
+    let cachedSpreadsheetId = null;  // Legacy alias — kept for backwards compat
+    let cachedLocationFields = {};   // All plugin location fields from SETTINGS
     let isOnline = navigator.onLine;
     let syncInProgress = false;
+    let cachedActivePlugin = null; // Active storage plugin metadata from /api/plugins
     let syncLockPromise = null;  // Promise-based lock to prevent race conditions
     let pendingSyncCount = 0;
     let lastSyncError = null;
@@ -235,46 +240,46 @@
      * Make authenticated API call with stored credentials
      * Spreadsheet ID comes from SETTINGS (persistent), credentials from AUTH (ephemeral)
      */
+    function _buildCredentialsPayload() {
+        const payload = {
+            token: storedCredentials.token,
+            refresh_token: storedCredentials.refresh_token,
+            token_uri: storedCredentials.token_uri,
+            client_id: storedCredentials.client_id,
+            client_secret: storedCredentials.client_secret,
+            scopes: storedCredentials.scopes,
+        };
+        // Include all cached location fields (spreadsheet_id, folder_id, etc.)
+        Object.assign(payload, cachedLocationFields);
+        return payload;
+    }
+
     async function authenticatedFetch(url, options = {}) {
         if (!storedCredentials) {
             throw new Error('Not logged in');
         }
-        if (!cachedSpreadsheetId) {
-            throw new Error('No spreadsheet configured');
+        const hasLocation = Object.values(cachedLocationFields).some(v => v);
+        if (!hasLocation) {
+            throw new Error('No storage location configured');
         }
 
-        // Add credentials to request body for POST/PUT, or as header for GET/DELETE
         const method = (options.method || 'GET').toUpperCase();
 
         if (method === 'GET' || method === 'DELETE') {
-            // For GET/DELETE, send credentials as Authorization header (base64 encoded JSON)
             options.headers = options.headers || {};
-            options.headers['X-Credentials'] = btoa(JSON.stringify({
-                token: storedCredentials.token,
-                refresh_token: storedCredentials.refresh_token,
-                token_uri: storedCredentials.token_uri,
-                client_id: storedCredentials.client_id,
-                client_secret: storedCredentials.client_secret,
-                scopes: storedCredentials.scopes,
-                spreadsheet_id: cachedSpreadsheetId
-            }));
+            options.headers['X-Credentials'] = btoa(JSON.stringify(_buildCredentialsPayload()));
         } else {
-            // For POST/PUT, merge credentials into body
             options.headers = options.headers || {};
             options.headers['Content-Type'] = 'application/json';
             const body = options.body ? JSON.parse(options.body) : {};
-            body._credentials = {
-                token: storedCredentials.token,
-                refresh_token: storedCredentials.refresh_token,
-                token_uri: storedCredentials.token_uri,
-                client_id: storedCredentials.client_id,
-                client_secret: storedCredentials.client_secret,
-                scopes: storedCredentials.scopes,
-                spreadsheet_id: cachedSpreadsheetId
-            };
+            body._credentials = _buildCredentialsPayload();
             options.body = JSON.stringify(body);
         }
 
+        return fetch(url, options);
+    }
+
+    function authenticatedFetchRaw(url, options = {}) {
         return fetch(url, options);
     }
 
@@ -605,13 +610,11 @@
                 await putInStore(STORES.SETTINGS, { key, value, synced: true });
             }
 
-            // Preserve spreadsheet_id in SETTINGS (it's not in Sheet, it's the ID of the Sheet itself)
-            if (cachedSpreadsheetId) {
-                await putInStore(STORES.SETTINGS, {
-                    key: 'spreadsheet_id',
-                    value: cachedSpreadsheetId,
-                    synced: true
-                });
+            // Preserve storage location fields (they're not in the backend data)
+            for (const [field, value] of Object.entries(cachedLocationFields)) {
+                if (value) {
+                    await putInStore(STORES.SETTINGS, { key: field, value, synced: true });
+                }
             }
 
             // Update last sync time
@@ -646,24 +649,106 @@
             // Load credentials from AUTH store (ephemeral - OAuth tokens only)
             const creds = await loadCredentials();
 
-            // Load spreadsheet_id from SETTINGS store (persistent)
-            const spreadsheetIdSetting = await getFromStore(STORES.SETTINGS, 'spreadsheet_id');
-            cachedSpreadsheetId = spreadsheetIdSetting ? spreadsheetIdSetting.value : null;
+            // Load all storage location fields from SETTINGS store (persistent)
+            cachedLocationFields = {};
+            for (const field of LOCATION_FIELDS) {
+                const setting = await getFromStore(STORES.SETTINGS, field);
+                if (setting && setting.value) {
+                    cachedLocationFields[field] = setting.value;
+                }
+            }
+            // Legacy alias for backwards compat
+            cachedSpreadsheetId = cachedLocationFields.spreadsheet_id || null;
 
-            // Load spreadsheet_existed from SETTINGS store
-            const spreadsheetExistedSetting = await getFromStore(STORES.SETTINGS, 'spreadsheet_existed');
-            const spreadsheetExisted = spreadsheetExistedSetting ? spreadsheetExistedSetting.value : false;
+            // Load storage_existed from SETTINGS store
+            const storageExistedSetting = await getFromStore(STORES.SETTINGS, 'storage_existed');
+            const storageExisted = storageExistedSetting ? storageExistedSetting.value : false;
 
-            // Build auth status from credentials (AUTH) + spreadsheet_id (SETTINGS)
-            if (creds && creds.token && cachedSpreadsheetId) {
+            // Fetch active plugin info to know which location fields are required
+            try {
+                const pluginRes = await fetch('/api/plugins');
+                if (pluginRes.ok) {
+                    const pluginData = await pluginRes.json();
+                    cachedActivePlugin = pluginData.plugins.find(p => p.active && p.plugin_type === 'storage') || null;
+                }
+            } catch (e) { /* offline — fall back to checking any location field */ }
+            const activePlugin = cachedActivePlugin;
+
+            const requiredFields = activePlugin ? (activePlugin.frontend_fields || []) : [];
+            const hasRequiredLocation = requiredFields.length === 0 ||
+                requiredFields.some(f => cachedLocationFields[f]);
+            const hasAnyCreds = creds && creds.token;
+
+            if (hasAnyCreds && hasRequiredLocation) {
                 authStatus = {
                     logged_in: true,
                     email: creds.user_email,
                     name: creds.user_name,
                     picture: creds.user_picture,
                     spreadsheet_id: cachedSpreadsheetId,
-                    needs_initial_sync: !spreadsheetExisted
+                    folder_id: cachedLocationFields.folder_id || null,
+                    needs_initial_sync: !storageExisted,
+                    needs_relogin: false
                 };
+            } else if (hasAnyCreds && !hasRequiredLocation) {
+                // Plugin changed — auto-provision the new backend with existing credentials.
+                // Clear stale sync queue (it was for the old plugin).
+                await clearStore(STORES.SYNC_QUEUE);
+
+                let provisioned = false;
+                try {
+                    const provRes = await authenticatedFetchRaw('/api/storage/provision', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            _credentials: {
+                                token: creds.token,
+                                refresh_token: creds.refresh_token,
+                                token_uri: creds.token_uri,
+                                client_id: creds.client_id,
+                                client_secret: creds.client_secret,
+                                scopes: creds.scopes,
+                                user_email: creds.user_email,
+                            }
+                        })
+                    });
+                    if (provRes.ok) {
+                        const provData = await provRes.json();
+                        for (const field of requiredFields) {
+                            if (provData[field]) {
+                                cachedLocationFields[field] = provData[field];
+                                await putInStore(STORES.SETTINGS, { key: field, value: provData[field], synced: true });
+                            }
+                        }
+                        cachedSpreadsheetId = cachedLocationFields.spreadsheet_id || null;
+                        await putInStore(STORES.SETTINGS, { key: 'storage_existed', value: provData.existed, synced: true });
+                        provisioned = true;
+                    }
+                } catch (e) {
+                    console.error('Auto-provision failed:', e);
+                }
+
+                if (provisioned) {
+                    authStatus = {
+                        logged_in: true,
+                        email: creds.user_email,
+                        name: creds.user_name,
+                        picture: creds.user_picture,
+                        spreadsheet_id: cachedSpreadsheetId,
+                        folder_id: cachedLocationFields.folder_id || null,
+                        needs_initial_sync: true,
+                        needs_relogin: false
+                    };
+                } else {
+                    authStatus = {
+                        logged_in: false,
+                        needs_relogin: true,
+                        google_configured: true,
+                        relogin_reason: activePlugin
+                            ? `Could not set up ${activePlugin.name}. Please sign in again.`
+                            : 'Please sign in again'
+                    };
+                }
             } else {
                 authStatus = {
                     logged_in: false,
@@ -692,7 +777,10 @@
             // Bidirectional sync on every page load when logged in
             if (authStatus.logged_in && storedCredentials) {
                 try {
-                    // 1. Fetch pomodoros from Sheets
+                    // Clear any stale sync queue — the batch push below handles everything
+                    await clearStore(STORES.SYNC_QUEUE);
+
+                    // 1. Fetch pomodoros from backend
                     const pomosRes = await authenticatedFetch('/api/sheets/pomodoros');
                     if (pomosRes.ok) {
                         const sheetsPomodoros = await pomosRes.json();
@@ -710,14 +798,26 @@
                             }
                         }
 
-                        // 4. Push local pomodoros to Sheets that don't exist there
+                        // 4. Push local pomodoros that don't exist on the backend
+                        const toPush = [];
                         for (const pomo of localPomodoros) {
                             if (!sheetsIds.has(pomo.id)) {
-                                await addToSyncQueue('create', 'pomodoros', pomo.id, pomo);
+                                toPush.push(pomo);
                             } else {
-                                // Mark as synced since it exists in Sheets
                                 pomo.synced = true;
                                 await putInStore(STORES.POMODOROS, pomo);
+                            }
+                        }
+                        if (toPush.length > 0) {
+                            const batchRes = await authenticatedFetch('/api/sheets/pomodoros/batch', {
+                                method: 'POST',
+                                body: JSON.stringify({ pomodoros: toPush })
+                            });
+                            if (batchRes.ok) {
+                                for (const pomo of toPush) {
+                                    pomo.synced = true;
+                                    await putInStore(STORES.POMODOROS, pomo);
+                                }
                             }
                         }
                     }
@@ -733,22 +833,19 @@
                                 for (const [key, value] of Object.entries(sheetsSettings)) {
                                     await putInStore(STORES.SETTINGS, { key, value, synced: true });
                                 }
-                                // Re-save spreadsheet_id after clearing
-                                await putInStore(STORES.SETTINGS, {
-                                    key: 'spreadsheet_id',
-                                    value: cachedSpreadsheetId,
-                                    synced: true
-                                });
+                                // Re-save location fields after clearing
+                                for (const [field, value] of Object.entries(cachedLocationFields)) {
+                                    if (value) {
+                                        await putInStore(STORES.SETTINGS, { key: field, value, synced: true });
+                                    }
+                                }
                             }
                         }
                         await putInStore(STORES.SYNC_STATUS, { key: 'initial_sync_done', value: true });
                     }
 
-                    // Mark spreadsheet as existing
-                    await putInStore(STORES.SETTINGS, { key: 'spreadsheet_existed', value: true, synced: true });
-
-                    // Process any queued pushes
-                    await processSyncQueue();
+                    // Mark storage as existing
+                    await putInStore(STORES.SETTINGS, { key: 'storage_existed', value: true, synced: true });
                 } catch (e) {
                     console.error('Bidirectional sync during init failed:', e);
                 }
@@ -769,6 +866,10 @@
          */
         getAuthStatus: function() {
             return authStatus;
+        },
+
+        getActivePlugin: function() {
+            return cachedActivePlugin;
         },
 
         /**
@@ -826,28 +927,24 @@
         },
 
         /**
-         * Update spreadsheet ID in IndexedDB (SETTINGS store only)
+         * Update a storage location field in IndexedDB (SETTINGS store only)
+         * @param {string} field - Field name (e.g., 'spreadsheet_id', 'folder_id')
+         * @param {string} newId - New location ID
+         * @returns {Promise}
+         */
+        updateLocationField: async function(field, newId) {
+            await putInStore(STORES.SETTINGS, { key: field, value: newId, synced: false });
+            cachedLocationFields[field] = newId;
+            if (field === 'spreadsheet_id') cachedSpreadsheetId = newId;
+        },
+
+        /**
+         * Update spreadsheet ID in IndexedDB (legacy compat wrapper)
          * @param {string} newId - New spreadsheet ID
          * @returns {Promise}
          */
         updateSpreadsheetId: async function(newId) {
-            // Update SETTINGS store (persistent)
-            await putInStore(STORES.SETTINGS, {
-                key: 'spreadsheet_id',
-                value: newId,
-                synced: false
-            });
-
-            // Update cached value for current session
-            cachedSpreadsheetId = newId;
-
-            // Queue sync to save spreadsheet_id to Google Sheets Settings
-            await addToSyncQueue('update', 'settings', 'spreadsheet_id', {
-                spreadsheet_id: newId
-            });
-
-            // Process the queue
-            await processSyncQueue();
+            await this.updateLocationField('spreadsheet_id', newId);
         },
 
         /**

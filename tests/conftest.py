@@ -143,6 +143,7 @@ def authenticated_session(app):
         "client_secret": "fake-client-secret",
         "scopes": ["https://www.googleapis.com/auth/drive.file"],
         "spreadsheet_id": "fake-spreadsheet-id",
+        "folder_id": "fake-folder-id",
     }
 
     with app.test_client() as client:

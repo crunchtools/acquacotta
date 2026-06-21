@@ -50,9 +50,7 @@ def register(plugin_type, plugin_id, module, metadata):
     contract = PLUGIN_TYPES[plugin_type]["contract"]
     missing = [fn for fn in contract if not callable(getattr(module, fn, None))]
     if missing:
-        raise ValueError(
-            f"Plugin '{plugin_id}' missing required functions: {', '.join(missing)}"
-        )
+        raise ValueError(f"Plugin '{plugin_id}' missing required functions: {', '.join(missing)}")
 
     if plugin_type not in _plugins:
         _plugins[plugin_type] = {}
@@ -112,7 +110,7 @@ def list_plugins(plugin_type=None):
     for ptype in types_to_list:
         if ptype not in _plugins:
             continue
-        for pid, info in _plugins[ptype].items():
+        for _pid, info in _plugins[ptype].items():
             entry = dict(info["metadata"])
             entry["active"] = info["active"]
             entry["plugin_type"] = ptype
