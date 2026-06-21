@@ -12,9 +12,13 @@ class GoogleDriveTransport:
     def __init__(self, drive_service, folder_id):
         self._service = drive_service
         self._folder_id = folder_id
+        self._file_id_cache = {}
 
     def _find_file(self, filename):
         """Find a file by name in the Acquacotta folder. Returns file ID or None."""
+        cached = self._file_id_cache.get(filename)
+        if cached:
+            return cached
         resp = (
             self._service.files()
             .list(
@@ -25,7 +29,10 @@ class GoogleDriveTransport:
             .execute()
         )
         files = resp.get("files", [])
-        return files[0]["id"] if files else None
+        if files:
+            self._file_id_cache[filename] = files[0]["id"]
+            return files[0]["id"]
+        return None
 
     def download_file(self, filename):
         """Download a file's content as a string. Returns None if not found."""

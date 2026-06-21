@@ -34,6 +34,7 @@ import json_google_drive_storage
 import plugin_registry
 import sheets_storage
 import storage_api
+from storage_api import StorageUnavailable
 
 # Register built-in plugins
 plugin_registry.register("storage", "sheets", sheets_storage, sheets_storage.PLUGIN_METADATA)
@@ -271,15 +272,20 @@ def get_credentials():
             scopes=creds_data.get("scopes", []),
         )
 
-        # Refresh token if expired
-        if credentials.expired and credentials.refresh_token:
+        # Only attempt refresh if we have the necessary fields
+        if credentials.expired and credentials.refresh_token and credentials.client_id:
             from google.auth.transport.requests import Request
 
             credentials.refresh(Request())
 
         return credentials
     except Exception as e:
-        app.logger.error(f"Error creating credentials: {e}")
+        has_token = bool(creds_data.get("token"))
+        has_refresh = bool(creds_data.get("refresh_token"))
+        has_client = bool(creds_data.get("client_id"))
+        app.logger.error(
+            f"Error creating credentials: {e} (token={has_token}, refresh_token={has_refresh}, client_id={has_client})"
+        )
         return None
 
 
@@ -364,7 +370,7 @@ def auth_google():
         authorization_url, state = flow.authorization_url(
             access_type="offline",
             include_granted_scopes="true",
-            prompt="select_account",  # Fast login for returning users
+            prompt="consent",  # Always get refresh_token for stateless architecture
         )
 
         # Bundle PKCE code_verifier + CSRF nonce into a signed state parameter.
@@ -744,6 +750,51 @@ def update_spreadsheet():
 
 
 # =============================================================================
+# Storage Provisioning
+# =============================================================================
+
+
+@app.route("/api/storage/provision", methods=["POST"])
+def api_provision_storage():
+    """Provision the active storage backend using existing credentials.
+
+    Called automatically when the frontend detects a plugin switch — the user
+    has valid Google tokens but is missing the new plugin's location field
+    (e.g., has spreadsheet_id but not folder_id). This endpoint provisions the
+    new backend (creates the Drive folder, etc.) and returns the location fields
+    the frontend should store in IndexedDB.
+    """
+    credentials = get_credentials()
+    if not credentials:
+        return jsonify({"error": "Not authenticated"}), HTTPStatus.UNAUTHORIZED
+
+    request_creds = get_credentials_from_request()
+    user_email = request_creds.get("user_email") if request_creds else None
+    if not user_email:
+        return jsonify({"error": "No user email in credentials"}), HTTPStatus.BAD_REQUEST
+
+    active_id = plugin_registry.get_active_storage_id()
+    if not active_id:
+        return jsonify({"error": "No storage plugin active"}), HTTPStatus.BAD_REQUEST
+
+    try:
+        location_id, existed = _provision_storage(active_id, credentials, user_email, None)
+    except Exception as e:
+        app.logger.error(f"Storage provisioning failed: {e}")
+        return jsonify({"error": f"Provisioning failed: {e}"}), HTTPStatus.INTERNAL_SERVER_ERROR
+
+    backend = plugin_registry.get_active_storage()
+    metadata = getattr(backend, "PLUGIN_METADATA", {})
+    frontend_fields = metadata.get("frontend_fields", [])
+
+    result = {"status": "ok", "existed": existed, "plugin_id": active_id}
+    for field in frontend_fields:
+        result[field] = location_id
+
+    return jsonify(result)
+
+
+# =============================================================================
 # Plugin API
 # =============================================================================
 
@@ -822,7 +873,7 @@ def proxy_get_pomodoro_count():
         ctx = _storage_context()
         count = storage_api.count_pomodoros(ctx)
         return jsonify({"count": count})
-    except HttpError as e:
+    except (HttpError, StorageUnavailable) as e:
         return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
 
 

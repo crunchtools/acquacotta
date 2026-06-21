@@ -480,8 +480,8 @@
             clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
         }
     </style>
-    <script src="{{ url_for('static', filename='js/utils.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/storage.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/utils.js') }}?v=3"></script>
+    <script src="{{ url_for('static', filename='js/storage.js') }}?v=3"></script>
 </head>
 <body>
     <a href="#main-content" class="skip-link">Skip to main content</a>
@@ -681,12 +681,12 @@
         <div id="settings-view" class="view" role="tabpanel" aria-labelledby="tab-settings">
             <h2>Settings</h2>
             <div class="card" id="google-account-card">
-                <h3>Google Sheets Sync (Optional)</h3>
+                <h3 id="cloud-sync-title">Cloud Sync (Optional)</h3>
                 <div id="google-logged-out">
                     <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1rem;">
-                        Your data is stored locally by default. Optionally sign in with Google to sync your data to Google Sheets.
+                        Your data is stored locally by default. Optionally sign in with Google to sync your data to your Google Drive.
                     </p>
-                    <div style="margin-bottom: 1rem;">
+                    <div id="login-spreadsheet-section" style="margin-bottom: 1rem; display: none;">
                         <label for="login-spreadsheet-id" style="font-size: 0.875rem; color: var(--text-secondary); display: block; margin-bottom: 0.25rem;">Existing Spreadsheet ID (optional):</label>
                         <input type="text" id="login-spreadsheet-id" style="width: 24rem; max-width: 100%; font-family: monospace; font-size: 0.75rem; padding: 0.5rem;" placeholder="Leave blank to create new">
                         <p style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">
@@ -708,23 +708,25 @@
                             <div id="google-email" style="font-size: 0.875rem; color: var(--text-secondary);"></div>
                         </div>
                     </div>
-                    <p style="color: var(--success); font-size: 0.875rem; margin-bottom: 1rem;">
-                        ✓ Data synced to Google Sheets
+                    <p id="cloud-sync-status-text" style="color: var(--success); font-size: 0.875rem; margin-bottom: 1rem;">
+                        ✓ Data synced to Google Drive
                     </p>
                     <div style="margin-bottom: 1rem;">
                         <span style="font-size: 0.875rem; color: var(--text-secondary);">Pomodoros stored: </span>
                         <span id="google-pomodoro-count" style="font-weight: 500; color: var(--accent);">0</span>
                     </div>
-                    <label for="spreadsheet-id" style="font-size: 0.875rem; color: var(--text-secondary); display: block; margin-bottom: 0.25rem;">Spreadsheet ID:</label>
-                    <div style="display: inline-grid; grid-template-columns: 1fr auto; gap: 0.5rem; margin-bottom: 1rem;">
-                        <input type="text" id="spreadsheet-id" style="width: 100%; font-family: monospace; font-size: 0.75rem; padding: 0.5rem; box-sizing: border-box;" placeholder="Spreadsheet ID">
-                        <button class="secondary" onclick="updateSpreadsheetId()" style="text-align: center;">Update</button>
-                        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                            <button class="secondary" id="sync-button" onclick="manualSync()">Sync Now</button>
-                            <button class="secondary" onclick="confirmOverwriteLocal()">Overwrite Local</button>
-                            <button class="secondary" onclick="confirmOverwriteGoogle()">Overwrite Google</button>
+                    <div id="location-field-section">
+                        <label id="location-field-label" for="storage-location-id" style="font-size: 0.875rem; color: var(--text-secondary); display: block; margin-bottom: 0.25rem;">Storage Location:</label>
+                        <div style="display: inline-grid; grid-template-columns: 1fr auto; gap: 0.5rem; margin-bottom: 1rem;">
+                            <input type="text" id="storage-location-id" style="width: 100%; font-family: monospace; font-size: 0.75rem; padding: 0.5rem; box-sizing: border-box;" placeholder="Location ID" readonly>
+                            <button id="storage-open-link" class="secondary" style="display: none; text-align: center;" onclick="window.open(this.dataset.href, '_blank')">Open</button>
+                            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                                <button class="secondary" id="sync-button" onclick="manualSync()">Sync Now</button>
+                                <button class="secondary" onclick="confirmOverwriteLocal()">Overwrite Local</button>
+                                <button class="secondary" onclick="confirmOverwriteGoogle()">Overwrite Google</button>
+                            </div>
+                            <button class="secondary" onclick="logoutFromGoogle()" style="text-align: center;">Sign Out</button>
                         </div>
-                        <button class="secondary" onclick="logoutFromGoogle()" style="text-align: center;">Sign Out</button>
                     </div>
                     <p id="spreadsheet-id-status" style="font-size: 0.75rem; color: var(--text-secondary); margin-top: -0.5rem; margin-bottom: 0.5rem; display: none;"></p>
                     <p id="migrate-status" style="font-size: 0.875rem; margin-top: 0.5rem; display: none;"></p>
@@ -3969,43 +3971,38 @@
                 console.error('Failed to check auth config:', e);
             }
 
-            // Initialize Storage - this loads credentials from IndexedDB
-            await Storage.init({ google_configured: googleConfigured });
+            // Initialize Storage - this loads credentials from IndexedDB and plugin info
+            try {
+                await Storage.init({ google_configured: googleConfigured });
+            } catch (e) {
+                console.error('Storage init failed:', e);
+            }
 
-            // Get auth status from Storage (based on IndexedDB credentials)
+            // Get auth status and plugin info from Storage
             authStatus = Storage.getAuthStatus();
+            activePluginInfo = Storage.getActivePlugin();
 
             // Migrate any data from old localStorage to IndexedDB
-            await Storage.migrateFromLocalStorage();
-
-            // Auto-fill spreadsheet ID if user has one stored (for re-login)
-            if (!authStatus.logged_in) {
-                const storedSpreadsheetId = await Storage.getStoredSpreadsheetId();
-                if (storedSpreadsheetId) {
-                    const input = document.getElementById('login-spreadsheet-id');
-                    if (input) {
-                        input.value = storedSpreadsheetId;
-                    }
-                }
-            }
+            try { await Storage.migrateFromLocalStorage(); } catch (e) { console.error('Migration error:', e); }
 
             updateAuthUI();
             await updateStorageIndicator();
 
             if (authStatus.logged_in) {
-                // Auto-sync pending items silently (no prompt needed)
-                const syncStatus = Storage.getSyncStatus();
-                if (syncStatus.pending > 0) {
-                    await Storage.syncToSheets();
-                }
-
-                // If needs initial sync, sync from Sheets to IndexedDB
-                if (authStatus.needs_initial_sync) {
-                    await showInitialSyncModal();
+                try {
+                    const syncStatus = Storage.getSyncStatus();
+                    if (syncStatus.pending > 0) {
+                        await Storage.syncToSheets();
+                    }
+                    if (authStatus.needs_initial_sync) {
+                        await showInitialSyncModal();
+                    }
+                } catch (e) {
+                    console.error('Sync error:', e);
                 }
             }
 
-            // Always load settings (from IndexedDB)
+            // Always load settings and plugins (independent of auth)
             await loadSettings();
         }
 
@@ -4039,7 +4036,7 @@
                     modeText.textContent = syncStatus.pending > 0
                         ? `Syncing (${syncStatus.pending})`
                         : 'Syncing...';
-                    indicator.title = 'Syncing with Google Sheets';
+                    indicator.title = 'Syncing with ' + (activePluginInfo ? activePluginInfo.name : 'cloud');
                 } else if (syncStatus.error) {
                     indicatorDot.style.background = '#ef4444'; // Red for error
                     modeText.textContent = 'Sync Error';
@@ -4047,7 +4044,7 @@
                 } else {
                     indicatorDot.style.background = '#4ecca3'; // Green for synced
                     modeText.textContent = 'Synced';
-                    indicator.title = 'Data is synced to Google Sheets';
+                    indicator.title = 'Data is synced to ' + (activePluginInfo ? activePluginInfo.name : 'cloud');
                 }
 
                 localDataCard.style.display = 'block';
@@ -4500,18 +4497,58 @@
             }
         }
 
+        let activePluginInfo = null;
+
         function updateAuthUI() {
             const loggedOut = document.getElementById('google-logged-out');
             const loggedIn = document.getElementById('google-logged-in');
             const loginBtn = document.getElementById('google-login-btn');
             const notConfigured = document.getElementById('google-not-configured');
 
+            const isJsonDrive = activePluginInfo && activePluginInfo.id === 'json-google-drive';
+            const isSheets = !activePluginInfo || activePluginInfo.id === 'sheets';
+            const pluginName = activePluginInfo ? activePluginInfo.name : 'Google Sheets';
+
+            // Update card title and sync status text
+            document.getElementById('cloud-sync-title').textContent = pluginName + ' Sync (Optional)';
+            document.getElementById('cloud-sync-status-text').textContent = '✓ Data synced to ' + pluginName;
+
+            // Show spreadsheet ID input on login only for Sheets plugin
+            const loginSpreadsheetSection = document.getElementById('login-spreadsheet-section');
+            if (loginSpreadsheetSection) {
+                loginSpreadsheetSection.style.display = isSheets ? 'block' : 'none';
+            }
+
             if (authStatus.logged_in) {
                 loggedOut.style.display = 'none';
                 loggedIn.style.display = 'block';
                 document.getElementById('google-name').textContent = authStatus.name || '';
                 document.getElementById('google-email').textContent = authStatus.email || '';
-                document.getElementById('spreadsheet-id').value = authStatus.spreadsheet_id || '';
+
+                // Show the appropriate location field and "Open" link
+                const locationInput = document.getElementById('storage-location-id');
+                const locationLabel = document.getElementById('location-field-label');
+                const openLink = document.getElementById('storage-open-link');
+                if (isJsonDrive) {
+                    locationLabel.textContent = 'Drive Folder ID:';
+                    locationInput.value = authStatus.folder_id || '';
+                    if (authStatus.folder_id) {
+                        openLink.dataset.href = 'https://drive.google.com/drive/folders/' + authStatus.folder_id;
+                        openLink.style.display = 'inline';
+                    } else {
+                        openLink.style.display = 'none';
+                    }
+                } else {
+                    locationLabel.textContent = 'Spreadsheet ID:';
+                    locationInput.value = authStatus.spreadsheet_id || '';
+                    if (authStatus.spreadsheet_id) {
+                        openLink.dataset.href = 'https://docs.google.com/spreadsheets/d/' + authStatus.spreadsheet_id;
+                        openLink.style.display = 'inline';
+                    } else {
+                        openLink.style.display = 'none';
+                    }
+                }
+
                 const avatarEl = document.getElementById('google-avatar');
                 if (authStatus.picture) {
                     avatarEl.src = authStatus.picture;
@@ -4519,12 +4556,16 @@
                 } else {
                     avatarEl.style.display = 'none';
                 }
-                // Update Google pomodoro count
                 updateGooglePomodoroCount();
             } else {
                 loggedOut.style.display = 'block';
                 loggedIn.style.display = 'none';
-                if (!authStatus.google_configured) {
+                if (authStatus.needs_relogin) {
+                    const reloginMsg = document.getElementById('google-not-configured');
+                    reloginMsg.textContent = authStatus.relogin_reason;
+                    reloginMsg.style.display = 'block';
+                    reloginMsg.style.color = 'var(--accent)';
+                } else if (!authStatus.google_configured) {
                     loginBtn.disabled = true;
                     loginBtn.style.opacity = '0.5';
                     notConfigured.style.display = 'block';
@@ -4594,7 +4635,8 @@
 
         async function confirmOverwriteGoogle() {
             const localCount = await Storage.getLocalPomodoroCount();
-            if (!confirm(`This will REPLACE all data in Google Sheets with your ${localCount} local pomodoros.\n\nThis cannot be undone. Continue?`)) {
+            const backendName = activePluginInfo ? activePluginInfo.name : 'cloud storage';
+            if (!confirm(`This will REPLACE all data in ${backendName} with your ${localCount} local pomodoros.\n\nThis cannot be undone. Continue?`)) {
                 return;
             }
             await overwriteGoogle();
@@ -4602,25 +4644,25 @@
 
         async function overwriteGoogle() {
             const statusEl = document.getElementById('migrate-status');
+            const backendName = activePluginInfo ? activePluginInfo.name : 'cloud';
             statusEl.style.display = 'block';
             statusEl.style.color = 'var(--text-secondary)';
-            statusEl.textContent = 'Clearing Google Sheets...';
+            statusEl.textContent = 'Clearing ' + backendName + '...';
 
             try {
-                // Clear all pomodoro rows in Sheets
                 const clearRes = await Storage.authenticatedFetch('/api/sheets/clear', { method: 'POST' });
-                if (!clearRes.ok) throw new Error('Failed to clear Sheets');
+                if (!clearRes.ok) {
+                    const errData = await clearRes.json().catch(() => ({}));
+                    throw new Error(errData.error || 'Failed to clear cloud storage');
+                }
 
-                statusEl.textContent = 'Uploading local data to Google Sheets...';
+                statusEl.textContent = 'Uploading local data...';
 
-                // Upload all local pomodoros (batch)
                 const result = await Storage.migrateLocalToBackend();
-
-                // Replace all settings in Sheet with local IndexedDB settings
                 await Storage.migrateLocalSettingsToBackend(true);
 
                 statusEl.style.color = 'var(--success)';
-                statusEl.textContent = `✓ Replaced Google Sheets with ${result.migrated || 0} pomodoros`;
+                statusEl.textContent = `✓ Replaced ${backendName} with ${result.migrated || 0} pomodoros`;
 
                 await updateStorageIndicator();
             } catch (e) {
