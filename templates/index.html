@@ -3995,16 +3995,15 @@
 
             if (authStatus.logged_in) {
                 try {
-                    const syncStatus = Storage.getSyncStatus();
-                    if (syncStatus.pending > 0) {
-                        await Storage.syncToSheets();
-                    }
                     if (authStatus.needs_initial_sync) {
                         await showInitialSyncModal();
                     }
                 } catch (e) {
                     console.error('Sync error:', e);
                 }
+                // Refresh count after init sync (which runs inside Storage.init)
+                // to pick up any pomodoros that were batch-uploaded during init
+                updateGooglePomodoroCount();
             }
 
             // Always load settings and plugins (independent of auth)
@@ -4102,6 +4101,11 @@
         async function updateGooglePomodoroCount() {
             const countEl = document.getElementById('google-pomodoro-count');
             if (countEl && authStatus.logged_in) {
+                // Use locally-known count from init sync if available (avoids stale Drive reads)
+                if (authStatus.synced_count != null) {
+                    countEl.textContent = authStatus.synced_count;
+                    return;
+                }
                 try {
                     const res = await Storage.authenticatedFetch('/api/sheets/pomodoros/count');
                     if (res.ok) {

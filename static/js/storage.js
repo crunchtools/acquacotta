@@ -820,6 +820,10 @@
                                 }
                             }
                         }
+
+                        // Store the authoritative count after merge (avoids stale Drive reads)
+                        const allLocal = await getAllFromStore(STORES.POMODOROS);
+                        authStatus.synced_count = allLocal.length;
                     }
 
                     // Pull settings from Sheets on first load only (Sheet is authoritative)
