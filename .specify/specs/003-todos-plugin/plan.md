@@ -135,8 +135,8 @@ Todos reuses the existing `json_storage_core.py` + `google_drive_transport.py` f
 ### Phase 3: Pomodoro Linking (P2 story)
 
 1. Add `linked_todo_id` field to pomodoro creation/edit forms
-2. "Linked to" dropdown on timer view — populated from active (non-completed) todos
-3. Display linked todo title in History tab entries
+2. Two-level "Linked to" picker on timer view: list selector → todo selector within that list (only active todos)
+3. Display linked todo in History tab entries as "List > Todo title"
 4. Calculate and display total time on each todo in the To-do tab
 5. Handle orphaned links gracefully (deleted todos)
 

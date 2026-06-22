@@ -54,10 +54,11 @@ As a user, when I start or log a pomodoro, I want to optionally select a todo I'
 
 **Acceptance Scenarios**:
 
-1. **Given** the user is on the Timer tab starting/logging a pomodoro, **When** the timer form loads, **Then** an optional "Linked to" dropdown shows active todos from all lists
-2. **Given** a pomodoro is linked to a todo, **When** viewing the todo detail, **Then** the total time spent (sum of linked pomodoro durations) is displayed
-3. **Given** a pomodoro is linked to a todo, **When** viewing the History tab, **Then** the linked todo title appears on the pomodoro entry
-4. **Given** a todo has linked pomodoros, **When** the todo is deleted, **Then** the pomodoros remain but their link is cleared (orphan-safe)
+1. **Given** the user is on the Timer tab starting/logging a pomodoro, **When** they click the optional "Linked to" selector, **Then** a two-level picker appears: first select a list (Professional, Personal, etc.), then select a todo within that list
+2. **Given** the user has selected a list in the picker, **When** the todos load, **Then** only active (non-completed) todos from that list are shown, sorted by priority
+3. **Given** a pomodoro is linked to a todo, **When** viewing the todo detail, **Then** the total time spent (sum of linked pomodoro durations) is displayed
+4. **Given** a pomodoro is linked to a todo, **When** viewing the History tab, **Then** the linked todo title appears on the pomodoro entry (format: "List > Todo title")
+5. **Given** a todo has linked pomodoros, **When** the todo is deleted, **Then** the pomodoros remain but their link is cleared (orphan-safe)
 
 ---
 
@@ -111,7 +112,7 @@ As a user, I want to import my existing Google Tasks into Acquacotta's Todos plu
 - **FR-004**: Each todo MUST have: id, title, notes, status (pending/completed), priority (high/medium/low/none), due_date, list, created_at, completed_at, linked_pomodoros[]
 - **FR-005**: System MUST persist todos in IndexedDB for offline-first operation
 - **FR-006**: System MUST sync todos to `plugins/todos/data.json` on Google Drive when logged in
-- **FR-007**: System MUST add an optional "Linked to" dropdown on the timer/manual-entry forms showing active todos
+- **FR-007**: System MUST add an optional "Linked to" two-level picker on the timer/manual-entry forms: first select a list, then select a todo within that list
 - **FR-008**: Pomodoro data model MUST support a `linked_todo_id` field (nullable, string)
 - **FR-009**: System MUST display total time spent (from linked pomodoros) on each todo
 - **FR-010**: System MUST register as an `extension` plugin type in the plugin registry
