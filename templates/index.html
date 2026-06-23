@@ -2959,10 +2959,12 @@
             await loadHistory();
 
             let item = document.querySelector(`.pomodoro-item[data-id="${CSS.escape(id)}"]`);
-            // If not on current page, keep loading until found or exhausted
-            while (!item && historyState.hasMore) {
+            // Load up to 10 more pages (500 items) to find the target — cap prevents runaway loading
+            let pagesLoaded = 0;
+            while (!item && historyState.hasMore && pagesLoaded < 10) {
                 await loadHistory(false);
                 item = document.querySelector(`.pomodoro-item[data-id="${CSS.escape(id)}"]`);
+                pagesLoaded++;
             }
 
             if (item) {
