@@ -247,14 +247,14 @@
         .todo-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
         .todo-header h2 { margin: 0; }
         .todo-lists-bar {
-            display: flex; gap: 0.5rem; background: var(--bg-secondary);
-            padding: 0.25rem; border-radius: 8px; margin-bottom: 1rem; flex-wrap: wrap;
-            justify-content: center;
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+            gap: 0.25rem; background: var(--bg-secondary);
+            padding: 0.25rem; border-radius: 8px; margin-bottom: 1rem;
         }
         .todo-lists-bar button {
-            flex: 1 1 auto; padding: 0.5rem 1rem; background: transparent; border: none;
+            padding: 0.5rem 0.25rem; background: transparent; border: none;
             color: var(--text-secondary); cursor: pointer; border-radius: 6px; font-size: 0.875rem;
-            white-space: nowrap; text-align: center;
+            white-space: nowrap; text-align: center; overflow: hidden; text-overflow: ellipsis;
         }
         .todo-lists-bar button:hover { background: var(--bg-tertiary); color: var(--text-primary); }
         .todo-lists-bar button.active { background: var(--bg-tertiary); color: var(--text-primary); font-weight: 600; }
