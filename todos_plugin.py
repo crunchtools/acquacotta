@@ -11,6 +11,14 @@ PLUGIN_METADATA = {
     "version": "1.0.0",
     "type": "extension",
     "author": "Crunchtools",
+    "has_tab": True,
+    "tab_label": "To-do",
+    "tab_id": "todos",
+    "has_timer_types": True,
+    "has_counts": True,
+    "has_sync": True,
+    "has_import_export": True,
+    "has_history_decorators": True,
 }
 
 TODOS_FILE = "data.json"
