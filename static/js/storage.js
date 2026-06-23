@@ -1504,19 +1504,13 @@
             const todos = await getAllFromStore(STORES.TODOS);
             return todos.sort((a, b) => {
                 if (a.status !== b.status) return a.status === 'pending' ? -1 : 1;
-                const now = new Date().toISOString().slice(0, 10);
-                const aOverdue = a.due_date && a.due_date < now && a.status === 'pending';
-                const bOverdue = b.due_date && b.due_date < now && b.status === 'pending';
-                if (aOverdue !== bOverdue) return aOverdue ? -1 : 1;
-                const priOrder = { high: 0, medium: 1, low: 2, none: 3 };
-                const aPri = priOrder[a.priority] ?? 3;
-                const bPri = priOrder[b.priority] ?? 3;
-                if (aPri !== bPri) return aPri - bPri;
-                return new Date(a.created_at) - new Date(b.created_at);
+                return (a.sort_order ?? 999999) - (b.sort_order ?? 999999);
             });
         },
 
         createTodo: async function(data) {
+            const existing = await getAllFromStore(STORES.TODOS);
+            const maxOrder = existing.reduce((m, t) => Math.max(m, t.sort_order ?? 0), 0);
             const todo = {
                 id: generateUUID(),
                 title: data.title || '',
@@ -1525,6 +1519,7 @@
                 priority: data.priority || 'none',
                 due_date: data.due_date || null,
                 list_id: data.list_id || null,
+                sort_order: maxOrder + 1,
                 created_at: new Date().toISOString(),
                 completed_at: null
             };

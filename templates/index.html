@@ -249,11 +249,12 @@
         .todo-lists-bar {
             display: flex; gap: 0.5rem; background: var(--bg-secondary);
             padding: 0.25rem; border-radius: 8px; margin-bottom: 1rem; flex-wrap: wrap;
+            justify-content: center;
         }
         .todo-lists-bar button {
-            padding: 0.5rem 1rem; background: transparent; border: none;
+            flex: 1 1 auto; padding: 0.5rem 1rem; background: transparent; border: none;
             color: var(--text-secondary); cursor: pointer; border-radius: 6px; font-size: 0.875rem;
-            white-space: nowrap;
+            white-space: nowrap; text-align: center;
         }
         .todo-lists-bar button:hover { background: var(--bg-tertiary); color: var(--text-primary); }
         .todo-lists-bar button.active { background: var(--bg-tertiary); color: var(--text-primary); font-weight: 600; }
@@ -290,11 +291,10 @@
             cursor: pointer; padding: 0.25rem 0.5rem; font-size: 1rem;
         }
         .todo-actions button:hover { color: var(--text-primary); }
-        .todo-add-form {
-            display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap;
+        .todo-toolbar {
+            display: flex; gap: 0.5rem; margin-bottom: 1rem; align-items: center;
         }
-        .todo-add-form input[type="text"] { flex: 1; min-width: 200px; }
-        .todo-add-form select, .todo-add-form input[type="date"] { max-width: 150px; }
+        .todo-toolbar select { font-size: 0.875rem; padding: 0.5rem; max-width: 170px; }
         .todo-completed-header {
             display: flex; align-items: center; gap: 0.5rem; cursor: pointer;
             color: var(--text-secondary); margin-top: 1.5rem; margin-bottom: 0.5rem;
@@ -742,19 +742,16 @@
         <div id="todos-view" class="view" role="tabpanel" aria-labelledby="tab-todos">
             <div class="todo-header">
                 <h2>To-do</h2>
-                <button class="secondary" onclick="showListManager()" style="padding: 0.5rem 1rem; font-size: 0.875rem;" title="Create, rename, or delete lists">Manage Lists</button>
             </div>
             <div class="todo-lists-bar" id="todo-lists-bar"></div>
-            <div class="todo-add-form" id="todo-add-form">
-                <input type="text" id="todo-add-title" placeholder="Add a new to-do..." style="font-size: 0.875rem;">
-                <select id="todo-add-priority" style="font-size: 0.875rem;">
-                    <option value="none">Priority</option>
-                    <option value="high">High</option>
-                    <option value="medium">Medium</option>
-                    <option value="low">Low</option>
+            <div class="todo-toolbar">
+                <button class="primary" onclick="openTodoForCreate()" style="padding: 0.5rem 1rem; font-size: 0.875rem;">+ Add</button>
+                <select id="todo-sort" onchange="setTodoSort(this.value)" style="margin-left: auto;">
+                    <option value="manual">Sort: Manual</option>
+                    <option value="priority">Sort: Priority</option>
+                    <option value="due_date">Sort: Due Date</option>
+                    <option value="created">Sort: Newest</option>
                 </select>
-                <input type="date" id="todo-add-due" style="font-size: 0.875rem;">
-                <button class="primary" onclick="addTodo()" style="padding: 0.5rem 1rem; font-size: 0.875rem;">Add</button>
             </div>
             <div id="todo-list-container"></div>
             <div class="todo-completed-header" id="todo-completed-toggle" onclick="toggleCompletedTodos()" style="display:none;">
@@ -767,7 +764,7 @@
         <!-- Todo Edit Modal -->
         <div class="modal-overlay" id="todo-edit-modal">
             <div class="modal">
-                <h2>Edit To-do</h2>
+                <h2 id="todo-modal-title">Edit To-do</h2>
                 <input type="hidden" id="todo-edit-id">
                 <div class="form-group">
                     <label for="todo-edit-title">Title</label>
@@ -1053,6 +1050,15 @@
                     <button class="secondary" onclick="addNewType()">Add</button>
                 </div>
                 <button class="secondary" onclick="sortTypesAlphabetically()" style="width: 100%;">Sort A-Z</button>
+            </div>
+            <div class="card" id="todo-settings-card" style="display: none;">
+                <h3>To-do</h3>
+                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                    <button class="secondary" onclick="showListManager()" style="padding: 0.5rem 1rem; font-size: 0.875rem;" title="Create, rename, or delete lists">Manage Lists</button>
+                    <button class="secondary" onclick="exportTodoCSV()" style="padding: 0.5rem 1rem; font-size: 0.875rem;">Export CSV</button>
+                    <button class="secondary" onclick="document.getElementById('settings-todo-csv-upload').click()" style="padding: 0.5rem 1rem; font-size: 0.875rem;">Import CSV</button>
+                    <input type="file" id="settings-todo-csv-upload" accept=".csv" style="display: none;" onchange="importTodoCSV(this)">
+                </div>
             </div>
             <div class="card">
                 <h3>Plugins</h3>
@@ -3765,15 +3771,20 @@
 
         function updateExtensionTabs(plugins) {
             const todosTab = document.getElementById('tab-todos');
+            const todoSettingsCard = document.getElementById('todo-settings-card');
             const todosPlugin = plugins && plugins.find(p => p.id === 'todos' && p.plugin_type === 'extension');
+            const todosActive = todosPlugin && todosPlugin.active;
             if (todosTab) {
-                todosTab.style.display = (todosPlugin && todosPlugin.active) ? '' : 'none';
-                if (todosPlugin && !todosPlugin.active) {
+                todosTab.style.display = todosActive ? '' : 'none';
+                if (!todosActive) {
                     const todosView = document.getElementById('todos-view');
                     if (todosView && todosView.classList.contains('active')) {
                         document.getElementById('tab-timer').click();
                     }
                 }
+            }
+            if (todoSettingsCard) {
+                todoSettingsCard.style.display = todosActive ? '' : 'none';
             }
         }
 
@@ -5304,6 +5315,7 @@
 
         let todoSelectedListId = 'all';
         let todoCompletedVisible = false;
+        let todoSortOrder = 'manual';
 
         function escTodo(s) { return escapeHtml(s); }
 
@@ -5327,15 +5339,40 @@
             const pending = filtered.filter(t => t.status === 'pending');
             const completed = filtered.filter(t => t.status === 'completed');
 
+            if (todoSortOrder === 'priority') {
+                const rank = { high: 0, medium: 1, low: 2, none: 3 };
+                pending.sort((a, b) => (rank[a.priority] ?? 3) - (rank[b.priority] ?? 3));
+            } else if (todoSortOrder === 'due_date') {
+                pending.sort((a, b) => {
+                    if (!a.due_date && !b.due_date) return 0;
+                    if (!a.due_date) return 1;
+                    if (!b.due_date) return -1;
+                    return a.due_date.localeCompare(b.due_date);
+                });
+            } else if (todoSortOrder === 'created') {
+                pending.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+            }
+
             // Build time map once (single IndexedDB read of all pomodoros)
             const pomodoroMap = await buildPomodoroTimeMap();
 
             // Render pending todos
             const container = document.getElementById('todo-list-container');
             if (pending.length === 0 && completed.length === 0) {
-                container.innerHTML = '<div class="empty">No to-dos yet. Add one above.</div>';
+                container.innerHTML = '<div class="empty">No to-dos yet. Tap + Add to create one.</div>';
             } else {
                 container.innerHTML = pending.map(t => renderTodoItem(t, lists, pomodoroMap)).join('');
+            }
+
+            // Attach drag-to-reorder listeners in manual sort mode
+            if (todoSortOrder === 'manual') {
+                container.querySelectorAll('.todo-item[draggable]').forEach(item => {
+                    item.addEventListener('dragstart', handleTodoDragStart);
+                    item.addEventListener('dragend', handleTodoDragEnd);
+                    item.addEventListener('dragover', handleTodoDragOver);
+                    item.addEventListener('dragleave', handleTodoDragLeave);
+                    item.addEventListener('drop', handleTodoDrop);
+                });
             }
 
             // Completed section
@@ -5391,7 +5428,9 @@
                 metaParts.push(`<span>${escTodo(listName)}</span>`);
             }
 
-            return `<div class="todo-item ${isCompleted ? 'completed' : ''}" onclick="editTodo('${todo.id}')">
+            const draggable = !isCompleted && todoSortOrder === 'manual';
+            return `<div class="todo-item ${isCompleted ? 'completed' : ''}" ${draggable ? `draggable="true" data-todo-id="${todo.id}"` : ''} onclick="editTodo('${todo.id}')">
+                ${draggable ? '<span class="drag-handle" style="cursor: grab; margin-right: 0.25rem;" onclick="event.stopPropagation()">☰</span>' : ''}
                 <button class="todo-checkbox ${isCompleted ? 'checked' : ''}" onclick="event.stopPropagation(); toggleTodo('${todo.id}')" aria-label="${isCompleted ? 'Mark incomplete' : 'Mark complete'}"></button>
                 <div class="todo-content">
                     <div class="todo-title">${escTodo(todo.title)}</div>
@@ -5409,23 +5448,77 @@
             loadTodos();
         }
 
-        async function addTodo() {
-            const titleInput = document.getElementById('todo-add-title');
-            const title = titleInput.value.trim();
-            if (!title) return;
-            const priority = document.getElementById('todo-add-priority').value;
-            const due = document.getElementById('todo-add-due').value || null;
-            const listId = todoSelectedListId === 'all' ? (await Storage.getTodoLists())[0]?.id : todoSelectedListId;
-            await Storage.createTodo({ title, priority, due_date: due, list_id: listId });
-            titleInput.value = '';
-            document.getElementById('todo-add-priority').value = 'none';
-            document.getElementById('todo-add-due').value = '';
+        async function openTodoForCreate() {
+            document.getElementById('todo-modal-title').textContent = 'Add To-do';
+            document.getElementById('todo-edit-id').value = '';
+            document.getElementById('todo-edit-title').value = '';
+            document.getElementById('todo-edit-notes').value = '';
+            document.getElementById('todo-edit-priority').value = 'none';
+            document.getElementById('todo-edit-due').value = '';
+            const lists = await Storage.getTodoLists();
+            const editListSelect = document.getElementById('todo-edit-list');
+            editListSelect.innerHTML = lists.map(l => `<option value="${l.id}">${escTodo(l.name)}</option>`).join('');
+            if (todoSelectedListId !== 'all') {
+                editListSelect.value = todoSelectedListId;
+            }
+            document.getElementById('todo-edit-modal').classList.add('active');
+        }
+
+        function setTodoSort(value) {
+            todoSortOrder = value;
             loadTodos();
         }
 
-        document.getElementById('todo-add-title').addEventListener('keydown', e => {
-            if (e.key === 'Enter') { e.preventDefault(); addTodo(); }
-        });
+        // ── Todo drag-to-reorder (manual sort) ───────────────────
+        let draggedTodoId = null;
+
+        function handleTodoDragStart(e) {
+            const item = e.target.closest('.todo-item');
+            if (!item) return;
+            draggedTodoId = item.dataset.todoId;
+            item.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+        }
+
+        function handleTodoDragEnd(e) {
+            const item = e.target.closest('.todo-item');
+            if (item) item.classList.remove('dragging');
+            document.querySelectorAll('#todo-list-container .todo-item').forEach(el => el.classList.remove('drag-over'));
+        }
+
+        function handleTodoDragOver(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            const item = e.target.closest('.todo-item');
+            if (item && item.dataset.todoId !== draggedTodoId) {
+                item.classList.add('drag-over');
+            }
+        }
+
+        function handleTodoDragLeave(e) {
+            e.target.closest('.todo-item')?.classList.remove('drag-over');
+        }
+
+        async function handleTodoDrop(e) {
+            e.preventDefault();
+            const targetItem = e.target.closest('.todo-item');
+            if (!targetItem || targetItem.dataset.todoId === draggedTodoId) return;
+
+            const container = document.getElementById('todo-list-container');
+            const items = Array.from(container.querySelectorAll('.todo-item[data-todo-id]'));
+            const fromIdx = items.findIndex(el => el.dataset.todoId === draggedTodoId);
+            const toIdx = items.findIndex(el => el.dataset.todoId === targetItem.dataset.todoId);
+            if (fromIdx === -1 || toIdx === -1) return;
+
+            const ids = items.map(el => el.dataset.todoId);
+            const [movedId] = ids.splice(fromIdx, 1);
+            ids.splice(toIdx, 0, movedId);
+
+            for (let i = 0; i < ids.length; i++) {
+                await Storage.updateTodo(ids[i], { sort_order: i });
+            }
+            loadTodos();
+        }
 
         async function toggleTodo(id) {
             const todos = await Storage.getTodos();
@@ -5443,6 +5536,7 @@
             const todos = await Storage.getTodos();
             const todo = todos.find(t => t.id === id);
             if (!todo) return;
+            document.getElementById('todo-modal-title').textContent = 'Edit To-do';
             document.getElementById('todo-edit-id').value = id;
             document.getElementById('todo-edit-title').value = todo.title;
             document.getElementById('todo-edit-notes').value = todo.notes || '';
@@ -5458,13 +5552,19 @@
 
         async function saveTodoEdit() {
             const id = document.getElementById('todo-edit-id').value;
-            await Storage.updateTodo(id, {
+            const data = {
                 title: document.getElementById('todo-edit-title').value.trim(),
                 notes: document.getElementById('todo-edit-notes').value.trim(),
                 priority: document.getElementById('todo-edit-priority').value,
                 due_date: document.getElementById('todo-edit-due').value || null,
                 list_id: document.getElementById('todo-edit-list').value || null
-            });
+            };
+            if (!data.title) return;
+            if (id) {
+                await Storage.updateTodo(id, data);
+            } else {
+                await Storage.createTodo(data);
+            }
             closeTodoEditModal();
             loadTodos();
         }
