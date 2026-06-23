@@ -5775,7 +5775,6 @@
         (async () => {
             await checkAuthStatus();
             await loadWeeklyOverview();
-            await loadHistory();
 
             // Load todos from cloud if logged in, then render
             if (authStatus.logged_in) {

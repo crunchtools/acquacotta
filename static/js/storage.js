@@ -195,6 +195,20 @@
     }
 
     /**
+     * Get records from a store index within a key range
+     */
+    function getRangeFromIndex(storeName, indexName, lower, upper) {
+        return dbTransaction(storeName, 'readonly', (store) => {
+            const index = store.index(indexName);
+            let range = null;
+            if (lower && upper) range = IDBKeyRange.bound(lower, upper);
+            else if (lower) range = IDBKeyRange.lowerBound(lower);
+            else if (upper) range = IDBKeyRange.upperBound(upper);
+            return index.getAll(range);
+        });
+    }
+
+    /**
      * Get a single record by key
      */
     function getFromStore(storeName, key) {
@@ -998,10 +1012,11 @@
          * @returns {Promise<Array>}
          */
         getPomodoros: async function(startDate, endDate) {
-            let pomodoros = await getAllFromStore(STORES.POMODOROS);
-
+            let pomodoros;
             if (startDate || endDate) {
-                pomodoros = filterByDateRange(pomodoros, startDate, endDate);
+                pomodoros = await getRangeFromIndex(STORES.POMODOROS, 'start_time', startDate || null, endDate || null);
+            } else {
+                pomodoros = await getAllFromStore(STORES.POMODOROS);
             }
 
             // Sort by start_time descending (most recent first)
@@ -1216,8 +1231,7 @@
                 endIso = range.end.toISOString();
             }
 
-            const allPomodoros = await getAllFromStore(STORES.POMODOROS);
-            const pomodoros = filterByDateRange(allPomodoros, startIso, endIso);
+            const pomodoros = await getRangeFromIndex(STORES.POMODOROS, 'start_time', startIso, endIso);
             const stats = calculateReportStats(pomodoros, dates);
 
             return {
