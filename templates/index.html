@@ -1051,7 +1051,7 @@
                 </div>
                 <button class="secondary" onclick="sortTypesAlphabetically()" style="width: 100%;">Sort A-Z</button>
             </div>
-            <div class="card">
+            <div class="card" id="todo-settings-card" style="display: none;">
                 <h3>To-do</h3>
                 <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
                     <button class="secondary" onclick="showListManager()" style="padding: 0.5rem 1rem; font-size: 0.875rem;" title="Create, rename, or delete lists">Manage Lists</button>
@@ -3771,15 +3771,20 @@
 
         function updateExtensionTabs(plugins) {
             const todosTab = document.getElementById('tab-todos');
+            const todoSettingsCard = document.getElementById('todo-settings-card');
             const todosPlugin = plugins && plugins.find(p => p.id === 'todos' && p.plugin_type === 'extension');
+            const todosActive = todosPlugin && todosPlugin.active;
             if (todosTab) {
-                todosTab.style.display = (todosPlugin && todosPlugin.active) ? '' : 'none';
-                if (todosPlugin && !todosPlugin.active) {
+                todosTab.style.display = todosActive ? '' : 'none';
+                if (!todosActive) {
                     const todosView = document.getElementById('todos-view');
                     if (todosView && todosView.classList.contains('active')) {
                         document.getElementById('tab-timer').click();
                     }
                 }
+            }
+            if (todoSettingsCard) {
+                todoSettingsCard.style.display = todosActive ? '' : 'none';
             }
         }
 
@@ -5359,6 +5364,17 @@
                 container.innerHTML = pending.map(t => renderTodoItem(t, lists, pomodoroMap)).join('');
             }
 
+            // Attach drag-to-reorder listeners in manual sort mode
+            if (todoSortOrder === 'manual') {
+                container.querySelectorAll('.todo-item[draggable]').forEach(item => {
+                    item.addEventListener('dragstart', handleTodoDragStart);
+                    item.addEventListener('dragend', handleTodoDragEnd);
+                    item.addEventListener('dragover', handleTodoDragOver);
+                    item.addEventListener('dragleave', handleTodoDragLeave);
+                    item.addEventListener('drop', handleTodoDrop);
+                });
+            }
+
             // Completed section
             const toggle = document.getElementById('todo-completed-toggle');
             const compContainer = document.getElementById('todo-completed-container');
@@ -5412,7 +5428,9 @@
                 metaParts.push(`<span>${escTodo(listName)}</span>`);
             }
 
-            return `<div class="todo-item ${isCompleted ? 'completed' : ''}" onclick="editTodo('${todo.id}')">
+            const draggable = !isCompleted && todoSortOrder === 'manual';
+            return `<div class="todo-item ${isCompleted ? 'completed' : ''}" ${draggable ? `draggable="true" data-todo-id="${todo.id}"` : ''} onclick="editTodo('${todo.id}')">
+                ${draggable ? '<span class="drag-handle" style="cursor: grab; margin-right: 0.25rem;" onclick="event.stopPropagation()">☰</span>' : ''}
                 <button class="todo-checkbox ${isCompleted ? 'checked' : ''}" onclick="event.stopPropagation(); toggleTodo('${todo.id}')" aria-label="${isCompleted ? 'Mark incomplete' : 'Mark complete'}"></button>
                 <div class="todo-content">
                     <div class="todo-title">${escTodo(todo.title)}</div>
@@ -5448,6 +5466,57 @@
 
         function setTodoSort(value) {
             todoSortOrder = value;
+            loadTodos();
+        }
+
+        // ── Todo drag-to-reorder (manual sort) ───────────────────
+        let draggedTodoId = null;
+
+        function handleTodoDragStart(e) {
+            const item = e.target.closest('.todo-item');
+            if (!item) return;
+            draggedTodoId = item.dataset.todoId;
+            item.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+        }
+
+        function handleTodoDragEnd(e) {
+            const item = e.target.closest('.todo-item');
+            if (item) item.classList.remove('dragging');
+            document.querySelectorAll('#todo-list-container .todo-item').forEach(el => el.classList.remove('drag-over'));
+        }
+
+        function handleTodoDragOver(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            const item = e.target.closest('.todo-item');
+            if (item && item.dataset.todoId !== draggedTodoId) {
+                item.classList.add('drag-over');
+            }
+        }
+
+        function handleTodoDragLeave(e) {
+            e.target.closest('.todo-item')?.classList.remove('drag-over');
+        }
+
+        async function handleTodoDrop(e) {
+            e.preventDefault();
+            const targetItem = e.target.closest('.todo-item');
+            if (!targetItem || targetItem.dataset.todoId === draggedTodoId) return;
+
+            const container = document.getElementById('todo-list-container');
+            const items = Array.from(container.querySelectorAll('.todo-item[data-todo-id]'));
+            const fromIdx = items.findIndex(el => el.dataset.todoId === draggedTodoId);
+            const toIdx = items.findIndex(el => el.dataset.todoId === targetItem.dataset.todoId);
+            if (fromIdx === -1 || toIdx === -1) return;
+
+            const ids = items.map(el => el.dataset.todoId);
+            const [movedId] = ids.splice(fromIdx, 1);
+            ids.splice(toIdx, 0, movedId);
+
+            for (let i = 0; i < ids.length; i++) {
+                await Storage.updateTodo(ids[i], { sort_order: i });
+            }
             loadTodos();
         }
 
