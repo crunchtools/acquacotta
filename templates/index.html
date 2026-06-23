@@ -3823,6 +3823,7 @@
                 updateAuthUI();
                 loadPlugins();
                 fetch('/api/plugins').then(r => r.json()).then(d => updateExtensionTabs(d.plugins));
+                populateTypeDropdowns();
             } catch (e) {
                 checkbox.checked = !enable;
             }
