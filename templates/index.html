@@ -3742,11 +3742,31 @@
                     return;
                 }
 
-                container.innerHTML = data.plugins.map(plugin => {
+                // Build cards with dynamic counts
+                const cardPromises = data.plugins.map(async plugin => {
                     const isActive = plugin.active;
                     const typeBadge = `<span style="display: inline-block; padding: 0.125rem 0.5rem; border-radius: 4px; font-size: 0.75rem; background: var(--bg-tertiary); color: var(--text-secondary);">${plugin.plugin_type}</span>`;
                     const toggleId = `plugin-toggle-${plugin.id}`;
                     const toggleChecked = isActive ? 'checked' : '';
+
+                    let countBadge = '';
+                    if (isActive && plugin.has_counts) {
+                        try {
+                            const count = plugin.id === 'todos' ? (await Storage.getTodos()).length : 0;
+                            countBadge = `<span style="display: inline-block; padding: 0.125rem 0.5rem; border-radius: 4px; font-size: 0.75rem; background: var(--accent); color: white;">${count} items</span>`;
+                        } catch (e) { /* offline */ }
+                    }
+
+                    let actions = '';
+                    if (isActive && plugin.has_import_export) {
+                        const uploadId = `plugin-csv-upload-${plugin.id}`;
+                        actions = `<div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
+                            <button class="secondary" onclick="exportPluginCSV('${plugin.id}')" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">Export CSV</button>
+                            <button class="secondary" onclick="document.getElementById('${uploadId}').click()" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">Import CSV</button>
+                            <input type="file" id="${uploadId}" accept=".csv" style="display: none;" onchange="importPluginCSV('${plugin.id}', this)">
+                        </div>`;
+                    }
+
                     return `<div class="type-item" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
                         <div style="flex: 1;">
                             <div style="font-weight: 500;">${plugin.name}</div>
@@ -3754,7 +3774,9 @@
                             <div style="display: flex; gap: 0.5rem; align-items: center; margin-top: 0.375rem;">
                                 ${typeBadge}
                                 <span style="font-size: 0.75rem; color: var(--text-secondary);">v${plugin.version}</span>
+                                ${countBadge}
                             </div>
+                            ${actions}
                         </div>
                         <label style="display: flex; align-items: center; cursor: pointer; gap: 0.5rem; margin-left: 1rem;">
                             <span style="font-size: 0.75rem; color: ${isActive ? 'var(--success)' : 'var(--text-secondary)'};">${isActive ? 'On' : 'Off'}</span>
@@ -3763,7 +3785,8 @@
                                 onchange="togglePlugin(this)" style="width: auto; cursor: pointer;">
                         </label>
                     </div>`;
-                }).join('');
+                });
+                container.innerHTML = (await Promise.all(cardPromises)).join('');
 
                 updateSyncCardVisibility(data.active_storage);
                 updateExtensionTabs(data.plugins);
@@ -5767,6 +5790,13 @@
         }
 
         // ── Plugin-Aware Type Parsing ──────────────────────────────
+
+        function exportPluginCSV(pluginId) {
+            if (pluginId === 'todos') return exportTodoCSV();
+        }
+        function importPluginCSV(pluginId, input) {
+            if (pluginId === 'todos') return importTodoCSV(input);
+        }
 
         function parseTypeValue(value) {
             if (value && value.startsWith('todo:')) {
