@@ -100,6 +100,7 @@
      * Open IndexedDB database
      */
     function openDatabase() {
+        if (db) return Promise.resolve(db);
         return new Promise((resolve, reject) => {
             const request = indexedDB.open(DB_NAME, DB_VERSION);
 
@@ -192,6 +193,20 @@
      */
     function getAllFromStore(storeName) {
         return dbTransaction(storeName, 'readonly', (store) => store.getAll());
+    }
+
+    /**
+     * Get records from a store index within a key range
+     */
+    function getRangeFromIndex(storeName, indexName, lower, upper) {
+        return dbTransaction(storeName, 'readonly', (store) => {
+            const index = store.index(indexName);
+            let range = null;
+            if (lower && upper) range = IDBKeyRange.bound(lower, upper);
+            else if (lower) range = IDBKeyRange.lowerBound(lower);
+            else if (upper) range = IDBKeyRange.upperBound(upper);
+            return index.getAll(range);
+        });
     }
 
     /**
@@ -343,17 +358,6 @@
                 loggedIn: authStatus && authStatus.logged_in
             }
         }));
-    }
-
-    /**
-     * Filter pomodoros by date range
-     */
-    function filterByDateRange(pomodoros, startDate, endDate) {
-        return pomodoros.filter(p => {
-            if (startDate && p.start_time < startDate) return false;
-            if (endDate && p.start_time > endDate) return false;
-            return true;
-        });
     }
 
     /**
@@ -653,11 +657,18 @@
      */
     const Storage = {
         /**
+         * Open IndexedDB without running auth/network initialization.
+         * Call this early so IndexedDB reads (settings, pomodoros) work
+         * before the full init() completes.
+         */
+        openDatabase: openDatabase,
+
+        /**
          * Initialize storage based on auth status
          * @param {object} status - Auth status from /api/auth/status
          */
         init: async function(status) {
-            // Open IndexedDB first
+            // Open IndexedDB first (idempotent if already opened)
             await openDatabase();
 
             // Load credentials from AUTH store (ephemeral - OAuth tokens only)
@@ -998,15 +1009,49 @@
          * @returns {Promise<Array>}
          */
         getPomodoros: async function(startDate, endDate) {
-            let pomodoros = await getAllFromStore(STORES.POMODOROS);
-
+            let pomodoros;
             if (startDate || endDate) {
-                pomodoros = filterByDateRange(pomodoros, startDate, endDate);
+                pomodoros = await getRangeFromIndex(STORES.POMODOROS, 'start_time', startDate || null, endDate || null);
+            } else {
+                pomodoros = await getAllFromStore(STORES.POMODOROS);
             }
 
             // Sort by start_time descending (most recent first)
             pomodoros.sort((a, b) => new Date(b.start_time) - new Date(a.start_time));
             return pomodoros;
+        },
+
+        /**
+         * Fetch a page of pomodoros using cursor-based pagination on the start_time index.
+         * Returns newest first. Use beforeTimestamp to fetch the next page.
+         * @param {number} limit - Number of records to fetch
+         * @param {string} [beforeTimestamp] - ISO timestamp to start before (exclusive)
+         * @returns {Promise<{pomodoros: Array, hasMore: boolean}>}
+         */
+        getPomodorosPage: function(limit, beforeTimestamp) {
+            return new Promise((resolve, reject) => {
+                if (!db) { reject(new Error('Database not initialized')); return; }
+                const tx = db.transaction(STORES.POMODOROS, 'readonly');
+                const store = tx.objectStore(STORES.POMODOROS);
+                const index = store.index('start_time');
+
+                const range = beforeTimestamp
+                    ? IDBKeyRange.upperBound(beforeTimestamp, true)
+                    : null;
+                const request = index.openCursor(range, 'prev');
+                const results = [];
+
+                request.onsuccess = (event) => {
+                    const cursor = event.target.result;
+                    if (cursor && results.length < limit) {
+                        results.push(cursor.value);
+                        cursor.continue();
+                    } else {
+                        resolve({ pomodoros: results, hasMore: !!cursor });
+                    }
+                };
+                request.onerror = () => reject(request.error);
+            });
         },
 
         /**
@@ -1183,8 +1228,7 @@
                 endIso = range.end.toISOString();
             }
 
-            const allPomodoros = await getAllFromStore(STORES.POMODOROS);
-            const pomodoros = filterByDateRange(allPomodoros, startIso, endIso);
+            const pomodoros = await getRangeFromIndex(STORES.POMODOROS, 'start_time', startIso, endIso);
             const stats = calculateReportStats(pomodoros, dates);
 
             return {

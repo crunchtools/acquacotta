@@ -693,6 +693,7 @@
                 <button class="secondary" onclick="showAddModal()">+ Add Manual</button>
             </div>
             <div id="history-list"></div>
+            <button id="history-load-more" class="secondary" style="display:none; width:100%; margin-top:1rem;">Load More</button>
         </div>
 
         <!-- Reports View -->
@@ -2833,80 +2834,109 @@
             });
         });
 
-        // History
-        async function loadHistory() {
-            const list = document.getElementById('history-list');
-            const tz = getEffectiveTimezone();
-            try {
-                const pomodoros = await Storage.getPomodoros();
+        // History — paginated
+        const HISTORY_PAGE_SIZE = 50;
+        let historyState = { lastTimestamp: null, hasMore: false, todoMap: null, lastDateGroup: null };
 
-                if (!Array.isArray(pomodoros) || pomodoros.length === 0) {
+        document.getElementById('history-load-more').addEventListener('click', () => loadHistory(false));
+
+        async function loadHistory(reset = true) {
+            const list = document.getElementById('history-list');
+            const loadMoreBtn = document.getElementById('history-load-more');
+            const tz = getEffectiveTimezone();
+
+            try {
+                if (reset) {
+                    historyState = { lastTimestamp: null, hasMore: false, todoMap: null, lastDateGroup: null };
+                    list.innerHTML = '';
+                }
+
+                // Build todo map once per reset
+                if (!historyState.todoMap) {
+                    historyState.todoMap = {};
+                    const allTodos = await Storage.getTodos();
+                    const allLists = await Storage.getTodoLists();
+                    for (const t of allTodos) {
+                        const listName = allLists.find(l => l.id === t.list_id)?.name;
+                        historyState.todoMap[t.id] = listName ? `${listName} > ${t.title}` : t.title;
+                    }
+                }
+
+                const { pomodoros, hasMore } = await Storage.getPomodorosPage(HISTORY_PAGE_SIZE, historyState.lastTimestamp);
+                historyState.hasMore = hasMore;
+
+                if (reset && pomodoros.length === 0) {
                     list.innerHTML = '<div class="empty">No pomodoros yet. Start your first timer!</div>';
+                    loadMoreBtn.style.display = 'none';
                     return;
                 }
 
-                // Build todo title map for linked pomodoros
-                const historyTodoMap = {};
-                const allTodos = await Storage.getTodos();
-                const allLists = await Storage.getTodoLists();
-                for (const t of allTodos) {
-                    const listName = allLists.find(l => l.id === t.list_id)?.name;
-                    historyTodoMap[t.id] = listName ? `${listName} > ${t.title}` : t.title;
+                if (pomodoros.length > 0) {
+                    historyState.lastTimestamp = pomodoros[pomodoros.length - 1].start_time;
                 }
 
-                // Group by date (using configured timezone)
+                // Group this page by date
                 const grouped = {};
+                const groupOrder = [];
                 pomodoros.forEach(p => {
                     const date = formatDateWithDayTz(p.start_time, tz);
-                    if (!grouped[date]) grouped[date] = [];
+                    if (!grouped[date]) { grouped[date] = []; groupOrder.push(date); }
                     grouped[date].push(p);
                 });
 
-                let html = '';
-                for (const [date, items] of Object.entries(grouped)) {
-                    // Sort items within this day by start time (morning to evening)
+                // Render and append
+                const fragment = document.createDocumentFragment();
+                for (const date of groupOrder) {
+                    const items = grouped[date];
+                    // Within each day, sort morning to evening for display
                     items.sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
-                    html += `<h3>${date}</h3>`;
+
+                    // If this date matches the last group already on screen, don't add a new header
+                    if (date !== historyState.lastDateGroup) {
+                        const h3 = document.createElement('h3');
+                        h3.textContent = date;
+                        fragment.appendChild(h3);
+                    }
+                    historyState.lastDateGroup = date;
+
                     items.forEach(p => {
                         const color = TYPE_COLORS[p.type] || '#6b7280';
                         const time = new Date(p.start_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: tz });
                         const safeId = escapeHtml(p.id);
-                        const linkedInfo = p.linked_todo_id && historyTodoMap[p.linked_todo_id]
-                            ? ` &middot; <span style="color:var(--success);">${escapeHtml(historyTodoMap[p.linked_todo_id])}</span>` : '';
-                        html += `
-                            <div class="pomodoro-item" data-id="${safeId}">
-                                <div>
-                                    <span class="pomodoro-name">${escapeHtml(p.name)}</span>
-                                    <span class="pomodoro-type" style="background:${color}20;color:${color}">${escapeHtml(p.type)}</span>
-                                    <div class="pomodoro-meta">${time} - ${p.duration_minutes} min${linkedInfo}</div>
-                                </div>
-                                <div class="pomodoro-actions">
-                                    <button class="delete-btn" title="Delete">&#10005;</button>
-                                </div>
+                        const linkedInfo = p.linked_todo_id && historyState.todoMap[p.linked_todo_id]
+                            ? ` &middot; <span style="color:var(--success);">${escapeHtml(historyState.todoMap[p.linked_todo_id])}</span>` : '';
+
+                        const div = document.createElement('div');
+                        div.className = 'pomodoro-item';
+                        div.dataset.id = safeId;
+                        div.innerHTML = `
+                            <div>
+                                <span class="pomodoro-name">${escapeHtml(p.name)}</span>
+                                <span class="pomodoro-type" style="background:${color}20;color:${color}">${escapeHtml(p.type)}</span>
+                                <div class="pomodoro-meta">${time} - ${p.duration_minutes} min${linkedInfo}</div>
+                            </div>
+                            <div class="pomodoro-actions">
+                                <button class="delete-btn" title="Delete">&#10005;</button>
                             </div>
                         `;
+                        div.addEventListener('click', () => {
+                            document.querySelectorAll('.pomodoro-item.highlighted').forEach(el => el.classList.remove('highlighted'));
+                            div.classList.add('highlighted');
+                            showEditModal(safeId);
+                        });
+                        div.querySelector('.delete-btn').addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            deletePomodoro(safeId);
+                        });
+                        fragment.appendChild(div);
                     });
                 }
-                list.innerHTML = html;
+                list.appendChild(fragment);
 
-                // Attach event listeners - click item to edit, delete button to delete
-                list.querySelectorAll('.pomodoro-item').forEach(item => {
-                    const id = item.dataset.id;
-                    // Click anywhere on item to edit (with highlight)
-                    item.addEventListener('click', () => {
-                        document.querySelectorAll('.pomodoro-item.highlighted').forEach(el => el.classList.remove('highlighted'));
-                        item.classList.add('highlighted');
-                        showEditModal(id);
-                    });
-                    // Delete button stops propagation so it doesn't trigger edit
-                    item.querySelector('.delete-btn').addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        deletePomodoro(id);
-                    });
-                });
+                loadMoreBtn.style.display = hasMore ? '' : 'none';
             } catch (e) {
                 console.error('Error loading history:', e);
-                list.innerHTML = '<div class="empty">Error loading history. Please refresh.</div>';
+                if (reset) list.innerHTML = '<div class="empty">Error loading history. Please refresh.</div>';
             }
         }
 
@@ -2925,19 +2955,21 @@
             histBtn.setAttribute('tabindex', '0');
             document.getElementById('history-view').classList.add('active');
 
-            // Load history and wait for it to complete
+            // Load first page and search for the target pomodoro
             await loadHistory();
 
-            // Find and highlight the pomodoro
-            const item = document.querySelector(`.pomodoro-item[data-id="${CSS.escape(id)}"]`);
+            let item = document.querySelector(`.pomodoro-item[data-id="${CSS.escape(id)}"]`);
+            // Load up to 10 more pages (500 items) to find the target — cap prevents runaway loading
+            let pagesLoaded = 0;
+            while (!item && historyState.hasMore && pagesLoaded < 10) {
+                await loadHistory(false);
+                item = document.querySelector(`.pomodoro-item[data-id="${CSS.escape(id)}"]`);
+                pagesLoaded++;
+            }
+
             if (item) {
-                // Remove any existing highlights
                 document.querySelectorAll('.pomodoro-item.highlighted').forEach(el => el.classList.remove('highlighted'));
-
-                // Scroll to the item
                 item.scrollIntoView({ behavior: 'smooth', block: 'center' });
-
-                // Add highlight (stays until another item is clicked)
                 item.classList.add('highlighted');
             }
         }
@@ -4246,8 +4278,6 @@
                 updateGooglePomodoroCount();
             }
 
-            // Always load settings and plugins (independent of auth)
-            await loadSettings();
         }
 
         // Update storage mode indicator in header
@@ -5741,11 +5771,18 @@
         }
 
         (async () => {
-            await checkAuthStatus();
-            await loadWeeklyOverview();
-            await loadHistory();
+            // Phase 1: Open IndexedDB and load settings (no network, sub-ms).
+            // This lets the UI render with correct timezone/date format immediately.
+            await Storage.openDatabase();
+            await loadSettings();
 
-            // Load todos from cloud if logged in, then render
+            // Phase 2: Run auth (network) and view rendering (IndexedDB) in parallel.
+            await Promise.all([
+                checkAuthStatus(),
+                loadWeeklyOverview()
+            ]);
+
+            // Phase 3: Sync cloud data then render todos once with fresh state.
             if (authStatus.logged_in) {
                 await Storage.loadTodosFromCloud();
             }
