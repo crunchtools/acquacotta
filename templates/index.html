@@ -1052,7 +1052,7 @@
                 </div>
                 <button class="secondary" onclick="sortTypesAlphabetically()" style="width: 100%;">Sort A-Z</button>
             </div>
-            <div class="card" id="todo-settings-card" style="display: none;">
+            <div class="card" id="todos-settings-card" style="display: none;">
                 <h3>To-do</h3>
                 <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
                     <button class="secondary" onclick="showListManager()" style="padding: 0.5rem 1rem; font-size: 0.875rem;" title="Create, rename, or delete lists">Manage Lists</button>
@@ -3806,21 +3806,23 @@
         }
 
         function updateExtensionTabs(plugins) {
-            const todosTab = document.getElementById('tab-todos');
-            const todoSettingsCard = document.getElementById('todo-settings-card');
-            const todosPlugin = plugins && plugins.find(p => p.id === 'todos' && p.plugin_type === 'extension');
-            const todosActive = todosPlugin && todosPlugin.active;
-            if (todosTab) {
-                todosTab.style.display = todosActive ? '' : 'none';
-                if (!todosActive) {
-                    const todosView = document.getElementById('todos-view');
-                    if (todosView && todosView.classList.contains('active')) {
-                        document.getElementById('tab-timer').click();
+            if (!plugins) return;
+            const extensions = plugins.filter(p => p.plugin_type === 'extension' && p.has_tab);
+            for (const plugin of extensions) {
+                const tab = document.getElementById(`tab-${plugin.tab_id}`);
+                const settingsCard = document.getElementById(`${plugin.tab_id}-settings-card`);
+                if (tab) {
+                    tab.style.display = plugin.active ? '' : 'none';
+                    if (!plugin.active) {
+                        const view = document.getElementById(`${plugin.tab_id}-view`);
+                        if (view && view.classList.contains('active')) {
+                            document.getElementById('tab-timer').click();
+                        }
                     }
                 }
-            }
-            if (todoSettingsCard) {
-                todoSettingsCard.style.display = todosActive ? '' : 'none';
+                if (settingsCard) {
+                    settingsCard.style.display = plugin.active ? '' : 'none';
+                }
             }
         }
 
