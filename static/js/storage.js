@@ -100,6 +100,7 @@
      * Open IndexedDB database
      */
     function openDatabase() {
+        if (db) return Promise.resolve(db);
         return new Promise((resolve, reject) => {
             const request = indexedDB.open(DB_NAME, DB_VERSION);
 
@@ -357,17 +358,6 @@
                 loggedIn: authStatus && authStatus.logged_in
             }
         }));
-    }
-
-    /**
-     * Filter pomodoros by date range
-     */
-    function filterByDateRange(pomodoros, startDate, endDate) {
-        return pomodoros.filter(p => {
-            if (startDate && p.start_time < startDate) return false;
-            if (endDate && p.start_time > endDate) return false;
-            return true;
-        });
     }
 
     /**
@@ -667,11 +657,18 @@
      */
     const Storage = {
         /**
+         * Open IndexedDB without running auth/network initialization.
+         * Call this early so IndexedDB reads (settings, pomodoros) work
+         * before the full init() completes.
+         */
+        openDatabase: openDatabase,
+
+        /**
          * Initialize storage based on auth status
          * @param {object} status - Auth status from /api/auth/status
          */
         init: async function(status) {
-            // Open IndexedDB first
+            // Open IndexedDB first (idempotent if already opened)
             await openDatabase();
 
             // Load credentials from AUTH store (ephemeral - OAuth tokens only)

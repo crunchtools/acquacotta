@@ -4278,8 +4278,6 @@
                 updateGooglePomodoroCount();
             }
 
-            // Always load settings and plugins (independent of auth)
-            await loadSettings();
         }
 
         // Update storage mode indicator in header
@@ -5773,14 +5771,23 @@
         }
 
         (async () => {
-            await checkAuthStatus();
-            await loadWeeklyOverview();
+            // Phase 1: Open IndexedDB and load settings (no network, sub-ms).
+            // This lets the UI render with correct timezone/date format immediately.
+            await Storage.openDatabase();
+            await loadSettings();
 
-            // Load todos from cloud if logged in, then render
+            // Phase 2: Run auth (network) and view rendering (IndexedDB) in parallel.
+            await Promise.all([
+                checkAuthStatus(),
+                loadWeeklyOverview(),
+                loadTodos()
+            ]);
+
+            // Phase 3: Cloud sync needs auth, so runs after auth resolves.
             if (authStatus.logged_in) {
                 await Storage.loadTodosFromCloud();
+                await loadTodos();
             }
-            await loadTodos();
         })();
     </script>
 </body>
