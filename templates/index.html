@@ -5779,15 +5779,14 @@
             // Phase 2: Run auth (network) and view rendering (IndexedDB) in parallel.
             await Promise.all([
                 checkAuthStatus(),
-                loadWeeklyOverview(),
-                loadTodos()
+                loadWeeklyOverview()
             ]);
 
-            // Phase 3: Cloud sync needs auth, so runs after auth resolves.
+            // Phase 3: Sync cloud data then render todos once with fresh state.
             if (authStatus.logged_in) {
                 await Storage.loadTodosFromCloud();
-                await loadTodos();
             }
+            await loadTodos();
         })();
     </script>
 </body>
