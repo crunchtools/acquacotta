@@ -4052,27 +4052,26 @@
         }
 
         // Type management functions
-        // Cached plugin list data for the cascading type dropdown
-        let _typeDropdownTodoLists = [];
-        let _typeDropdownTodos = [];
-        let _typeDropdownTodosActive = false;
+        // Plugin-contributed timer type items (populated by populateTypeDropdowns)
+        let _timerTypeProviders = [];
 
         async function populateTypeDropdowns() {
             const types = settings.pomodoro_types || [];
             const stringTypes = types.map(t => String(t)).filter(t => t && t.trim());
 
-            // Fetch todo lists for the cascading dropdown
-            _typeDropdownTodoLists = [];
-            _typeDropdownTodos = [];
-            _typeDropdownTodosActive = false;
+            // Query active plugins that contribute timer types
+            _timerTypeProviders = [];
             try {
                 const pluginRes = await fetch('/api/plugins');
                 const pluginData = pluginRes.ok ? await pluginRes.json() : { plugins: [] };
-                const todosPlugin = pluginData.plugins.find(p => p.id === 'todos' && p.active);
-                if (todosPlugin) {
-                    _typeDropdownTodosActive = true;
-                    _typeDropdownTodoLists = await Storage.getTodoLists();
-                    _typeDropdownTodos = (await Storage.getTodos()).filter(t => t.status === 'pending');
+                const timerTypePlugins = pluginData.plugins.filter(p => p.active && p.has_timer_types);
+
+                for (const plugin of timerTypePlugins) {
+                    if (plugin.id === 'todos') {
+                        const lists = await Storage.getTodoLists();
+                        const todos = (await Storage.getTodos()).filter(t => t.status === 'pending');
+                        _timerTypeProviders.push({ plugin, lists, todos });
+                    }
                 }
             } catch (e) { /* offline */ }
 
@@ -4093,12 +4092,15 @@
             const currentValue = preserveValue || select.value;
             let html = stringTypes.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
 
-            if (_typeDropdownTodosActive && _typeDropdownTodoLists.length > 0) {
-                html += '<option disabled>──────────</option>';
-                for (const list of _typeDropdownTodoLists) {
-                    const count = _typeDropdownTodos.filter(t => t.list_id === list.id).length;
-                    if (count === 0) continue;
-                    html += `<option value="list:${list.id}">📋 ${escapeHtml(list.name)} (${count})</option>`;
+            // Inject items from all timer type provider plugins
+            for (const provider of _timerTypeProviders) {
+                if (provider.plugin.id === 'todos' && provider.lists.length > 0) {
+                    html += '<option disabled>──────────</option>';
+                    for (const list of provider.lists) {
+                        const count = provider.todos.filter(t => t.list_id === list.id).length;
+                        if (count === 0) continue;
+                        html += `<option value="list:${list.id}">📋 ${escapeHtml(list.name)} (${count})</option>`;
+                    }
                 }
             }
 
@@ -4113,15 +4115,16 @@
             const value = select.value;
             if (value && value.startsWith('list:')) {
                 const listId = value.slice(5);
-                const listTodos = _typeDropdownTodos.filter(t => t.list_id === listId);
-                const list = _typeDropdownTodoLists.find(l => l.id === listId);
+                const todosProvider = _timerTypeProviders.find(p => p.plugin.id === 'todos');
+                if (!todosProvider) return;
+                const listTodos = todosProvider.todos.filter(t => t.list_id === listId);
+                const list = todosProvider.lists.find(l => l.id === listId);
                 const label = list ? list.name : 'To-do';
                 let html = `<option value="" disabled selected>Select from ${escapeHtml(label)}...</option>`;
                 for (const t of listTodos) {
                     html += `<option value="todo:${t.id}">${escapeHtml(t.title)}</option>`;
                 }
                 select.innerHTML = html;
-                // Auto-reopen so the user doesn't need a second click
                 requestAnimationFrame(() => {
                     try { select.showPicker(); } catch (e) { /* fallback: user clicks again */ }
                 });
