@@ -95,6 +95,20 @@ def get_active_storage_id():
     return _active_storage
 
 
+def activate_extension(plugin_id):
+    """Enable an extension plugin."""
+    if "extension" not in _plugins or plugin_id not in _plugins["extension"]:
+        raise ValueError(f"Extension plugin not registered: {plugin_id}")
+    _plugins["extension"][plugin_id]["active"] = True
+
+
+def deactivate_extension(plugin_id):
+    """Disable an extension plugin."""
+    if "extension" not in _plugins or plugin_id not in _plugins["extension"]:
+        raise ValueError(f"Extension plugin not registered: {plugin_id}")
+    _plugins["extension"][plugin_id]["active"] = False
+
+
 def get_plugin(plugin_type, plugin_id):
     """Get a specific plugin's module by type and id."""
     if plugin_type in _plugins and plugin_id in _plugins[plugin_type]:

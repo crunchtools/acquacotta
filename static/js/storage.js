@@ -16,7 +16,7 @@
 
     // IndexedDB configuration
     const DB_NAME = 'acquacotta';
-    const DB_VERSION = 2;  // Bumped for auth store
+    const DB_VERSION = 3;  // Bumped for todos stores
 
     // Object store names
     const STORES = {
@@ -24,7 +24,9 @@
         SETTINGS: 'settings',
         SYNC_QUEUE: 'sync_queue',
         SYNC_STATUS: 'sync_status',
-        AUTH: 'auth'
+        AUTH: 'auth',
+        TODOS: 'todos',
+        TODO_LISTS: 'todo_lists'
     };
 
     // Default settings (mirrors backend defaults)
@@ -141,6 +143,18 @@
                 // Auth store (for OAuth credentials - keeps server stateless)
                 if (!database.objectStoreNames.contains(STORES.AUTH)) {
                     database.createObjectStore(STORES.AUTH, { keyPath: 'key' });
+                }
+
+                // Todos store
+                if (!database.objectStoreNames.contains(STORES.TODOS)) {
+                    const todosStore = database.createObjectStore(STORES.TODOS, { keyPath: 'id' });
+                    todosStore.createIndex('list_id', 'list_id', { unique: false });
+                    todosStore.createIndex('status', 'status', { unique: false });
+                }
+
+                // Todo lists store
+                if (!database.objectStoreNames.contains(STORES.TODO_LISTS)) {
+                    database.createObjectStore(STORES.TODO_LISTS, { keyPath: 'id' });
                 }
             };
         });
@@ -1012,6 +1026,7 @@
                 end_time: endTime.toISOString(),
                 duration_minutes: data.duration_minutes || 25,
                 notes: data.notes || null,
+                linked_todo_id: data.linked_todo_id || null,
                 synced: false
             };
 
@@ -1040,6 +1055,7 @@
                 end_time: data.end_time,
                 duration_minutes: data.duration_minutes,
                 notes: data.notes || null,
+                linked_todo_id: data.linked_todo_id || null,
                 synced: false
             };
 
@@ -1480,6 +1496,183 @@
                 console.error('Error migrating settings:', e);
                 return { migrated: false, error: e.message };
             }
+        },
+
+        // ── Todos CRUD ──────────────────────────────────────────────
+
+        getTodos: async function() {
+            const todos = await getAllFromStore(STORES.TODOS);
+            return todos.sort((a, b) => {
+                if (a.status !== b.status) return a.status === 'pending' ? -1 : 1;
+                const now = new Date().toISOString().slice(0, 10);
+                const aOverdue = a.due_date && a.due_date < now && a.status === 'pending';
+                const bOverdue = b.due_date && b.due_date < now && b.status === 'pending';
+                if (aOverdue !== bOverdue) return aOverdue ? -1 : 1;
+                const priOrder = { high: 0, medium: 1, low: 2, none: 3 };
+                const aPri = priOrder[a.priority] ?? 3;
+                const bPri = priOrder[b.priority] ?? 3;
+                if (aPri !== bPri) return aPri - bPri;
+                return new Date(a.created_at) - new Date(b.created_at);
+            });
+        },
+
+        createTodo: async function(data) {
+            const todo = {
+                id: generateUUID(),
+                title: data.title || '',
+                notes: data.notes || '',
+                status: 'pending',
+                priority: data.priority || 'none',
+                due_date: data.due_date || null,
+                list_id: data.list_id || null,
+                created_at: new Date().toISOString(),
+                completed_at: null
+            };
+            await putInStore(STORES.TODOS, todo);
+            this._debounceTodoSync();
+            return todo;
+        },
+
+        updateTodo: async function(id, data) {
+            const existing = await getFromStore(STORES.TODOS, id);
+            if (!existing) return null;
+            const updated = { ...existing, ...data };
+            await putInStore(STORES.TODOS, updated);
+            this._debounceTodoSync();
+            return updated;
+        },
+
+        completeTodo: async function(id) {
+            const existing = await getFromStore(STORES.TODOS, id);
+            if (!existing) return null;
+            existing.status = 'completed';
+            existing.completed_at = new Date().toISOString();
+            await putInStore(STORES.TODOS, existing);
+            this._debounceTodoSync();
+            return existing;
+        },
+
+        uncompleteTodo: async function(id) {
+            const existing = await getFromStore(STORES.TODOS, id);
+            if (!existing) return null;
+            existing.status = 'pending';
+            existing.completed_at = null;
+            await putInStore(STORES.TODOS, existing);
+            this._debounceTodoSync();
+            return existing;
+        },
+
+        deleteTodo: async function(id) {
+            await deleteFromStore(STORES.TODOS, id);
+            this._debounceTodoSync();
+            return { status: 'ok' };
+        },
+
+        // ── Todo Lists CRUD ─────────────────────────────────────────
+
+        getTodoLists: async function() {
+            const lists = await getAllFromStore(STORES.TODO_LISTS);
+            return lists.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        },
+
+        createTodoList: async function(data) {
+            const lists = await getAllFromStore(STORES.TODO_LISTS);
+            const list = {
+                id: generateUUID(),
+                name: data.name || 'New List',
+                order: lists.length
+            };
+            await putInStore(STORES.TODO_LISTS, list);
+            this._debounceTodoSync();
+            return list;
+        },
+
+        updateTodoList: async function(id, data) {
+            const existing = await getFromStore(STORES.TODO_LISTS, id);
+            if (!existing) return null;
+            const updated = { ...existing, ...data };
+            await putInStore(STORES.TODO_LISTS, updated);
+            this._debounceTodoSync();
+            return updated;
+        },
+
+        deleteTodoList: async function(id) {
+            await deleteFromStore(STORES.TODO_LISTS, id);
+            // Orphan todos in this list → set list_id to null
+            const todos = await getAllFromStore(STORES.TODOS);
+            for (const todo of todos) {
+                if (todo.list_id === id) {
+                    todo.list_id = null;
+                    await putInStore(STORES.TODOS, todo);
+                }
+            }
+            this._debounceTodoSync();
+            return { status: 'ok' };
+        },
+
+        // ── Todos Sync ──────────────────────────────────────────────
+
+        _todoSyncTimer: null,
+
+        _debounceTodoSync: function() {
+            if (this._todoSyncTimer) clearTimeout(this._todoSyncTimer);
+            if (!authStatus || !authStatus.logged_in || !isOnline) return;
+            this._todoSyncTimer = setTimeout(() => this.syncTodosToCloud(), 2000);
+        },
+
+        syncTodosToCloud: async function() {
+            if (!authStatus || !authStatus.logged_in || !isOnline) return;
+            try {
+                const todos = await getAllFromStore(STORES.TODOS);
+                const lists = await getAllFromStore(STORES.TODO_LISTS);
+                await authenticatedFetch('/api/todos/sync', {
+                    method: 'POST',
+                    body: JSON.stringify({ todos, lists })
+                });
+            } catch (e) {
+                console.error('Todo sync to cloud failed:', e);
+            }
+        },
+
+        loadTodosFromCloud: async function() {
+            if (!authStatus || !authStatus.logged_in || !isOnline) return false;
+            try {
+                const res = await authenticatedFetch('/api/todos/sync');
+                if (!res.ok) return false;
+                const data = await res.json();
+                if (data.todos) {
+                    for (const todo of data.todos) {
+                        await putInStore(STORES.TODOS, todo);
+                    }
+                }
+                if (data.lists) {
+                    for (const list of data.lists) {
+                        await putInStore(STORES.TODO_LISTS, list);
+                    }
+                }
+                return true;
+            } catch (e) {
+                console.error('Todo load from cloud failed:', e);
+                return false;
+            }
+        },
+
+        getLinkedTodoTime: async function(todoId) {
+            const pomodoros = await getAllFromStore(STORES.POMODOROS);
+            return pomodoros
+                .filter(p => p.linked_todo_id === todoId)
+                .reduce((sum, p) => sum + (p.duration_minutes || 0), 0);
+        },
+
+        buildTodoTimeMap: async function() {
+            const pomodoros = await getAllFromStore(STORES.POMODOROS);
+            const map = {};
+            for (const p of pomodoros) {
+                if (p.linked_todo_id) {
+                    map[p.linked_todo_id] = (map[p.linked_todo_id] || 0) + (p.duration_minutes || 0);
+                }
+            }
+            return map;
         }
     };
 
