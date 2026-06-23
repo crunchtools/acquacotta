@@ -34,6 +34,7 @@ import json_google_drive_storage
 import plugin_registry
 import sheets_storage
 import storage_api
+import todos_plugin
 from storage_api import StorageUnavailable
 
 # Register built-in plugins
@@ -41,6 +42,8 @@ plugin_registry.register("storage", "sheets", sheets_storage, sheets_storage.PLU
 plugin_registry.register(
     "storage", "json-google-drive", json_google_drive_storage, json_google_drive_storage.PLUGIN_METADATA
 )
+plugin_registry.register("extension", "todos", todos_plugin, todos_plugin.PLUGIN_METADATA)
+plugin_registry.activate_extension("todos")
 plugin_registry.activate_storage("sheets")
 
 app = Flask(__name__)
@@ -830,6 +833,14 @@ def api_toggle_plugin():
                 return jsonify({"error": str(e)}), HTTPStatus.BAD_REQUEST
         else:
             plugin_registry.deactivate_storage()
+    elif plugin_type == "extension":
+        try:
+            if enable:
+                plugin_registry.activate_extension(plugin_id)
+            else:
+                plugin_registry.deactivate_extension(plugin_id)
+        except ValueError as e:
+            return jsonify({"error": str(e)}), HTTPStatus.BAD_REQUEST
     else:
         return jsonify({"error": f"Toggle not yet supported for type: {plugin_type}"}), HTTPStatus.BAD_REQUEST
 
@@ -1058,6 +1069,48 @@ def proxy_clear_sheets():
         return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
     except Exception as e:
         app.logger.error(f"Error in proxy_clear_sheets: {e}")
+        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+
+
+@app.route("/api/todos/sync", methods=["GET"])
+def api_get_todos():
+    """Download todos from Google Drive — stateless."""
+    if not is_logged_in():
+        return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
+    try:
+        credentials = get_credentials()
+        if not credentials:
+            return jsonify({"error": "No credentials"}), HTTPStatus.UNAUTHORIZED
+        request_creds = get_credentials_from_request()
+        folder_id = request_creds.get("folder_id") if request_creds else None
+        if not folder_id:
+            return jsonify({"todos": [], "lists": []})
+        drive_service = build("drive", "v3", credentials=credentials)
+        data = todos_plugin.read_todos(drive_service, folder_id)
+        return jsonify(data)
+    except HttpError as e:
+        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+
+
+@app.route("/api/todos/sync", methods=["POST"])
+def api_save_todos():
+    """Upload todos to Google Drive (full replace) — stateless."""
+    if not is_logged_in():
+        return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
+    try:
+        credentials = get_credentials()
+        if not credentials:
+            return jsonify({"error": "No credentials"}), HTTPStatus.UNAUTHORIZED
+        payload = get_request_data()
+        request_creds = get_credentials_from_request()
+        folder_id = request_creds.get("folder_id") if request_creds else None
+        if not folder_id:
+            return jsonify({"error": "No folder_id configured"}), HTTPStatus.BAD_REQUEST
+        drive_service = build("drive", "v3", credentials=credentials)
+        data = {"todos": payload.get("todos", []), "lists": payload.get("lists", [])}
+        todos_plugin.write_todos(drive_service, folder_id, data)
+        return jsonify({"status": "ok"})
+    except HttpError as e:
         return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
 
 

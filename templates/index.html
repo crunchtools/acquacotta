@@ -243,6 +243,66 @@
         }
         .type-item button:hover { color: var(--accent); }
 
+        /* Todos */
+        .todo-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+        .todo-header h2 { margin: 0; }
+        .todo-lists-bar {
+            display: flex; gap: 0.5rem; background: var(--bg-secondary);
+            padding: 0.25rem; border-radius: 8px; margin-bottom: 1rem; flex-wrap: wrap;
+        }
+        .todo-lists-bar button {
+            padding: 0.5rem 1rem; background: transparent; border: none;
+            color: var(--text-secondary); cursor: pointer; border-radius: 6px; font-size: 0.875rem;
+            white-space: nowrap;
+        }
+        .todo-lists-bar button:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+        .todo-lists-bar button.active { background: var(--bg-tertiary); color: var(--text-primary); font-weight: 600; }
+        .todo-item {
+            display: flex; align-items: flex-start; gap: 0.75rem;
+            padding: 0.75rem 1rem; background: var(--bg-secondary); border-radius: 8px;
+            margin-bottom: 0.5rem; transition: background 0.2s;
+        }
+        .todo-item:hover { background: var(--bg-tertiary); cursor: pointer; }
+        .todo-item.completed .todo-title { text-decoration: line-through; color: var(--text-secondary); }
+        .todo-checkbox {
+            width: 20px; height: 20px; min-width: 20px; border-radius: 50%;
+            border: 2px solid var(--text-secondary); background: transparent;
+            cursor: pointer; margin-top: 2px; transition: all 0.2s; padding: 0;
+        }
+        .todo-checkbox:hover { border-color: var(--accent); }
+        .todo-checkbox.checked { background: var(--success); border-color: var(--success); }
+        .todo-content { flex: 1; min-width: 0; }
+        .todo-title { font-weight: 500; word-break: break-word; }
+        .todo-meta { font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem; display: flex; gap: 0.75rem; flex-wrap: wrap; }
+        .todo-priority {
+            display: inline-block; font-size: 0.7rem; padding: 0.15rem 0.5rem;
+            border-radius: 4px; font-weight: 600; text-transform: uppercase;
+        }
+        .todo-priority.high { background: rgba(233, 69, 96, 0.2); color: var(--accent); }
+        .todo-priority.medium { background: rgba(255, 193, 7, 0.2); color: #ffc107; }
+        .todo-priority.low { background: rgba(78, 204, 163, 0.2); color: var(--success); }
+        .todo-due { font-size: 0.8rem; }
+        .todo-due.overdue { color: var(--accent); font-weight: 600; }
+        .todo-time { font-size: 0.8rem; color: var(--success); }
+        .todo-actions { display: flex; gap: 0.25rem; align-items: flex-start; }
+        .todo-actions button {
+            background: none; border: none; color: var(--text-secondary);
+            cursor: pointer; padding: 0.25rem 0.5rem; font-size: 1rem;
+        }
+        .todo-actions button:hover { color: var(--text-primary); }
+        .todo-add-form {
+            display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap;
+        }
+        .todo-add-form input[type="text"] { flex: 1; min-width: 200px; }
+        .todo-add-form select, .todo-add-form input[type="date"] { max-width: 150px; }
+        .todo-completed-header {
+            display: flex; align-items: center; gap: 0.5rem; cursor: pointer;
+            color: var(--text-secondary); margin-top: 1.5rem; margin-bottom: 0.5rem;
+            font-size: 0.875rem; user-select: none;
+        }
+        .todo-completed-header:hover { color: var(--text-primary); }
+        .todo-notes-preview { font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 400px; }
+
         /* Weekly Overview */
         .weekly-overview {
             margin-top: 2rem;
@@ -481,7 +541,7 @@
         }
     </style>
     <script src="{{ url_for('static', filename='js/utils.js') }}?v=3"></script>
-    <script src="{{ url_for('static', filename='js/storage.js') }}?v=3"></script>
+    <script src="{{ url_for('static', filename='js/storage.js') }}?v=4"></script>
 </head>
 <body>
     <a href="#main-content" class="skip-link">Skip to main content</a>
@@ -510,6 +570,7 @@
             <button class="active" data-view="timer" role="tab" aria-selected="true" aria-controls="timer-view" id="tab-timer" tabindex="0" title="Start a pomodoro timer or log completed work sessions">Timer</button>
             <button data-view="reports" role="tab" aria-selected="false" aria-controls="reports-view" id="tab-reports" tabindex="-1" title="View charts and statistics of your completed pomodoros">Reports</button>
             <button data-view="history" role="tab" aria-selected="false" aria-controls="history-view" id="tab-history" tabindex="-1" title="Browse and edit your pomodoro history">History</button>
+            <button data-view="todos" role="tab" aria-selected="false" aria-controls="todos-view" id="tab-todos" tabindex="-1" title="Manage your to-do lists and tasks">To-do</button>
             <button data-view="settings" role="tab" aria-selected="false" aria-controls="settings-view" id="tab-settings" tabindex="-1" title="Configure timer presets, breaks, and display options">Settings</button>
         </nav>
 
@@ -677,6 +738,84 @@
             </div>
         </div>
 
+        <!-- Todos View -->
+        <div id="todos-view" class="view" role="tabpanel" aria-labelledby="tab-todos">
+            <div class="todo-header">
+                <h2>To-do</h2>
+                <button class="secondary" onclick="showListManager()" style="padding: 0.5rem 1rem; font-size: 0.875rem;" title="Create, rename, or delete lists">Manage Lists</button>
+            </div>
+            <div class="todo-lists-bar" id="todo-lists-bar"></div>
+            <div class="todo-add-form" id="todo-add-form">
+                <input type="text" id="todo-add-title" placeholder="Add a new to-do..." style="font-size: 0.875rem;">
+                <select id="todo-add-priority" style="font-size: 0.875rem;">
+                    <option value="none">Priority</option>
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                </select>
+                <input type="date" id="todo-add-due" style="font-size: 0.875rem;">
+                <button class="primary" onclick="addTodo()" style="padding: 0.5rem 1rem; font-size: 0.875rem;">Add</button>
+            </div>
+            <div id="todo-list-container"></div>
+            <div class="todo-completed-header" id="todo-completed-toggle" onclick="toggleCompletedTodos()" style="display:none;">
+                <span id="todo-completed-arrow">&#9654;</span>
+                <span>Completed (<span id="todo-completed-count">0</span>)</span>
+            </div>
+            <div id="todo-completed-container" style="display:none;"></div>
+        </div>
+
+        <!-- Todo Edit Modal -->
+        <div class="modal-overlay" id="todo-edit-modal">
+            <div class="modal">
+                <h2>Edit To-do</h2>
+                <input type="hidden" id="todo-edit-id">
+                <div class="form-group">
+                    <label for="todo-edit-title">Title</label>
+                    <input type="text" id="todo-edit-title">
+                </div>
+                <div class="form-group">
+                    <label for="todo-edit-notes">Notes</label>
+                    <textarea id="todo-edit-notes" rows="3" style="resize: vertical;"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="todo-edit-priority">Priority</label>
+                    <select id="todo-edit-priority">
+                        <option value="none">None</option>
+                        <option value="high">High</option>
+                        <option value="medium">Medium</option>
+                        <option value="low">Low</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="todo-edit-due">Due Date</label>
+                    <input type="date" id="todo-edit-due">
+                </div>
+                <div class="form-group">
+                    <label for="todo-edit-list">List</label>
+                    <select id="todo-edit-list"></select>
+                </div>
+                <div class="modal-actions">
+                    <button class="secondary" onclick="closeTodoEditModal()">Cancel</button>
+                    <button class="primary" onclick="saveTodoEdit()">Save</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- List Manager Modal -->
+        <div class="modal-overlay" id="list-manager-modal">
+            <div class="modal">
+                <h2>Manage Lists</h2>
+                <div id="list-manager-items"></div>
+                <div style="display:flex; gap:0.5rem; margin-top:1rem;">
+                    <input type="text" id="list-add-name" placeholder="New list name..." style="font-size: 0.875rem;">
+                    <button class="primary" onclick="addTodoList()" style="padding: 0.5rem 1rem; font-size: 0.875rem;">Add</button>
+                </div>
+                <div class="modal-actions">
+                    <button class="secondary" onclick="closeListManager()">Done</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Settings View -->
         <div id="settings-view" class="view" role="tabpanel" aria-labelledby="tab-settings">
             <h2>Settings</h2>
@@ -711,10 +850,7 @@
                     <p id="cloud-sync-status-text" style="color: var(--success); font-size: 0.875rem; margin-bottom: 1rem;">
                         ✓ Data synced to Google Drive
                     </p>
-                    <div style="margin-bottom: 1rem;">
-                        <span style="font-size: 0.875rem; color: var(--text-secondary);">Pomodoros stored: </span>
-                        <span id="google-pomodoro-count" style="font-weight: 500; color: var(--accent);">0</span>
-                    </div>
+                    <div id="cloud-data-counts" style="margin-bottom: 1rem;"></div>
                     <div id="location-field-section">
                         <label id="location-field-label" for="storage-location-id" style="font-size: 0.875rem; color: var(--text-secondary); display: block; margin-bottom: 0.25rem;">Storage Location:</label>
                         <div style="display: inline-grid; grid-template-columns: 1fr auto; gap: 0.5rem; margin-bottom: 1rem;">
@@ -733,18 +869,12 @@
                 </div>
             </div>
             <div class="card" id="local-data-card" style="display: none;">
-                <h3>Local Data</h3>
+                <h3>Local Data: Browser</h3>
                 <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1rem;">
                     Your data is stored locally on this device. Sign in with Google to sync across devices.
                 </p>
-                <div style="margin-bottom: 1rem;">
-                    <span style="font-size: 0.875rem; color: var(--text-secondary);">Pomodoros stored: </span>
-                    <span id="local-pomodoro-count" style="font-weight: 500; color: var(--accent);">0</span>
-                </div>
-                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                    <button class="secondary" onclick="downloadLocalData()">Download CSV</button>
-                    <button class="secondary" onclick="document.getElementById('csv-upload-input').click()">Upload CSV</button>
-                    <input type="file" id="csv-upload-input" accept=".csv" style="display: none;" onchange="uploadCSV(this)">
+                <div id="local-data-rows"></div>
+                <div style="margin-top: 0.75rem;">
                     <button class="secondary" onclick="confirmClearLocalData()" style="color: #ef4444;">Clear All Data</button>
                 </div>
                 <p id="local-data-status" style="font-size: 0.875rem; margin-top: 0.5rem; display: none;"></p>
@@ -2045,6 +2175,7 @@
                 if (btn.dataset.view === 'timer') loadWeeklyOverview();
                 if (btn.dataset.view === 'history') loadHistory();
                 if (btn.dataset.view === 'reports') loadReport();
+                if (btn.dataset.view === 'todos') loadTodos();
             });
         });
 
@@ -2052,7 +2183,7 @@
         function switchToViewFromURL() {
             const params = new URLSearchParams(window.location.search);
             const view = params.get('view');
-            if (view && ['timer', 'reports', 'history', 'settings'].includes(view)) {
+            if (view && ['timer', 'reports', 'history', 'todos', 'settings'].includes(view)) {
                 document.querySelectorAll('nav button').forEach(b => {
                     b.classList.remove('active');
                     b.setAttribute('aria-selected', 'false');
@@ -2398,11 +2529,14 @@
         async function savePomodoro() {
             const name = document.getElementById('timer-pomo-name').value.trim();
 
+            const typeValue = document.getElementById('timer-pomo-type').value;
+            const { type: resolvedType, linked_todo_id } = parseTypeValue(typeValue);
             await Storage.createPomodoro({
                 name,
-                type: document.getElementById('timer-pomo-type').value,
+                type: resolvedType,
                 duration_minutes: Math.round(totalSeconds / 60),
-                notes: document.getElementById('timer-pomo-notes').value.trim() || null
+                notes: document.getElementById('timer-pomo-notes').value.trim() || null,
+                linked_todo_id
             });
 
             // Keep fields visible during break (stored in lastPomodoro for auto-start)
@@ -2705,6 +2839,15 @@
                     return;
                 }
 
+                // Build todo title map for linked pomodoros
+                const historyTodoMap = {};
+                const allTodos = await Storage.getTodos();
+                const allLists = await Storage.getTodoLists();
+                for (const t of allTodos) {
+                    const listName = allLists.find(l => l.id === t.list_id)?.name;
+                    historyTodoMap[t.id] = listName ? `${listName} > ${t.title}` : t.title;
+                }
+
                 // Group by date (using configured timezone)
                 const grouped = {};
                 pomodoros.forEach(p => {
@@ -2722,12 +2865,14 @@
                         const color = TYPE_COLORS[p.type] || '#6b7280';
                         const time = new Date(p.start_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: tz });
                         const safeId = escapeHtml(p.id);
+                        const linkedInfo = p.linked_todo_id && historyTodoMap[p.linked_todo_id]
+                            ? ` &middot; <span style="color:var(--success);">${escapeHtml(historyTodoMap[p.linked_todo_id])}</span>` : '';
                         html += `
                             <div class="pomodoro-item" data-id="${safeId}">
                                 <div>
                                     <span class="pomodoro-name">${escapeHtml(p.name)}</span>
                                     <span class="pomodoro-type" style="background:${color}20;color:${color}">${escapeHtml(p.type)}</span>
-                                    <div class="pomodoro-meta">${time} - ${p.duration_minutes} min</div>
+                                    <div class="pomodoro-meta">${time} - ${p.duration_minutes} min${linkedInfo}</div>
                                 </div>
                                 <div class="pomodoro-actions">
                                     <button class="delete-btn" title="Delete">&#10005;</button>
@@ -3033,13 +3178,15 @@
                 }
 
                 // Create all pomodoros
+                const { type: resolvedType, linked_todo_id } = parseTypeValue(type);
                 for (const slot of slots) {
                     await Storage.createManualPomodoro({
                         name,
-                        type,
+                        type: resolvedType,
                         start_time: slot.start.toISOString(),
                         end_time: slot.end.toISOString(),
-                        duration_minutes: duration
+                        duration_minutes: duration,
+                        linked_todo_id
                     });
                 }
 
@@ -3581,6 +3728,7 @@
                 }).join('');
 
                 updateSyncCardVisibility(data.active_storage);
+                updateExtensionTabs(data.plugins);
             } catch (e) {
                 loading.textContent = 'Could not load plugins';
             }
@@ -3609,8 +3757,23 @@
                 updateSyncCardVisibility(data.active_storage);
                 updateAuthUI();
                 loadPlugins();
+                fetch('/api/plugins').then(r => r.json()).then(d => updateExtensionTabs(d.plugins));
             } catch (e) {
                 checkbox.checked = !enable;
+            }
+        }
+
+        function updateExtensionTabs(plugins) {
+            const todosTab = document.getElementById('tab-todos');
+            const todosPlugin = plugins && plugins.find(p => p.id === 'todos' && p.plugin_type === 'extension');
+            if (todosTab) {
+                todosTab.style.display = (todosPlugin && todosPlugin.active) ? '' : 'none';
+                if (todosPlugin && !todosPlugin.active) {
+                    const todosView = document.getElementById('todos-view');
+                    if (todosView && todosView.classList.contains('active')) {
+                        document.getElementById('tab-timer').click();
+                    }
+                }
             }
         }
 
@@ -3817,20 +3980,86 @@
         }
 
         // Type management functions
-        function populateTypeDropdowns() {
+        // Cached plugin list data for the cascading type dropdown
+        let _typeDropdownTodoLists = [];
+        let _typeDropdownTodos = [];
+        let _typeDropdownTodosActive = false;
+
+        async function populateTypeDropdowns() {
             const types = settings.pomodoro_types || [];
-            // Ensure all types are strings
             const stringTypes = types.map(t => String(t)).filter(t => t && t.trim());
+
+            // Fetch todo lists for the cascading dropdown
+            _typeDropdownTodoLists = [];
+            _typeDropdownTodos = [];
+            _typeDropdownTodosActive = false;
+            try {
+                const pluginRes = await fetch('/api/plugins');
+                const pluginData = pluginRes.ok ? await pluginRes.json() : { plugins: [] };
+                const todosPlugin = pluginData.plugins.find(p => p.id === 'todos' && p.active);
+                if (todosPlugin) {
+                    _typeDropdownTodosActive = true;
+                    _typeDropdownTodoLists = await Storage.getTodoLists();
+                    _typeDropdownTodos = (await Storage.getTodos()).filter(t => t.status === 'pending');
+                }
+            } catch (e) { /* offline */ }
+
             const selects = ['pomo-type', 'add-type', 'timer-pomo-type', 'edit-type'];
             selects.forEach(id => {
                 const select = document.getElementById(id);
                 if (!select) return;
-                const currentValue = select.value;
-                select.innerHTML = stringTypes.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
-                if (currentValue && stringTypes.includes(currentValue)) {
-                    select.value = currentValue;
+                renderTypeDropdownTopLevel(select, stringTypes);
+                if (!select.dataset.cascadeAttached) {
+                    select.addEventListener('change', () => onTypeDropdownChange(select, stringTypes));
+                    select.addEventListener('mousedown', () => onTypeDropdownFocus(select, stringTypes));
+                    select.dataset.cascadeAttached = 'true';
                 }
             });
+        }
+
+        function renderTypeDropdownTopLevel(select, stringTypes, preserveValue) {
+            const currentValue = preserveValue || select.value;
+            let html = stringTypes.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
+
+            if (_typeDropdownTodosActive && _typeDropdownTodoLists.length > 0) {
+                html += '<option disabled>──────────</option>';
+                for (const list of _typeDropdownTodoLists) {
+                    const count = _typeDropdownTodos.filter(t => t.list_id === list.id).length;
+                    if (count === 0) continue;
+                    html += `<option value="list:${list.id}">📋 ${escapeHtml(list.name)} (${count})</option>`;
+                }
+            }
+
+            select.innerHTML = html;
+            if (currentValue && !currentValue.startsWith('todo:') && !currentValue.startsWith('list:')) {
+                const hasOption = Array.from(select.options).some(o => o.value === currentValue);
+                if (hasOption) select.value = currentValue;
+            }
+        }
+
+        function onTypeDropdownChange(select, stringTypes) {
+            const value = select.value;
+            if (value && value.startsWith('list:')) {
+                const listId = value.slice(5);
+                const listTodos = _typeDropdownTodos.filter(t => t.list_id === listId);
+                const list = _typeDropdownTodoLists.find(l => l.id === listId);
+                const label = list ? list.name : 'To-do';
+                let html = `<option value="" disabled selected>Select from ${escapeHtml(label)}...</option>`;
+                for (const t of listTodos) {
+                    html += `<option value="todo:${t.id}">${escapeHtml(t.title)}</option>`;
+                }
+                select.innerHTML = html;
+                // Auto-reopen so the user doesn't need a second click
+                requestAnimationFrame(() => {
+                    try { select.showPicker(); } catch (e) { /* fallback: user clicks again */ }
+                });
+            }
+        }
+
+        function onTypeDropdownFocus(select, stringTypes) {
+            if (select.value && select.value.startsWith('todo:')) {
+                renderTypeDropdownTopLevel(select, stringTypes);
+            }
         }
 
         function renderTypesList() {
@@ -4089,33 +4318,85 @@
 
         // Update local pomodoro count display
         async function updateLocalPomodoroCount() {
-            const countEl = document.getElementById('local-pomodoro-count');
-            if (countEl) {
-                const count = await Storage.getLocalPomodoroCount();
-                countEl.textContent = count;
-            }
+            const container = document.getElementById('local-data-rows');
+            if (!container) return;
+
+            const pomoCount = await Storage.getLocalPomodoroCount();
+            const todos = await Storage.getTodos();
+
+            let html = `<div style="display: flex; align-items: center; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid var(--bg-tertiary);">
+                <div><span style="font-size: 0.875rem; color: var(--text-secondary);">Pomodoros: </span><span style="font-weight: 500; color: var(--accent);">${pomoCount}</span></div>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button class="secondary" onclick="downloadLocalData()" style="padding: 0.25rem 0.75rem; font-size: 0.75rem;">Export CSV</button>
+                    <button class="secondary" onclick="document.getElementById('csv-upload-input').click()" style="padding: 0.25rem 0.75rem; font-size: 0.75rem;">Import CSV</button>
+                    <input type="file" id="csv-upload-input" accept=".csv" style="display: none;" onchange="uploadCSV(this)">
+                </div>
+            </div>`;
+
+            // Todos row (if plugin active)
+            try {
+                const pluginRes = await fetch('/api/plugins');
+                const pluginData = pluginRes.ok ? await pluginRes.json() : { plugins: [] };
+                const todosActive = pluginData.plugins.find(p => p.id === 'todos' && p.active);
+                if (todosActive) {
+                    html += `<div style="display: flex; align-items: center; justify-content: space-between; padding: 0.5rem 0;">
+                        <div><span style="font-size: 0.875rem; color: var(--text-secondary);">Todos: </span><span style="font-weight: 500; color: var(--accent);">${todos.length}</span></div>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button class="secondary" onclick="exportTodoCSV()" style="padding: 0.25rem 0.75rem; font-size: 0.75rem;">Export CSV</button>
+                            <button class="secondary" onclick="document.getElementById('todo-csv-upload').click()" style="padding: 0.25rem 0.75rem; font-size: 0.75rem;">Import CSV</button>
+                            <input type="file" id="todo-csv-upload" accept=".csv" style="display: none;" onchange="importTodoCSV(this)">
+                        </div>
+                    </div>`;
+                }
+            } catch (e) { /* offline */ }
+
+            container.innerHTML = html;
         }
 
-        // Update Google Sheets pomodoro count display
-        // Uses efficient count endpoint that only fetches IDs, not all data
         async function updateGooglePomodoroCount() {
-            const countEl = document.getElementById('google-pomodoro-count');
-            if (countEl && authStatus.logged_in) {
-                // Use locally-known count from init sync if available (avoids stale Drive reads)
-                if (authStatus.synced_count != null) {
-                    countEl.textContent = authStatus.synced_count;
-                    return;
-                }
+            const container = document.getElementById('cloud-data-counts');
+            if (!container || !authStatus.logged_in) return;
+
+            let pomoCount = 0;
+            if (authStatus.synced_count != null) {
+                pomoCount = authStatus.synced_count;
+            } else {
                 try {
                     const res = await Storage.authenticatedFetch('/api/sheets/pomodoros/count');
                     if (res.ok) {
                         const data = await res.json();
-                        countEl.textContent = data.count || 0;
+                        pomoCount = data.count || 0;
                     }
-                } catch (e) {
-                    console.error('Error fetching Google pomodoro count:', e);
-                }
+                } catch (e) { /* offline */ }
             }
+
+            let html = `<div style="display: flex; align-items: center; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid var(--bg-tertiary);">
+                <div><span style="font-size: 0.875rem; color: var(--text-secondary);">Pomodoros: </span><span style="font-weight: 500; color: var(--accent);">${pomoCount}</span></div>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button class="secondary" onclick="downloadLocalData()" style="padding: 0.25rem 0.75rem; font-size: 0.75rem;">Export CSV</button>
+                    <button class="secondary" onclick="document.getElementById('cloud-csv-upload-pomo').click()" style="padding: 0.25rem 0.75rem; font-size: 0.75rem;">Import CSV</button>
+                    <input type="file" id="cloud-csv-upload-pomo" accept=".csv" style="display: none;" onchange="uploadCSV(this)">
+                </div>
+            </div>`;
+
+            try {
+                const pluginRes = await fetch('/api/plugins');
+                const pluginData = pluginRes.ok ? await pluginRes.json() : { plugins: [] };
+                const todosActive = pluginData.plugins.find(p => p.id === 'todos' && p.active);
+                if (todosActive) {
+                    const todos = await Storage.getTodos();
+                    html += `<div style="display: flex; align-items: center; justify-content: space-between; padding: 0.5rem 0;">
+                        <div><span style="font-size: 0.875rem; color: var(--text-secondary);">Todos: </span><span style="font-weight: 500; color: var(--accent);">${todos.length}</span></div>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button class="secondary" onclick="exportTodoCSV()" style="padding: 0.25rem 0.75rem; font-size: 0.75rem;">Export CSV</button>
+                            <button class="secondary" onclick="document.getElementById('cloud-csv-upload-todo').click()" style="padding: 0.25rem 0.75rem; font-size: 0.75rem;">Import CSV</button>
+                            <input type="file" id="cloud-csv-upload-todo" accept=".csv" style="display: none;" onchange="importTodoCSV(this)">
+                        </div>
+                    </div>`;
+                }
+            } catch (e) { /* offline */ }
+
+            container.innerHTML = html;
         }
 
         // Show local data migration modal
@@ -4519,7 +4800,8 @@
             const pluginName = activePluginInfo ? activePluginInfo.name : 'Google Sheets';
 
             // Update card title and sync status text
-            document.getElementById('cloud-sync-title').textContent = pluginName + ' Sync (Optional)';
+            const remoteLabel = isSheets ? 'Remote Data: Sheets' : isJsonDrive ? 'Remote Data: JSON-Google Drive' : 'Remote Data: ' + pluginName;
+            document.getElementById('cloud-sync-title').textContent = remoteLabel;
             document.getElementById('cloud-sync-status-text').textContent = '✓ Data synced to ' + pluginName;
 
             // Show spreadsheet ID input on login only for Sheets plugin
@@ -5018,10 +5300,356 @@
             }
         })();
 
+        // ── Todos ──────────────────────────────────────────────────
+
+        let todoSelectedListId = 'all';
+        let todoCompletedVisible = false;
+
+        function escTodo(s) { return escapeHtml(s); }
+
+        async function loadTodos() {
+            const lists = await Storage.getTodoLists();
+            const todos = await Storage.getTodos();
+
+            // Ensure at least one list exists
+            if (lists.length === 0) {
+                await Storage.createTodoList({ name: 'General' });
+                return loadTodos();
+            }
+
+            // Render list bar
+            const bar = document.getElementById('todo-lists-bar');
+            bar.innerHTML = `<button class="${todoSelectedListId === 'all' ? 'active' : ''}" onclick="selectTodoList('all')">All</button>` +
+                lists.map(l => `<button class="${todoSelectedListId === l.id ? 'active' : ''}" onclick="selectTodoList('${l.id}')">${escTodo(l.name)}</button>`).join('');
+
+            // Filter by selected list
+            const filtered = todoSelectedListId === 'all' ? todos : todos.filter(t => t.list_id === todoSelectedListId);
+            const pending = filtered.filter(t => t.status === 'pending');
+            const completed = filtered.filter(t => t.status === 'completed');
+
+            // Build time map once (single IndexedDB read of all pomodoros)
+            const pomodoroMap = await buildPomodoroTimeMap();
+
+            // Render pending todos
+            const container = document.getElementById('todo-list-container');
+            if (pending.length === 0 && completed.length === 0) {
+                container.innerHTML = '<div class="empty">No to-dos yet. Add one above.</div>';
+            } else {
+                container.innerHTML = pending.map(t => renderTodoItem(t, lists, pomodoroMap)).join('');
+            }
+
+            // Completed section
+            const toggle = document.getElementById('todo-completed-toggle');
+            const compContainer = document.getElementById('todo-completed-container');
+            if (completed.length > 0) {
+                toggle.style.display = 'flex';
+                document.getElementById('todo-completed-count').textContent = completed.length;
+                document.getElementById('todo-completed-arrow').innerHTML = todoCompletedVisible ? '&#9660;' : '&#9654;';
+                if (todoCompletedVisible) {
+                    compContainer.style.display = 'block';
+                    compContainer.innerHTML = completed.map(t => renderTodoItem(t, lists, pomodoroMap)).join('');
+                } else {
+                    compContainer.style.display = 'none';
+                }
+            } else {
+                toggle.style.display = 'none';
+                compContainer.style.display = 'none';
+            }
+
+            // Populate edit modal list dropdown
+            const editListSelect = document.getElementById('todo-edit-list');
+            editListSelect.innerHTML = lists.map(l => `<option value="${l.id}">${escTodo(l.name)}</option>`).join('');
+
+            // Refresh type dropdowns so todo items are current
+            await populateTypeDropdowns();
+        }
+
+        async function buildPomodoroTimeMap() {
+            return Storage.buildTodoTimeMap();
+        }
+
+        function renderTodoItem(todo, lists, pomodoroMap) {
+            const isCompleted = todo.status === 'completed';
+            const listName = lists.find(l => l.id === todo.list_id)?.name || '';
+            const today = new Date().toISOString().slice(0, 10);
+            const isOverdue = todo.due_date && todo.due_date < today && !isCompleted;
+            const timeMinutes = pomodoroMap[todo.id] || 0;
+
+            let metaParts = [];
+            if (todo.priority && todo.priority !== 'none') {
+                metaParts.push(`<span class="todo-priority ${todo.priority}">${todo.priority}</span>`);
+            }
+            if (todo.due_date) {
+                metaParts.push(`<span class="todo-due ${isOverdue ? 'overdue' : ''}">${isOverdue ? 'Overdue: ' : 'Due: '}${todo.due_date}</span>`);
+            }
+            if (timeMinutes > 0) {
+                const hrs = Math.floor(timeMinutes / 60);
+                const mins = timeMinutes % 60;
+                metaParts.push(`<span class="todo-time">${hrs > 0 ? hrs + 'h ' : ''}${mins}m tracked</span>`);
+            }
+            if (listName && todoSelectedListId === 'all') {
+                metaParts.push(`<span>${escTodo(listName)}</span>`);
+            }
+
+            return `<div class="todo-item ${isCompleted ? 'completed' : ''}" onclick="editTodo('${todo.id}')">
+                <button class="todo-checkbox ${isCompleted ? 'checked' : ''}" onclick="event.stopPropagation(); toggleTodo('${todo.id}')" aria-label="${isCompleted ? 'Mark incomplete' : 'Mark complete'}"></button>
+                <div class="todo-content">
+                    <div class="todo-title">${escTodo(todo.title)}</div>
+                    ${todo.notes ? `<div class="todo-notes-preview">${escTodo(todo.notes)}</div>` : ''}
+                    ${metaParts.length ? `<div class="todo-meta">${metaParts.join('')}</div>` : ''}
+                </div>
+                <div class="todo-actions">
+                    <button onclick="event.stopPropagation(); deleteTodoConfirm('${todo.id}')" title="Delete">&times;</button>
+                </div>
+            </div>`;
+        }
+
+        function selectTodoList(listId) {
+            todoSelectedListId = listId;
+            loadTodos();
+        }
+
+        async function addTodo() {
+            const titleInput = document.getElementById('todo-add-title');
+            const title = titleInput.value.trim();
+            if (!title) return;
+            const priority = document.getElementById('todo-add-priority').value;
+            const due = document.getElementById('todo-add-due').value || null;
+            const listId = todoSelectedListId === 'all' ? (await Storage.getTodoLists())[0]?.id : todoSelectedListId;
+            await Storage.createTodo({ title, priority, due_date: due, list_id: listId });
+            titleInput.value = '';
+            document.getElementById('todo-add-priority').value = 'none';
+            document.getElementById('todo-add-due').value = '';
+            loadTodos();
+        }
+
+        document.getElementById('todo-add-title').addEventListener('keydown', e => {
+            if (e.key === 'Enter') { e.preventDefault(); addTodo(); }
+        });
+
+        async function toggleTodo(id) {
+            const todos = await Storage.getTodos();
+            const todo = todos.find(t => t.id === id);
+            if (!todo) return;
+            if (todo.status === 'pending') {
+                await Storage.completeTodo(id);
+            } else {
+                await Storage.uncompleteTodo(id);
+            }
+            loadTodos();
+        }
+
+        async function editTodo(id) {
+            const todos = await Storage.getTodos();
+            const todo = todos.find(t => t.id === id);
+            if (!todo) return;
+            document.getElementById('todo-edit-id').value = id;
+            document.getElementById('todo-edit-title').value = todo.title;
+            document.getElementById('todo-edit-notes').value = todo.notes || '';
+            document.getElementById('todo-edit-priority').value = todo.priority || 'none';
+            document.getElementById('todo-edit-due').value = todo.due_date || '';
+            document.getElementById('todo-edit-list').value = todo.list_id || '';
+            document.getElementById('todo-edit-modal').classList.add('active');
+        }
+
+        function closeTodoEditModal() {
+            document.getElementById('todo-edit-modal').classList.remove('active');
+        }
+
+        async function saveTodoEdit() {
+            const id = document.getElementById('todo-edit-id').value;
+            await Storage.updateTodo(id, {
+                title: document.getElementById('todo-edit-title').value.trim(),
+                notes: document.getElementById('todo-edit-notes').value.trim(),
+                priority: document.getElementById('todo-edit-priority').value,
+                due_date: document.getElementById('todo-edit-due').value || null,
+                list_id: document.getElementById('todo-edit-list').value || null
+            });
+            closeTodoEditModal();
+            loadTodos();
+        }
+
+        async function deleteTodoConfirm(id) {
+            if (confirm('Delete this to-do?')) {
+                await Storage.deleteTodo(id);
+                loadTodos();
+            }
+        }
+
+        function toggleCompletedTodos() {
+            todoCompletedVisible = !todoCompletedVisible;
+            loadTodos();
+        }
+
+        // ── List Manager ──────────────────────────────────────────
+
+        async function showListManager() {
+            const lists = await Storage.getTodoLists();
+            const container = document.getElementById('list-manager-items');
+            container.innerHTML = lists.map(l => `
+                <div class="type-item" style="margin-bottom: 0.5rem;">
+                    <span>${escTodo(l.name)}</span>
+                    <div>
+                        <button onclick="renameList('${l.id}', '${escTodo(l.name)}')" title="Rename">&#9998;</button>
+                        <button onclick="deleteList('${l.id}')" title="Delete">&times;</button>
+                    </div>
+                </div>
+            `).join('');
+            document.getElementById('list-manager-modal').classList.add('active');
+        }
+
+        function closeListManager() {
+            document.getElementById('list-manager-modal').classList.remove('active');
+            loadTodos();
+        }
+
+        async function addTodoList() {
+            const input = document.getElementById('list-add-name');
+            const name = input.value.trim();
+            if (!name) return;
+            await Storage.createTodoList({ name });
+            input.value = '';
+            showListManager();
+        }
+
+        async function renameList(id, currentName) {
+            const newName = prompt('Rename list:', currentName);
+            if (newName && newName.trim()) {
+                await Storage.updateTodoList(id, { name: newName.trim() });
+                showListManager();
+            }
+        }
+
+        async function deleteList(id) {
+            const todos = await Storage.getTodos();
+            const count = todos.filter(t => t.list_id === id).length;
+            const msg = count > 0
+                ? `This list has ${count} to-do(s). They will become uncategorized. Delete?`
+                : 'Delete this list?';
+            if (confirm(msg)) {
+                await Storage.deleteTodoList(id);
+                if (todoSelectedListId === id) todoSelectedListId = 'all';
+                showListManager();
+            }
+        }
+
+        // ── Todo CSV Import/Export ─────────────────────────────────
+
+        async function exportTodoCSV() {
+            const todos = await Storage.getTodos();
+            const lists = await Storage.getTodoLists();
+            const listMap = {};
+            lists.forEach(l => { listMap[l.id] = l.name; });
+
+            const lines = ['title,list,priority,due_date,status,notes,created_at,completed_at'];
+            todos.forEach(t => {
+                const title = (t.title || '').replace(/"/g, '""');
+                const notes = (t.notes || '').replace(/"/g, '""');
+                const list = (listMap[t.list_id] || '').replace(/"/g, '""');
+                lines.push(`"${title}","${list}","${t.priority || 'none'}","${t.due_date || ''}","${t.status}","${notes}","${t.created_at || ''}","${t.completed_at || ''}"`);
+            });
+
+            const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'acquacotta_todos.csv';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        async function importTodoCSV(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            try {
+                const text = await file.text();
+                const lines = text.trim().split('\n');
+                if (lines.length < 2) { alert('CSV file is empty'); return; }
+
+                function parseCSVLine(line) {
+                    const result = [];
+                    let current = '';
+                    let inQuotes = false;
+                    for (let i = 0; i < line.length; i++) {
+                        const char = line[i];
+                        if (char === '"') {
+                            if (inQuotes && line[i + 1] === '"') { current += '"'; i++; }
+                            else { inQuotes = !inQuotes; }
+                        } else if (char === ',' && !inQuotes) {
+                            result.push(current); current = '';
+                        } else { current += char; }
+                    }
+                    result.push(current);
+                    return result;
+                }
+
+                // Build list map — create lists that don't exist
+                const existingLists = await Storage.getTodoLists();
+                const listMap = {};
+                existingLists.forEach(l => { listMap[l.name] = l.id; });
+
+                let imported = 0;
+                for (let i = 1; i < lines.length; i++) {
+                    if (!lines[i].trim()) continue;
+                    const fields = parseCSVLine(lines[i]);
+                    const [title, listName, priority, due_date, status, notes] = fields;
+                    if (!title) continue;
+
+                    // Create list if needed
+                    let listId = listMap[listName];
+                    if (listName && !listId) {
+                        const newList = await Storage.createTodoList({ name: listName });
+                        listId = newList.id;
+                        listMap[listName] = listId;
+                    }
+
+                    const todo = await Storage.createTodo({
+                        title,
+                        list_id: listId || null,
+                        priority: priority || 'none',
+                        due_date: due_date || null,
+                        notes: notes || ''
+                    });
+
+                    if (status === 'completed') {
+                        await Storage.completeTodo(todo.id);
+                    }
+                    imported++;
+                }
+
+                alert(`Imported ${imported} todos`);
+                input.value = '';
+                loadTodos();
+                updateLocalPomodoroCount();
+            } catch (e) {
+                alert('Import failed: ' + e.message);
+                input.value = '';
+            }
+        }
+
+        // ── Plugin-Aware Type Parsing ──────────────────────────────
+
+        function parseTypeValue(value) {
+            if (value && value.startsWith('todo:')) {
+                return { type: 'To-do', linked_todo_id: value.slice(5) };
+            }
+            // Future: ticket:uuid, checklist:uuid, etc.
+            return { type: value, linked_todo_id: null };
+        }
+
         (async () => {
             await checkAuthStatus();
             await loadWeeklyOverview();
             await loadHistory();
+
+            // Load todos from cloud if logged in, then render
+            if (authStatus.logged_in) {
+                await Storage.loadTodosFromCloud();
+            }
+            await loadTodos();
         })();
     </script>
 </body>
