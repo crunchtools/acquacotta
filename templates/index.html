@@ -3788,6 +3788,10 @@
                     return;
                 }
                 const data = await resp.json();
+
+                // Persist plugin state to IndexedDB so it survives container restarts
+                await Storage.saveSetting(`plugin_state_${pluginId}`, enable);
+
                 // Refresh plugin info and auth UI to reflect the new active plugin
                 activePluginInfo = await fetch('/api/plugins').then(r => r.json()).then(d =>
                     d.plugins.find(p => p.active && p.plugin_type === 'storage') || null
@@ -5781,6 +5785,26 @@
                 checkAuthStatus(),
                 loadWeeklyOverview()
             ]);
+
+            // Phase 2b: Restore saved plugin states from IndexedDB.
+            // Server-side plugin registry resets on restart; this re-applies user's choices.
+            try {
+                const pluginRes = await fetch('/api/plugins');
+                const pluginData = await pluginRes.json();
+                for (const plugin of pluginData.plugins) {
+                    const savedState = settings[`plugin_state_${plugin.id}`];
+                    if (savedState !== undefined && savedState !== plugin.active) {
+                        await fetch('/api/plugins/toggle', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ plugin_id: plugin.id, plugin_type: plugin.plugin_type, enable: savedState })
+                        });
+                    }
+                }
+                // Refresh extension tab visibility after restoring states
+                const refreshedData = await fetch('/api/plugins').then(r => r.json());
+                updateExtensionTabs(refreshedData.plugins);
+            } catch (e) { /* offline — use server defaults */ }
 
             // Phase 3: Sync cloud data then render todos once with fresh state.
             if (authStatus.logged_in) {

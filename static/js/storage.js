@@ -1203,6 +1203,14 @@
             return { status: 'ok' };
         },
 
+        saveSetting: async function(key, value) {
+            await putInStore(STORES.SETTINGS, { key, value, synced: false });
+            if (authStatus && authStatus.logged_in) {
+                await addToSyncQueue('update', 'settings', 'all', { [key]: value });
+                this.syncToSheets();
+            }
+        },
+
         /**
          * Get report for a period
          * @param {string} period - 'day', 'week', or 'month'
