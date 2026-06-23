@@ -1010,6 +1010,39 @@
         },
 
         /**
+         * Fetch a page of pomodoros using cursor-based pagination on the start_time index.
+         * Returns newest first. Use beforeTimestamp to fetch the next page.
+         * @param {number} limit - Number of records to fetch
+         * @param {string} [beforeTimestamp] - ISO timestamp to start before (exclusive)
+         * @returns {Promise<{pomodoros: Array, hasMore: boolean}>}
+         */
+        getPomodorosPage: function(limit, beforeTimestamp) {
+            return new Promise((resolve, reject) => {
+                if (!db) { reject(new Error('Database not initialized')); return; }
+                const tx = db.transaction(STORES.POMODOROS, 'readonly');
+                const store = tx.objectStore(STORES.POMODOROS);
+                const index = store.index('start_time');
+
+                const range = beforeTimestamp
+                    ? IDBKeyRange.upperBound(beforeTimestamp, true)
+                    : null;
+                const request = index.openCursor(range, 'prev');
+                const results = [];
+
+                request.onsuccess = (event) => {
+                    const cursor = event.target.result;
+                    if (cursor && results.length < limit) {
+                        results.push(cursor.value);
+                        cursor.continue();
+                    } else {
+                        resolve({ pomodoros: results, hasMore: !!cursor });
+                    }
+                };
+                request.onerror = () => reject(request.error);
+            });
+        },
+
+        /**
          * Create a new pomodoro (timer completion)
          * @param {object} data - Pomodoro data (name, type, duration_minutes, notes)
          * @returns {Promise<object>}
