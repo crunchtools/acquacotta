@@ -1052,7 +1052,7 @@
                 </div>
                 <button class="secondary" onclick="sortTypesAlphabetically()" style="width: 100%;">Sort A-Z</button>
             </div>
-            <div class="card" id="todo-settings-card" style="display: none;">
+            <div class="card" id="todos-settings-card" style="display: none;">
                 <h3>To-do</h3>
                 <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
                     <button class="secondary" onclick="showListManager()" style="padding: 0.5rem 1rem; font-size: 0.875rem;" title="Create, rename, or delete lists">Manage Lists</button>
@@ -3279,7 +3279,17 @@
             // Populate the edit form
             document.getElementById('edit-id').value = pomo.id;
             document.getElementById('edit-name').value = pomo.name;
-            document.getElementById('edit-type').value = pomo.type;
+            const editTypeSelect = document.getElementById('edit-type');
+            // If the pomodoro's type (e.g. "To-do" from a linked todo) isn't in the dropdown, add it
+            if (!Array.from(editTypeSelect.options).some(o => o.value === pomo.type)) {
+                const opt = document.createElement('option');
+                opt.value = pomo.type;
+                opt.textContent = pomo.type;
+                editTypeSelect.prepend(opt);
+            }
+            editTypeSelect.value = pomo.type;
+            // Stash linked ID so save preserves it when type hasn't changed
+            editTypeSelect.dataset.linkedTodoId = pomo.linked_todo_id || '';
             document.getElementById('edit-notes').value = pomo.notes || '';
             document.getElementById('edit-duration').value = pomo.duration_minutes;
 
@@ -3313,9 +3323,15 @@
             const startTime = new Date(`${dateStr}T${time}`);
             const endTime = new Date(startTime.getTime() + duration * 60000);
 
+            const editTypeSelect = document.getElementById('edit-type');
+            const { type: resolvedType, linked_todo_id: parsedLink } = parseTypeValue(editTypeSelect.value);
+            // Preserve the original linked_todo_id if the type hasn't changed to a new todo selection
+            const linked_todo_id = parsedLink || editTypeSelect.dataset.linkedTodoId || null;
+
             await Storage.updatePomodoro(id, {
                 name,
-                type: document.getElementById('edit-type').value,
+                type: resolvedType,
+                linked_todo_id,
                 start_time: startTime.toISOString(),
                 end_time: endTime.toISOString(),
                 duration_minutes: duration,
@@ -3742,11 +3758,31 @@
                     return;
                 }
 
-                container.innerHTML = data.plugins.map(plugin => {
+                // Build cards with dynamic counts
+                const cardPromises = data.plugins.map(async plugin => {
                     const isActive = plugin.active;
                     const typeBadge = `<span style="display: inline-block; padding: 0.125rem 0.5rem; border-radius: 4px; font-size: 0.75rem; background: var(--bg-tertiary); color: var(--text-secondary);">${plugin.plugin_type}</span>`;
                     const toggleId = `plugin-toggle-${plugin.id}`;
                     const toggleChecked = isActive ? 'checked' : '';
+
+                    let countBadge = '';
+                    if (isActive && plugin.has_counts) {
+                        try {
+                            const count = plugin.id === 'todos' ? (await Storage.getTodos()).length : 0;
+                            countBadge = `<span style="display: inline-block; padding: 0.125rem 0.5rem; border-radius: 4px; font-size: 0.75rem; background: var(--accent); color: white;">${count} items</span>`;
+                        } catch (e) { /* offline */ }
+                    }
+
+                    let actions = '';
+                    if (isActive && plugin.has_import_export) {
+                        const uploadId = `plugin-csv-upload-${plugin.id}`;
+                        actions = `<div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
+                            <button class="secondary" onclick="exportPluginCSV('${plugin.id}')" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">Export CSV</button>
+                            <button class="secondary" onclick="document.getElementById('${uploadId}').click()" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">Import CSV</button>
+                            <input type="file" id="${uploadId}" accept=".csv" style="display: none;" onchange="importPluginCSV('${plugin.id}', this)">
+                        </div>`;
+                    }
+
                     return `<div class="type-item" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
                         <div style="flex: 1;">
                             <div style="font-weight: 500;">${plugin.name}</div>
@@ -3754,7 +3790,9 @@
                             <div style="display: flex; gap: 0.5rem; align-items: center; margin-top: 0.375rem;">
                                 ${typeBadge}
                                 <span style="font-size: 0.75rem; color: var(--text-secondary);">v${plugin.version}</span>
+                                ${countBadge}
                             </div>
+                            ${actions}
                         </div>
                         <label style="display: flex; align-items: center; cursor: pointer; gap: 0.5rem; margin-left: 1rem;">
                             <span style="font-size: 0.75rem; color: ${isActive ? 'var(--success)' : 'var(--text-secondary)'};">${isActive ? 'On' : 'Off'}</span>
@@ -3763,7 +3801,8 @@
                                 onchange="togglePlugin(this)" style="width: auto; cursor: pointer;">
                         </label>
                     </div>`;
-                }).join('');
+                });
+                container.innerHTML = (await Promise.all(cardPromises)).join('');
 
                 updateSyncCardVisibility(data.active_storage);
                 updateExtensionTabs(data.plugins);
@@ -3788,6 +3827,10 @@
                     return;
                 }
                 const data = await resp.json();
+
+                // Persist plugin state to IndexedDB so it survives container restarts
+                await Storage.saveSetting(`plugin_state_${pluginId}`, enable);
+
                 // Refresh plugin info and auth UI to reflect the new active plugin
                 activePluginInfo = await fetch('/api/plugins').then(r => r.json()).then(d =>
                     d.plugins.find(p => p.active && p.plugin_type === 'storage') || null
@@ -3796,27 +3839,32 @@
                 updateAuthUI();
                 loadPlugins();
                 fetch('/api/plugins').then(r => r.json()).then(d => updateExtensionTabs(d.plugins));
+                populateTypeDropdowns();
+                loadHistory();
+                loadWeeklyOverview();
             } catch (e) {
                 checkbox.checked = !enable;
             }
         }
 
         function updateExtensionTabs(plugins) {
-            const todosTab = document.getElementById('tab-todos');
-            const todoSettingsCard = document.getElementById('todo-settings-card');
-            const todosPlugin = plugins && plugins.find(p => p.id === 'todos' && p.plugin_type === 'extension');
-            const todosActive = todosPlugin && todosPlugin.active;
-            if (todosTab) {
-                todosTab.style.display = todosActive ? '' : 'none';
-                if (!todosActive) {
-                    const todosView = document.getElementById('todos-view');
-                    if (todosView && todosView.classList.contains('active')) {
-                        document.getElementById('tab-timer').click();
+            if (!plugins) return;
+            const extensions = plugins.filter(p => p.plugin_type === 'extension' && p.has_tab);
+            for (const plugin of extensions) {
+                const tab = document.getElementById(`tab-${plugin.tab_id}`);
+                const settingsCard = document.getElementById(`${plugin.tab_id}-settings-card`);
+                if (tab) {
+                    tab.style.display = plugin.active ? '' : 'none';
+                    if (!plugin.active) {
+                        const view = document.getElementById(`${plugin.tab_id}-view`);
+                        if (view && view.classList.contains('active')) {
+                            document.getElementById('tab-timer').click();
+                        }
                     }
                 }
-            }
-            if (todoSettingsCard) {
-                todoSettingsCard.style.display = todosActive ? '' : 'none';
+                if (settingsCard) {
+                    settingsCard.style.display = plugin.active ? '' : 'none';
+                }
             }
         }
 
@@ -4023,27 +4071,26 @@
         }
 
         // Type management functions
-        // Cached plugin list data for the cascading type dropdown
-        let _typeDropdownTodoLists = [];
-        let _typeDropdownTodos = [];
-        let _typeDropdownTodosActive = false;
+        // Plugin-contributed timer type items (populated by populateTypeDropdowns)
+        let _timerTypeProviders = [];
 
         async function populateTypeDropdowns() {
             const types = settings.pomodoro_types || [];
             const stringTypes = types.map(t => String(t)).filter(t => t && t.trim());
 
-            // Fetch todo lists for the cascading dropdown
-            _typeDropdownTodoLists = [];
-            _typeDropdownTodos = [];
-            _typeDropdownTodosActive = false;
+            // Query active plugins that contribute timer types
+            _timerTypeProviders = [];
             try {
                 const pluginRes = await fetch('/api/plugins');
                 const pluginData = pluginRes.ok ? await pluginRes.json() : { plugins: [] };
-                const todosPlugin = pluginData.plugins.find(p => p.id === 'todos' && p.active);
-                if (todosPlugin) {
-                    _typeDropdownTodosActive = true;
-                    _typeDropdownTodoLists = await Storage.getTodoLists();
-                    _typeDropdownTodos = (await Storage.getTodos()).filter(t => t.status === 'pending');
+                const timerTypePlugins = pluginData.plugins.filter(p => p.active && p.has_timer_types);
+
+                for (const plugin of timerTypePlugins) {
+                    if (plugin.id === 'todos') {
+                        const lists = await Storage.getTodoLists();
+                        const todos = (await Storage.getTodos()).filter(t => t.status === 'pending');
+                        _timerTypeProviders.push({ plugin, lists, todos });
+                    }
                 }
             } catch (e) { /* offline */ }
 
@@ -4064,12 +4111,15 @@
             const currentValue = preserveValue || select.value;
             let html = stringTypes.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
 
-            if (_typeDropdownTodosActive && _typeDropdownTodoLists.length > 0) {
-                html += '<option disabled>──────────</option>';
-                for (const list of _typeDropdownTodoLists) {
-                    const count = _typeDropdownTodos.filter(t => t.list_id === list.id).length;
-                    if (count === 0) continue;
-                    html += `<option value="list:${list.id}">📋 ${escapeHtml(list.name)} (${count})</option>`;
+            // Inject items from all timer type provider plugins
+            for (const provider of _timerTypeProviders) {
+                if (provider.plugin.id === 'todos' && provider.lists.length > 0) {
+                    html += '<option disabled>──────────</option>';
+                    for (const list of provider.lists) {
+                        const count = provider.todos.filter(t => t.list_id === list.id).length;
+                        if (count === 0) continue;
+                        html += `<option value="list:${list.id}">📋 ${escapeHtml(list.name)} (${count})</option>`;
+                    }
                 }
             }
 
@@ -4084,15 +4134,16 @@
             const value = select.value;
             if (value && value.startsWith('list:')) {
                 const listId = value.slice(5);
-                const listTodos = _typeDropdownTodos.filter(t => t.list_id === listId);
-                const list = _typeDropdownTodoLists.find(l => l.id === listId);
+                const todosProvider = _timerTypeProviders.find(p => p.plugin.id === 'todos');
+                if (!todosProvider) return;
+                const listTodos = todosProvider.todos.filter(t => t.list_id === listId);
+                const list = todosProvider.lists.find(l => l.id === listId);
                 const label = list ? list.name : 'To-do';
                 let html = `<option value="" disabled selected>Select from ${escapeHtml(label)}...</option>`;
                 for (const t of listTodos) {
                     html += `<option value="todo:${t.id}">${escapeHtml(t.title)}</option>`;
                 }
                 select.innerHTML = html;
-                // Auto-reopen so the user doesn't need a second click
                 requestAnimationFrame(() => {
                     try { select.showPicker(); } catch (e) { /* fallback: user clicks again */ }
                 });
@@ -5762,6 +5813,13 @@
 
         // ── Plugin-Aware Type Parsing ──────────────────────────────
 
+        function exportPluginCSV(pluginId) {
+            if (pluginId === 'todos') return exportTodoCSV();
+        }
+        function importPluginCSV(pluginId, input) {
+            if (pluginId === 'todos') return importTodoCSV(input);
+        }
+
         function parseTypeValue(value) {
             if (value && value.startsWith('todo:')) {
                 return { type: 'To-do', linked_todo_id: value.slice(5) };
@@ -5781,6 +5839,26 @@
                 checkAuthStatus(),
                 loadWeeklyOverview()
             ]);
+
+            // Phase 2b: Restore saved plugin states from IndexedDB.
+            // Server-side plugin registry resets on restart; this re-applies user's choices.
+            try {
+                const pluginRes = await fetch('/api/plugins');
+                const pluginData = await pluginRes.json();
+                for (const plugin of pluginData.plugins) {
+                    const savedState = settings[`plugin_state_${plugin.id}`];
+                    if (savedState !== undefined && savedState !== plugin.active) {
+                        await fetch('/api/plugins/toggle', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ plugin_id: plugin.id, plugin_type: plugin.plugin_type, enable: savedState })
+                        });
+                    }
+                }
+                // Refresh extension tab visibility after restoring states
+                const refreshedData = await fetch('/api/plugins').then(r => r.json());
+                updateExtensionTabs(refreshedData.plugins);
+            } catch (e) { /* offline — use server defaults */ }
 
             // Phase 3: Sync cloud data then render todos once with fresh state.
             if (authStatus.logged_in) {
