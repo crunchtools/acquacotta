@@ -3288,6 +3288,8 @@
                 editTypeSelect.prepend(opt);
             }
             editTypeSelect.value = pomo.type;
+            // Stash linked ID so save preserves it when type hasn't changed
+            editTypeSelect.dataset.linkedTodoId = pomo.linked_todo_id || '';
             document.getElementById('edit-notes').value = pomo.notes || '';
             document.getElementById('edit-duration').value = pomo.duration_minutes;
 
@@ -3321,9 +3323,15 @@
             const startTime = new Date(`${dateStr}T${time}`);
             const endTime = new Date(startTime.getTime() + duration * 60000);
 
+            const editTypeSelect = document.getElementById('edit-type');
+            const { type: resolvedType, linked_todo_id: parsedLink } = parseTypeValue(editTypeSelect.value);
+            // Preserve the original linked_todo_id if the type hasn't changed to a new todo selection
+            const linked_todo_id = parsedLink || editTypeSelect.dataset.linkedTodoId || null;
+
             await Storage.updatePomodoro(id, {
                 name,
-                type: document.getElementById('edit-type').value,
+                type: resolvedType,
+                linked_todo_id,
                 start_time: startTime.toISOString(),
                 end_time: endTime.toISOString(),
                 duration_minutes: duration,
