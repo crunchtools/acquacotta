@@ -3279,7 +3279,15 @@
             // Populate the edit form
             document.getElementById('edit-id').value = pomo.id;
             document.getElementById('edit-name').value = pomo.name;
-            document.getElementById('edit-type').value = pomo.type;
+            const editTypeSelect = document.getElementById('edit-type');
+            // If the pomodoro's type (e.g. "To-do" from a linked todo) isn't in the dropdown, add it
+            if (!Array.from(editTypeSelect.options).some(o => o.value === pomo.type)) {
+                const opt = document.createElement('option');
+                opt.value = pomo.type;
+                opt.textContent = pomo.type;
+                editTypeSelect.prepend(opt);
+            }
+            editTypeSelect.value = pomo.type;
             document.getElementById('edit-notes').value = pomo.notes || '';
             document.getElementById('edit-duration').value = pomo.duration_minutes;
 
