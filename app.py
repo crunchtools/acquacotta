@@ -847,11 +847,13 @@ def api_migrate_to_json():
     save_location(user_email, "json-google-drive", folder_id)
     plugin_registry.activate_storage("json-google-drive")
 
-    return jsonify({
-        "status": "ok",
-        "pomodoro_count": len(pomodoros),
-        "folder_id": folder_id,
-    })
+    return jsonify(
+        {
+            "status": "ok",
+            "pomodoro_count": len(pomodoros),
+            "folder_id": folder_id,
+        }
+    )
 
 
 # =============================================================================
