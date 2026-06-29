@@ -798,6 +798,65 @@ def api_provision_storage():
 
 
 # =============================================================================
+# Storage Migration
+# =============================================================================
+
+
+@app.route("/api/migrate-to-json", methods=["POST"])
+def api_migrate_to_json():
+    """Migrate data from Sheets backend to JSON-on-Drive.
+
+    Reads all pomodoros and settings from Google Sheets, writes them to
+    JSON files on Google Drive, then switches the active storage backend.
+    The original Sheet is preserved as a backup.
+    """
+    credentials = get_credentials()
+    request_creds = get_credentials_from_request()
+    user_email = request_creds.get("user_email") if request_creds else None
+
+    if not credentials or not user_email:
+        status = HTTPStatus.UNAUTHORIZED if not credentials else HTTPStatus.BAD_REQUEST
+        msg = "Not authenticated" if not credentials else "No user email in credentials"
+        return jsonify({"error": msg}), status
+
+    if plugin_registry.get_active_storage_id() != "sheets":
+        return jsonify({"error": "Migration is only available when using the Sheets backend"}), HTTPStatus.BAD_REQUEST
+
+    try:
+        # Step 1: Read all data from Sheets
+        sheets_ctx = sheets_storage.build_context(credentials, request_creds)
+        pomodoros = sheets_storage.get_pomodoros(sheets_ctx["service"], sheets_ctx["location"])
+        user_settings = sheets_storage.get_settings(sheets_ctx["service"], sheets_ctx["location"], DEFAULT_SETTINGS)
+
+        # Step 2: Provision JSON-on-Drive folder
+        folder_id, _existed = _provision_json_google_drive(credentials, user_email, None)
+
+        # Step 3: Write data to JSON backend (merge-safe — won't destroy existing Drive files)
+        # save_pomodoros_batch deduplicates by ID; save_settings merges keys
+        json_ctx = json_google_drive_storage.build_context(credentials, {"folder_id": folder_id})
+        if pomodoros:
+            json_google_drive_storage.save_pomodoros_batch(json_ctx["service"], json_ctx["location"], pomodoros)
+        json_google_drive_storage.save_settings(
+            json_ctx["service"], json_ctx["location"], user_settings, replace_all=False
+        )
+    except Exception as e:
+        app.logger.error(f"Migration failed: {e}")
+        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+
+    # Step 4: Switch backend (only after successful write)
+    save_location(user_email, "json-google-drive", folder_id)
+    plugin_registry.activate_storage("json-google-drive")
+
+    return jsonify(
+        {
+            "status": "ok",
+            "pomodoro_count": len(pomodoros),
+            "folder_id": folder_id,
+        }
+    )
+
+
+# =============================================================================
 # Plugin API
 # =============================================================================
 

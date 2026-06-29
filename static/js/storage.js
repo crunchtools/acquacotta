@@ -277,6 +277,7 @@
             client_id: storedCredentials.client_id,
             client_secret: storedCredentials.client_secret,
             scopes: storedCredentials.scopes,
+            user_email: storedCredentials.user_email,
         };
         // Include all cached location fields (spreadsheet_id, folder_id, etc.)
         Object.assign(payload, cachedLocationFields);
