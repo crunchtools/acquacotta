@@ -1152,6 +1152,26 @@
         </div>
     </div>
 
+    <!-- Sheets-to-JSON Migration Modal -->
+    <div id="migrate-json-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="migrate-json-modal-title">
+        <div class="modal">
+            <h2 id="migrate-json-modal-title">Migrate to JSON on Drive</h2>
+            <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1rem;">
+                This will copy all your pomodoros and settings from Google Sheets to JSON files on Google Drive, then switch to the faster JSON backend.
+            </p>
+            <p style="font-size: 0.875rem; margin-bottom: 1rem;">
+                <strong>Your Google Sheet will not be deleted</strong> &mdash; it stays in your Drive as a backup.
+            </p>
+            <div id="migrate-json-progress" style="display: none; margin-bottom: 1rem;">
+                <p id="migrate-json-step" style="font-size: 0.875rem; color: var(--text-secondary);"></p>
+            </div>
+            <div id="migrate-json-actions" class="modal-actions">
+                <button class="secondary" onclick="hideMigrateToJsonModal()">Cancel</button>
+                <button class="primary" id="migrate-json-confirm-btn" onclick="runMigrateToJson()">Migrate</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Initial Sync Modal (shown on login to choose sync direction) -->
     <div id="initial-sync-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="sync-modal-title">
         <div class="modal">
@@ -3783,6 +3803,13 @@
                         </div>`;
                     }
 
+                    if (plugin.id === 'json-google-drive' && data.active_storage === 'sheets') {
+                        actions += `<div style="margin-top: 0.5rem;">
+                            <button class="secondary" onclick="showMigrateToJsonModal()" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">Migrate from Sheets</button>
+                            <span style="font-size: 0.7rem; color: var(--text-secondary); margin-left: 0.25rem;">Copy data &amp; switch backend</span>
+                        </div>`;
+                    }
+
                     return `<div class="type-item" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
                         <div style="flex: 1;">
                             <div style="font-weight: 500;">${plugin.name}</div>
@@ -5098,6 +5125,68 @@
 
         function migrateData() {
             document.getElementById('migrate-modal').classList.add('active');
+        }
+
+        function showMigrateToJsonModal() {
+            document.getElementById('migrate-json-progress').style.display = 'none';
+            document.getElementById('migrate-json-actions').style.display = 'flex';
+            document.getElementById('migrate-json-confirm-btn').disabled = false;
+            document.getElementById('migrate-json-modal').classList.add('active');
+        }
+
+        function hideMigrateToJsonModal() {
+            document.getElementById('migrate-json-modal').classList.remove('active');
+        }
+
+        async function runMigrateToJson() {
+            const confirmBtn = document.getElementById('migrate-json-confirm-btn');
+            const progressDiv = document.getElementById('migrate-json-progress');
+            const stepEl = document.getElementById('migrate-json-step');
+            const actionsDiv = document.getElementById('migrate-json-actions');
+
+            confirmBtn.disabled = true;
+            progressDiv.style.display = 'block';
+            stepEl.style.color = 'var(--text-secondary)';
+            stepEl.textContent = 'Reading data from Google Sheets...';
+
+            try {
+                const res = await Storage.authenticatedFetch('/api/migrate-to-json', {
+                    method: 'POST',
+                    body: JSON.stringify({})
+                });
+                const data = await res.json();
+
+                if (!res.ok) {
+                    stepEl.style.color = '#ef4444';
+                    stepEl.textContent = 'Migration failed: ' + (data.error || 'Unknown error');
+                    confirmBtn.disabled = false;
+                    return;
+                }
+
+                stepEl.textContent = 'Switching backend...';
+
+                // Update IndexedDB with new backend location
+                await Storage.updateLocationField('folder_id', data.folder_id);
+
+                // Clear sync status so next load does a fresh sync from JSON backend
+                const db = await Storage.openDatabase();
+                const tx = db.transaction('sync_status', 'readwrite');
+                tx.objectStore('sync_status').clear();
+                await new Promise((resolve, reject) => {
+                    tx.oncomplete = resolve;
+                    tx.onerror = () => reject(tx.error);
+                });
+
+                stepEl.style.color = 'var(--success)';
+                stepEl.textContent = `Migration complete! ${data.pomodoro_count} pomodoros migrated. Reloading...`;
+                actionsDiv.style.display = 'none';
+
+                setTimeout(() => { window.location.reload(); }, 1500);
+            } catch (e) {
+                stepEl.style.color = '#ef4444';
+                stepEl.textContent = 'Migration failed: ' + e.message;
+                confirmBtn.disabled = false;
+            }
         }
 
         function hideMigrateModal() {
