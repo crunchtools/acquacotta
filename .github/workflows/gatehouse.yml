@@ -1,0 +1,71 @@
+# Gatehouse — fork-safe code review + workflow protection, in ONE file.
+#
+# Drop this in your repo at .github/workflows/gatehouse.yml, add a GEMINI_API_KEY
+# secret, and you get:
+#   • AI review of every PR (including from forks) — posted as a PR review
+#   • rejection of untrusted PRs that try to modify your workflow files
+#
+# Nothing is ever checked out from the PR. The fork's change is only ever read as
+# a diff (data); the reviewer logic lives in the pinned gatehouse container; the
+# rules (your styleguide/constitution) are fetched from YOUR base branch, not the
+# PR. The one thing you don't trust — the proposed change — is only ever read.
+#
+# Two jobs, two independent required checks. Mark both required in branch
+# protection so either failing blocks the merge.
+
+name: Gatehouse
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions: {}   # default-deny; each job grants only what it needs
+
+jobs:
+  # ── 1) Protect the workflow files themselves ────────────────────────────────
+  # Rejects PRs from outside contributors that touch .github/workflows/. Safe
+  # under pull_request_target because it only reads the changed-file LIST via the
+  # API — it never checks out or runs your code. And because pull_request_target
+  # runs the BASE version of this file, a PR can't edit this job to disable it.
+  guard:
+    name: Protect workflows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Reject workflow changes from untrusted PRs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          AUTHOR_ASSOC: ${{ github.event.pull_request.author_association }}
+        run: |
+          set -euo pipefail
+          # Maintainers may change workflows; only gate outside contributors.
+          case "$AUTHOR_ASSOC" in
+            OWNER|MEMBER|COLLABORATOR)
+              echo "Author '$AUTHOR_ASSOC' is trusted; allowing."; exit 0 ;;
+          esac
+          changed="$(gh pr diff "$PR" --repo "$GITHUB_REPOSITORY" --name-only)"
+          if echo "$changed" | grep -qE '^\.github/workflows/'; then
+            echo "::error::PR modifies .github/workflows/ — not accepted from external contributors."
+            gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body \
+              $'🚫 **Workflow changes are not accepted via pull request.** Please open an issue and a maintainer will make the change.'
+            # Hard-reject instead of just failing the check? Uncomment:
+            # gh pr close "$PR" --repo "$GITHUB_REPOSITORY"
+            exit 1
+          fi
+          echo "No workflow files changed."
+
+  # ── 2) Review the PR diff (no checkout, BYO key) ────────────────────────────
+  # The reviewer is maintained centrally in gatehouse's reusable workflow and the
+  # pinned container — so security fixes reach you without copying logic around.
+  # Scope GEMINI_API_KEY to this reusable workflow so only it can read the key.
+  review:
+    name: Gatehouse review
+    permissions:
+      contents: read
+      pull-requests: write
+    uses: crunchtools/gatehouse/.github/workflows/review.yml@v0.2.0
+    secrets:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
