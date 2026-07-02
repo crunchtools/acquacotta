@@ -105,7 +105,8 @@ class TestSavePomodoro:
     """Tests for saving pomodoros to Google Sheets."""
 
     def test_save_pomodoro(self):
-        ws = _mock_worksheet(col_values_return=["id", "existing-1"])
+        ws = MagicMock()
+        ws.find.return_value = None  # ID not found — not a duplicate
         gc = _mock_client({"Pomodoros": ws})
 
         pomodoro = {
@@ -121,13 +122,15 @@ class TestSavePomodoro:
         result = sheets_storage.save_pomodoro(gc, "test-id", pomodoro)
 
         assert result is True
+        ws.find.assert_called_once_with("new-id", in_column=1)
         ws.append_row.assert_called_once()
         call_args = ws.append_row.call_args[0][0]
         assert call_args[0] == "new-id"
         assert call_args[1] == "New Task"
 
     def test_save_pomodoro_duplicate(self):
-        ws = _mock_worksheet(col_values_return=["id", "existing-id"])
+        ws = MagicMock()
+        ws.find.return_value = MagicMock(row=2)  # ID found — duplicate
         gc = _mock_client({"Pomodoros": ws})
 
         pomodoro = {"id": "existing-id", "name": "Task", "type": "Content",
@@ -140,7 +143,8 @@ class TestSavePomodoro:
         ws.append_row.assert_not_called()
 
     def test_save_pomodoro_without_notes(self):
-        ws = _mock_worksheet(col_values_return=["id"])
+        ws = MagicMock()
+        ws.find.return_value = None
         gc = _mock_client({"Pomodoros": ws})
 
         pomodoro = {
@@ -216,11 +220,10 @@ class TestUpdatePomodoro:
     """Tests for updating pomodoros in Google Sheets."""
 
     def test_update_pomodoro_found(self):
-        ws = _mock_worksheet(
-            col_values_return=["id", "id-1", "id-2", "target-id"],
-            row_values_return=["target-id", "Old Name", "Content",
-                               "2024-01-15T10:00:00Z", "2024-01-15T10:25:00Z", "25", "Old notes"],
-        )
+        ws = MagicMock()
+        ws.find.return_value = MagicMock(row=4)  # Found at row 4
+        ws.row_values.return_value = ["target-id", "Old Name", "Content",
+                                      "2024-01-15T10:00:00Z", "2024-01-15T10:25:00Z", "25", "Old notes"]
         gc = _mock_client({"Pomodoros": ws})
 
         result = sheets_storage.update_pomodoro(
@@ -229,6 +232,7 @@ class TestUpdatePomodoro:
         )
 
         assert result is True
+        ws.find.assert_called_once_with("target-id", in_column=1)
         ws.update.assert_called_once()
         call_kwargs = ws.update.call_args[1]
         assert call_kwargs["range_name"] == "A4:G4"
@@ -238,7 +242,8 @@ class TestUpdatePomodoro:
         assert updated_row[6] == "New notes"
 
     def test_update_pomodoro_not_found(self):
-        ws = _mock_worksheet(col_values_return=["id", "id-1", "id-2"])
+        ws = MagicMock()
+        ws.find.return_value = None
         gc = _mock_client({"Pomodoros": ws})
 
         result = sheets_storage.update_pomodoro(
@@ -252,16 +257,19 @@ class TestDeletePomodoro:
     """Tests for deleting pomodoros from Google Sheets."""
 
     def test_delete_pomodoro_found(self):
-        ws = _mock_worksheet(col_values_return=["id", "id-1", "target-id", "id-3"])
+        ws = MagicMock()
+        ws.find.return_value = MagicMock(row=3)  # Found at row 3
         gc = _mock_client({"Pomodoros": ws})
 
         result = sheets_storage.delete_pomodoro(gc, "test-id", "target-id")
 
         assert result is True
+        ws.find.assert_called_once_with("target-id", in_column=1)
         ws.delete_rows.assert_called_once_with(3)
 
     def test_delete_pomodoro_not_found(self):
-        ws = _mock_worksheet(col_values_return=["id", "id-1", "id-2"])
+        ws = MagicMock()
+        ws.find.return_value = None
         gc = _mock_client({"Pomodoros": ws})
 
         result = sheets_storage.delete_pomodoro(gc, "test-id", "nonexistent-id")

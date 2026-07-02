@@ -62,9 +62,8 @@ def get_pomodoros(gc, spreadsheet_id, start_date=None, end_date=None):
 def save_pomodoro(gc, spreadsheet_id, pomodoro):
     """Save a new pomodoro to Google Sheets (with duplicate check)."""
     ws = gc.open_by_key(spreadsheet_id).worksheet("Pomodoros")
-    existing_ids = ws.col_values(1)
 
-    if pomodoro["id"] in existing_ids:
+    if ws.find(pomodoro["id"], in_column=1):
         return False
 
     ws.append_row(
@@ -116,17 +115,12 @@ def save_pomodoros_batch(gc, spreadsheet_id, pomodoros):
 def update_pomodoro(gc, spreadsheet_id, pomodoro_id, update_fields):
     """Update a pomodoro in Google Sheets."""
     ws = gc.open_by_key(spreadsheet_id).worksheet("Pomodoros")
-    id_col = ws.col_values(1)
+    cell = ws.find(pomodoro_id, in_column=1)
 
-    row_index = None
-    for i, cell_val in enumerate(id_col):
-        if cell_val == pomodoro_id:
-            row_index = i + 1  # 1-indexed
-            break
-
-    if row_index is None:
+    if cell is None:
         return False
 
+    row_index = cell.row
     current_values = ws.row_values(row_index)
     while len(current_values) < POMODORO_TOTAL_COLUMNS:
         current_values.append("")
@@ -145,18 +139,12 @@ def update_pomodoro(gc, spreadsheet_id, pomodoro_id, update_fields):
 def delete_pomodoro(gc, spreadsheet_id, pomodoro_id):
     """Delete a pomodoro from Google Sheets."""
     ws = gc.open_by_key(spreadsheet_id).worksheet("Pomodoros")
-    id_col = ws.col_values(1)
+    cell = ws.find(pomodoro_id, in_column=1)
 
-    row_index = None
-    for i, cell_val in enumerate(id_col):
-        if cell_val == pomodoro_id:
-            row_index = i + 1  # 1-indexed
-            break
-
-    if row_index is None:
+    if cell is None:
         return False
 
-    ws.delete_rows(row_index)
+    ws.delete_rows(cell.row)
     return True
 
 
