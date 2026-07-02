@@ -392,10 +392,17 @@ class TestDeduplicatePomodoros:
 
     def test_deduplicate_with_duplicates(self):
         ws = _mock_worksheet(col_values_return=["id", "id-1", "id-2", "id-1", "id-3"])
+        ws.id = 0  # sheet ID for batch_update
         gc = _mock_client({"Pomodoros": ws})
 
         result = sheets_storage.deduplicate_pomodoros(gc, "test-id")
 
         assert result["removed"] == 1
         assert result["total"] == 3
-        ws.delete_rows.assert_called_once_with(4)
+        spreadsheet = gc.open_by_key.return_value
+        spreadsheet.batch_update.assert_called_once()
+        batch_body = spreadsheet.batch_update.call_args[0][0]
+        assert len(batch_body["requests"]) == 1
+        delete_range = batch_body["requests"][0]["deleteDimension"]["range"]
+        assert delete_range["startIndex"] == 3  # 0-indexed row for "id-1" duplicate
+        assert delete_range["endIndex"] == 4
