@@ -38,7 +38,7 @@ jobs:
           FLASK_SECRET_KEY: test-secret-key
           CLEAR_CACHE_ON_START: "false"
 
-  gourmand:
+  gourmand-review:
     name: Code Quality (Gourmand)
     runs-on: ubuntu-latest
 
