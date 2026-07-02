@@ -194,16 +194,18 @@ def deduplicate_pomodoros(gc, spreadsheet_id):
     spreadsheet = gc.open_by_key(spreadsheet_id)
     requests = []
     for row_index in reversed(rows_to_delete):
-        requests.append({
-            "deleteDimension": {
-                "range": {
-                    "sheetId": ws.id,
-                    "dimension": "ROWS",
-                    "startIndex": row_index - 1,  # 0-indexed for API
-                    "endIndex": row_index,
+        requests.append(
+            {
+                "deleteDimension": {
+                    "range": {
+                        "sheetId": ws.id,
+                        "dimension": "ROWS",
+                        "startIndex": row_index - 1,  # 0-indexed for API
+                        "endIndex": row_index,
+                    }
                 }
             }
-        })
+        )
     spreadsheet.batch_update({"requests": requests})
 
     return {"removed": len(rows_to_delete), "total": len(id_col) - 1 - len(rows_to_delete)}

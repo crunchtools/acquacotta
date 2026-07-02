@@ -8,10 +8,6 @@ import json
 
 import json_storage_core as core
 
-# =============================================================================
-# parse_pomodoros
-# =============================================================================
-
 
 class TestParsePomodoros:
     def test_none_returns_empty(self):
@@ -57,11 +53,6 @@ class TestParsePomodoros:
         assert core.parse_pomodoros('{"pomodoros": []}') == []
 
 
-# =============================================================================
-# serialize_pomodoros
-# =============================================================================
-
-
 class TestSerializePomodoros:
     def test_empty_list(self):
         result = core.serialize_pomodoros([])
@@ -87,11 +78,6 @@ class TestSerializePomodoros:
         serialized = core.serialize_pomodoros([pomo])
         parsed = core.parse_pomodoros(serialized)
         assert parsed[0] == pomo
-
-
-# =============================================================================
-# parse_settings / serialize_settings
-# =============================================================================
 
 
 class TestSettingsSerialization:
@@ -123,11 +109,6 @@ class TestSettingsSerialization:
         assert parsed == original
 
 
-# =============================================================================
-# add_pomodoro
-# =============================================================================
-
-
 class TestAddPomodoro:
     def test_add_to_empty_list(self):
         result, was_new = core.add_pomodoro([], {"id": "1", "name": "Test"})
@@ -152,11 +133,6 @@ class TestAddPomodoro:
         original = [{"id": "1"}]
         result, _ = core.add_pomodoro(original, {"id": "2"})
         assert result is original
-
-
-# =============================================================================
-# add_pomodoros_batch
-# =============================================================================
 
 
 class TestAddPomodorosBatch:
@@ -192,11 +168,6 @@ class TestAddPomodorosBatch:
         assert len(result) == 1
 
 
-# =============================================================================
-# update_pomodoro
-# =============================================================================
-
-
 class TestUpdatePomodoro:
     def test_update_existing(self):
         pomodoros = [{"id": "1", "name": "Old", "type": "Content"}]
@@ -223,11 +194,6 @@ class TestUpdatePomodoro:
         result, found = core.update_pomodoro([], "1", {"name": "New"})
         assert found is False
         assert result == []
-
-
-# =============================================================================
-# delete_pomodoro
-# =============================================================================
 
 
 class TestDeletePomodoro:
@@ -258,11 +224,6 @@ class TestDeletePomodoro:
         original = [{"id": "1"}, {"id": "2"}]
         result, _ = core.delete_pomodoro(original, "1")
         assert result is not original
-
-
-# =============================================================================
-# filter_by_date
-# =============================================================================
 
 
 class TestFilterByDate:
@@ -309,11 +270,6 @@ class TestFilterByDate:
         assert len(result) == 1
 
 
-# =============================================================================
-# deduplicate
-# =============================================================================
-
-
 class TestDeduplicate:
     def test_no_duplicates(self):
         pomodoros = [{"id": "1"}, {"id": "2"}, {"id": "3"}]
@@ -353,11 +309,6 @@ class TestDeduplicate:
         assert len(result) == 1
 
 
-# =============================================================================
-# merge_settings
-# =============================================================================
-
-
 class TestMergeSettings:
     def test_replace_all(self):
         existing = {"a": 1, "b": 2, "c": 3}
@@ -380,11 +331,6 @@ class TestMergeSettings:
         existing = {"a": 1}
         result = core.merge_settings(existing, {"b": 2})
         assert result is not existing
-
-
-# =============================================================================
-# Full roundtrip: serialize → parse → CRUD → serialize
-# =============================================================================
 
 
 class TestFullRoundtrip:

@@ -35,10 +35,7 @@ PLUGIN_TYPES = {
     },
 }
 
-# Registry: plugin_type -> {plugin_id -> {"module": mod, "metadata": dict, "active": bool}}
-_plugins = {}
-
-# Active storage backend id
+_plugins = {}  # plugin_type -> {plugin_id -> {module, metadata, active}}
 _active_storage = None
 
 
@@ -118,7 +115,7 @@ def get_plugin(plugin_type, plugin_id):
 
 def list_plugins(plugin_type=None):
     """List all registered plugins, optionally filtered by type."""
-    result = []
+    plugin_summaries = []
     types_to_list = [plugin_type] if plugin_type else PLUGIN_TYPES.keys()
 
     for ptype in types_to_list:
@@ -128,9 +125,9 @@ def list_plugins(plugin_type=None):
             entry = dict(info["metadata"])
             entry["active"] = info["active"]
             entry["plugin_type"] = ptype
-            result.append(entry)
+            plugin_summaries.append(entry)
 
-    return result
+    return plugin_summaries
 
 
 def list_plugin_types():

@@ -9,10 +9,6 @@ from unittest.mock import MagicMock, patch
 import json_google_drive_storage as storage
 from transports.google_drive_transport import GoogleDriveTransport
 
-# =============================================================================
-# Transport tests
-# =============================================================================
-
 
 class TestGoogleDriveTransport:
     def _mock_service(self, list_files=None, file_content=None):
@@ -104,11 +100,6 @@ class TestGoogleDriveTransport:
         assert folder_id == "existing-folder"
 
 
-# =============================================================================
-# Plugin metadata
-# =============================================================================
-
-
 class TestPluginMetadata:
     def test_metadata_fields(self):
         m = storage.PLUGIN_METADATA
@@ -124,11 +115,6 @@ class TestPluginMetadata:
             assert ctx["service"] == "drive-service"
             assert ctx["location"] == "folder-123"
             mock_build.assert_called_once_with("drive", "v3", credentials="creds")
-
-
-# =============================================================================
-# Storage contract — all 11 functions
-# =============================================================================
 
 
 def _mock_transport(file_contents=None):

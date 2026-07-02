@@ -150,6 +150,9 @@ DEFAULT_SETTINGS = {
     "daily_minutes_goal": DEFAULT_DAILY_GOAL,
 }
 
+# OAuth state token expiry (in seconds)
+OAUTH_STATE_MAX_AGE_SECONDS = 600
+
 # Flask default port
 DEFAULT_PORT = 5000
 
@@ -415,7 +418,7 @@ def _validate_oauth_callback():
 
     s = URLSafeTimedSerializer(app.config["SECRET_KEY"])
     try:
-        state_data = s.loads(callback_state, max_age=600)  # 10-minute expiry
+        state_data = s.loads(callback_state, max_age=OAUTH_STATE_MAX_AGE_SECONDS)
     except SignatureExpired:
         app.logger.info("OAuth callback: state expired, restarting flow")
         return None, None, redirect("/auth/google")
@@ -484,19 +487,20 @@ def _provision_sheets(credentials, user_email, requested_id):
     return id_to_use, True
 
 
-def _provision_json_google_drive(credentials, user_email, _requested_id):
+def _provision_json_google_drive(credentials, user_email, requested_id):
     """Provision a JSON-on-Google-Drive backend. Returns (folder_id, existed)."""
     from transports.google_drive_transport import GoogleDriveTransport
 
     stored_id = get_stored_location(user_email, "json-google-drive")
+    hint_id = requested_id or stored_id
     try:
         drive_service = build("drive", "v3", credentials=credentials)
-        transport = GoogleDriveTransport(drive_service, stored_id)
+        transport = GoogleDriveTransport(drive_service, hint_id)
         folder_id = transport.ensure_directory()
     except Exception as e:
         app.logger.error(f"Failed to provision Google Drive storage: {e}")
         raise
-    existed = stored_id == folder_id and stored_id is not None
+    existed = hint_id == folder_id and hint_id is not None
     save_location(user_email, "json-google-drive", folder_id)
     return folder_id, existed
 
@@ -790,11 +794,11 @@ def api_provision_storage():
     metadata = getattr(backend, "PLUGIN_METADATA", {})
     frontend_fields = metadata.get("frontend_fields", [])
 
-    result = {"status": "ok", "existed": existed, "plugin_id": active_id}
+    provisioning_response = {"status": "ok", "existed": existed, "plugin_id": active_id}
     for field in frontend_fields:
-        result[field] = location_id
+        provisioning_response[field] = location_id
 
-    return jsonify(result)
+    return jsonify(provisioning_response)
 
 
 # =============================================================================
@@ -876,13 +880,13 @@ def api_list_plugins():
 @app.route("/api/plugins/toggle", methods=["POST"])
 def api_toggle_plugin():
     """Enable or disable a plugin."""
-    data = request.get_json(silent=True)
-    if not data or "plugin_id" not in data or "plugin_type" not in data:
+    toggle_request = request.get_json(silent=True)
+    if not toggle_request or "plugin_id" not in toggle_request or "plugin_type" not in toggle_request:
         return jsonify({"error": "plugin_id and plugin_type required"}), HTTPStatus.BAD_REQUEST
 
-    plugin_type = data["plugin_type"]
-    plugin_id = data["plugin_id"]
-    enable = data.get("enable", True)
+    plugin_type = toggle_request["plugin_type"]
+    plugin_id = toggle_request["plugin_id"]
+    enable = toggle_request.get("enable", True)
 
     if plugin_type == "storage":
         if enable:
@@ -1120,10 +1124,10 @@ def proxy_clear_sheets():
         ctx = _storage_context()
         if not ctx:
             return jsonify({"error": "No storage backend active"}), HTTPStatus.BAD_REQUEST
-        result = storage_api.clear_pomodoros(ctx)
-        if result.get("error"):
-            return jsonify({"error": result["error"]}), HTTPStatus.NOT_FOUND
-        return jsonify(result)
+        clear_response = storage_api.clear_pomodoros(ctx)
+        if clear_response.get("error"):
+            return jsonify({"error": clear_response["error"]}), HTTPStatus.NOT_FOUND
+        return jsonify(clear_response)
     except HttpError as e:
         return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
     except Exception as e:
@@ -1145,8 +1149,8 @@ def api_get_todos():
         if not folder_id:
             return jsonify({"todos": [], "lists": []})
         drive_service = build("drive", "v3", credentials=credentials)
-        data = todos_plugin.read_todos(drive_service, folder_id)
-        return jsonify(data)
+        todos_snapshot = todos_plugin.read_todos(drive_service, folder_id)
+        return jsonify(todos_snapshot)
     except HttpError as e:
         return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
 
@@ -1166,8 +1170,8 @@ def api_save_todos():
         if not folder_id:
             return jsonify({"error": "No folder_id configured"}), HTTPStatus.BAD_REQUEST
         drive_service = build("drive", "v3", credentials=credentials)
-        data = {"todos": payload.get("todos", []), "lists": payload.get("lists", [])}
-        todos_plugin.write_todos(drive_service, folder_id, data)
+        todos_payload = {"todos": payload.get("todos", []), "lists": payload.get("lists", [])}
+        todos_plugin.write_todos(drive_service, folder_id, todos_payload)
         return jsonify({"status": "ok"})
     except HttpError as e:
         return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR

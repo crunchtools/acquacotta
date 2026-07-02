@@ -54,10 +54,12 @@ class TestGetPomodoros:
         assert result == []
 
     def test_get_pomodoros_with_data(self):
-        ws = _mock_worksheet(get_return=[
-            ["id-1", "Task 1", "Content", "2024-01-15T10:00:00Z", "2024-01-15T10:25:00Z", "25", "Notes 1"],
-            ["id-2", "Task 2", "Product", "2024-01-15T11:00:00Z", "2024-01-15T11:25:00Z", "25", ""],
-        ])
+        ws = _mock_worksheet(
+            get_return=[
+                ["id-1", "Task 1", "Content", "2024-01-15T10:00:00Z", "2024-01-15T10:25:00Z", "25", "Notes 1"],
+                ["id-2", "Task 2", "Product", "2024-01-15T11:00:00Z", "2024-01-15T11:25:00Z", "25", ""],
+            ]
+        )
         gc = _mock_client({"Pomodoros": ws})
 
         result = sheets_storage.get_pomodoros(gc, "test-id")
@@ -71,11 +73,13 @@ class TestGetPomodoros:
         assert result[1]["notes"] == "Notes 1"
 
     def test_get_pomodoros_skips_incomplete_rows(self):
-        ws = _mock_worksheet(get_return=[
-            ["id-1", "Task 1", "Content", "2024-01-15T10:00:00Z", "2024-01-15T10:25:00Z", "25"],
-            ["id-2", "Task 2"],
-            ["id-3", "Task 3", "Team", "2024-01-15T12:00:00Z", "2024-01-15T12:25:00Z", "25", "Notes"],
-        ])
+        ws = _mock_worksheet(
+            get_return=[
+                ["id-1", "Task 1", "Content", "2024-01-15T10:00:00Z", "2024-01-15T10:25:00Z", "25"],
+                ["id-2", "Task 2"],
+                ["id-3", "Task 3", "Team", "2024-01-15T12:00:00Z", "2024-01-15T12:25:00Z", "25", "Notes"],
+            ]
+        )
         gc = _mock_client({"Pomodoros": ws})
 
         result = sheets_storage.get_pomodoros(gc, "test-id")
@@ -84,15 +88,18 @@ class TestGetPomodoros:
         assert result[1]["id"] == "id-1"
 
     def test_get_pomodoros_with_date_filter(self):
-        ws = _mock_worksheet(get_return=[
-            ["id-1", "Task 1", "Content", "2024-01-14T10:00:00Z", "2024-01-14T10:25:00Z", "25", ""],
-            ["id-2", "Task 2", "Product", "2024-01-15T11:00:00Z", "2024-01-15T11:25:00Z", "25", ""],
-            ["id-3", "Task 3", "Team", "2024-01-16T12:00:00Z", "2024-01-16T12:25:00Z", "25", ""],
-        ])
+        ws = _mock_worksheet(
+            get_return=[
+                ["id-1", "Task 1", "Content", "2024-01-14T10:00:00Z", "2024-01-14T10:25:00Z", "25", ""],
+                ["id-2", "Task 2", "Product", "2024-01-15T11:00:00Z", "2024-01-15T11:25:00Z", "25", ""],
+                ["id-3", "Task 3", "Team", "2024-01-16T12:00:00Z", "2024-01-16T12:25:00Z", "25", ""],
+            ]
+        )
         gc = _mock_client({"Pomodoros": ws})
 
         result = sheets_storage.get_pomodoros(
-            gc, "test-id",
+            gc,
+            "test-id",
             start_date="2024-01-15T00:00:00Z",
             end_date="2024-01-15T23:59:59Z",
         )
@@ -133,9 +140,14 @@ class TestSavePomodoro:
         ws.find.return_value = MagicMock(row=2)  # ID found — duplicate
         gc = _mock_client({"Pomodoros": ws})
 
-        pomodoro = {"id": "existing-id", "name": "Task", "type": "Content",
-                    "start_time": "2024-01-15T10:00:00Z", "end_time": "2024-01-15T10:25:00Z",
-                    "duration_minutes": 25}
+        pomodoro = {
+            "id": "existing-id",
+            "name": "Task",
+            "type": "Content",
+            "start_time": "2024-01-15T10:00:00Z",
+            "end_time": "2024-01-15T10:25:00Z",
+            "duration_minutes": 25,
+        }
 
         result = sheets_storage.save_pomodoro(gc, "test-id", pomodoro)
 
@@ -170,12 +182,24 @@ class TestSavePomodorosBatch:
         gc = _mock_client({"Pomodoros": ws})
 
         pomodoros = [
-            {"id": "id-1", "name": "Task 1", "type": "Content",
-             "start_time": "2024-01-15T10:00:00Z", "end_time": "2024-01-15T10:25:00Z",
-             "duration_minutes": 25, "notes": ""},
-            {"id": "id-2", "name": "Task 2", "type": "Product",
-             "start_time": "2024-01-15T11:00:00Z", "end_time": "2024-01-15T11:25:00Z",
-             "duration_minutes": 25, "notes": "Note"},
+            {
+                "id": "id-1",
+                "name": "Task 1",
+                "type": "Content",
+                "start_time": "2024-01-15T10:00:00Z",
+                "end_time": "2024-01-15T10:25:00Z",
+                "duration_minutes": 25,
+                "notes": "",
+            },
+            {
+                "id": "id-2",
+                "name": "Task 2",
+                "type": "Product",
+                "start_time": "2024-01-15T11:00:00Z",
+                "end_time": "2024-01-15T11:25:00Z",
+                "duration_minutes": 25,
+                "notes": "Note",
+            },
         ]
 
         result = sheets_storage.save_pomodoros_batch(gc, "test-id", pomodoros)
@@ -200,12 +224,24 @@ class TestSavePomodorosBatch:
         gc = _mock_client({"Pomodoros": ws})
 
         pomodoros = [
-            {"id": "id-1", "name": "Task 1", "type": "Content",
-             "start_time": "2024-01-15T10:00:00Z", "end_time": "2024-01-15T10:25:00Z",
-             "duration_minutes": 25, "notes": ""},
-            {"id": "id-2", "name": "Task 2", "type": "Product",
-             "start_time": "2024-01-15T11:00:00Z", "end_time": "2024-01-15T11:25:00Z",
-             "duration_minutes": 25, "notes": ""},
+            {
+                "id": "id-1",
+                "name": "Task 1",
+                "type": "Content",
+                "start_time": "2024-01-15T10:00:00Z",
+                "end_time": "2024-01-15T10:25:00Z",
+                "duration_minutes": 25,
+                "notes": "",
+            },
+            {
+                "id": "id-2",
+                "name": "Task 2",
+                "type": "Product",
+                "start_time": "2024-01-15T11:00:00Z",
+                "end_time": "2024-01-15T11:25:00Z",
+                "duration_minutes": 25,
+                "notes": "",
+            },
         ]
 
         result = sheets_storage.save_pomodoros_batch(gc, "test-id", pomodoros)
@@ -222,12 +258,21 @@ class TestUpdatePomodoro:
     def test_update_pomodoro_found(self):
         ws = MagicMock()
         ws.find.return_value = MagicMock(row=4)  # Found at row 4
-        ws.row_values.return_value = ["target-id", "Old Name", "Content",
-                                      "2024-01-15T10:00:00Z", "2024-01-15T10:25:00Z", "25", "Old notes"]
+        ws.row_values.return_value = [
+            "target-id",
+            "Old Name",
+            "Content",
+            "2024-01-15T10:00:00Z",
+            "2024-01-15T10:25:00Z",
+            "25",
+            "Old notes",
+        ]
         gc = _mock_client({"Pomodoros": ws})
 
         result = sheets_storage.update_pomodoro(
-            gc, "test-id", "target-id",
+            gc,
+            "test-id",
+            "target-id",
             {"name": "New Name", "type": "Product", "notes": "New notes"},
         )
 
@@ -247,7 +292,10 @@ class TestUpdatePomodoro:
         gc = _mock_client({"Pomodoros": ws})
 
         result = sheets_storage.update_pomodoro(
-            gc, "test-id", "nonexistent-id", {"name": "New Name"},
+            gc,
+            "test-id",
+            "nonexistent-id",
+            {"name": "New Name"},
         )
 
         assert result is False
@@ -290,10 +338,12 @@ class TestGetSettings:
         assert result == defaults
 
     def test_get_settings_with_data(self):
-        ws = _mock_worksheet(get_return=[
-            ["timer_preset_1", "15"],
-            ["pomodoro_types", '["Content", "Product"]'],
-        ])
+        ws = _mock_worksheet(
+            get_return=[
+                ["timer_preset_1", "15"],
+                ["pomodoro_types", '["Content", "Product"]'],
+            ]
+        )
         gc = _mock_client({"Settings": ws})
 
         defaults = {"timer_preset_1": 5, "timer_preset_2": 10, "pomodoro_types": []}
