@@ -15,13 +15,13 @@ def parse_pomodoros(json_content):
     if not json_content:
         return []
     try:
-        data = json.loads(json_content) if isinstance(json_content, str) else json_content
+        parsed = json.loads(json_content) if isinstance(json_content, str) else json_content
     except (json.JSONDecodeError, TypeError):
         return []
-    if isinstance(data, dict):
-        return data.get("pomodoros", [])
-    if isinstance(data, list):
-        return data
+    if isinstance(parsed, dict):
+        return parsed.get("pomodoros", [])
+    if isinstance(parsed, list):
+        return parsed
     return []
 
 
@@ -35,11 +35,11 @@ def parse_settings(json_content):
     if not json_content:
         return {}
     try:
-        data = json.loads(json_content) if isinstance(json_content, str) else json_content
+        parsed = json.loads(json_content) if isinstance(json_content, str) else json_content
     except (json.JSONDecodeError, TypeError):
         return {}
-    if isinstance(data, dict):
-        return data
+    if isinstance(parsed, dict):
+        return parsed
     return {}
 
 

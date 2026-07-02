@@ -79,7 +79,7 @@ class GoogleDriveTransport:
                 self._service.files().get(fileId=self._folder_id, fields="id,trashed").execute()
                 return self._folder_id
             except HttpError:
-                pass
+                self._folder_id = None
 
         resp = (
             self._service.files()

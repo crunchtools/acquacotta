@@ -151,3 +151,26 @@ justification = "Test helper functions (displayResults, escapeHtml) are standard
 check = "single_use_helpers"
 path = "tests/test_timezone.js"
 justification = "Individual test functions (testAutomaticTimezone, etc.) are standard test organization, not fake modularity"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# deferred_work - Domain terms, not deferred work markers
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[[exceptions]]
+check = "deferred_work"
+path = "todos_plugin.py"
+justification = "This IS a todos plugin — 'todo' in variable/function names are domain terms, not deferred work markers"
+
+[[exceptions]]
+check = "deferred_work"
+path = "static/js/storage.js"
+justification = "storage.js implements the Todos feature — 'Todo' in section headers, variable names, and store references are domain terms, not deferred work markers"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# conditional_wrapper - Legitimate guard clauses
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[[exceptions]]
+check = "conditional_wrapper"
+path = "json_google_drive_storage.py"
+justification = "save_pomodoros_batch guard clause avoids needless download/parse/upload cycle on empty input — legitimate API boundary validation"

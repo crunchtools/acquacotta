@@ -8,6 +8,10 @@ FROM quay.io/crunchtools/acquacotta-base:latest
 
 WORKDIR /app
 
+# Install new dependencies not in base image
+COPY requirements.txt .
+RUN pip3 install --no-cache-dir -r requirements.txt
+
 # Copy only application code (fast)
 COPY app.py .
 COPY plugin_registry.py .

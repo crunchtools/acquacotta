@@ -220,16 +220,6 @@ class TestAuthCallback:
     without depending on cookies/sessions.
     """
 
-    def _make_signed_state(self, app, code_verifier="test-verifier", spreadsheet_id=None):
-        """Create a signed state blob matching what auth_google() produces."""
-        from itsdangerous import URLSafeTimedSerializer
-
-        payload = {"s": "csrf-nonce", "cv": code_verifier}
-        if spreadsheet_id:
-            payload["sid"] = spreadsheet_id
-        s = URLSafeTimedSerializer(app.config["SECRET_KEY"])
-        return s.dumps(payload)
-
     def test_callback_returns_400_when_no_state(self, client):
         """Callback with no state parameter should return 400."""
         response = client.get("/auth/callback?code=some_code")
@@ -257,7 +247,10 @@ class TestAuthCallback:
 
     def test_callback_returns_400_when_no_code(self, app, client):
         """Callback with valid state but no authorization code should return 400."""
-        signed_state = self._make_signed_state(app)
+        from itsdangerous import URLSafeTimedSerializer
+
+        s = URLSafeTimedSerializer(app.config["SECRET_KEY"])
+        signed_state = s.dumps({"s": "csrf-nonce", "cv": "test-verifier"})
         response = client.get(f"/auth/callback?state={signed_state}")
         assert response.status_code == 400
 

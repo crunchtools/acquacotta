@@ -34,9 +34,7 @@ def _transport(drive_service, folder_id):
 def _ensure_plugin_folder(t, folder_id):
     """Ensure plugins/todos/ subfolder exists, return its folder ID."""
     service = t._service
-    # Find or create "plugins" folder
     plugins_id = _find_or_create_folder(service, folder_id, "plugins")
-    # Find or create "todos" inside plugins
     return _find_or_create_folder(service, plugins_id, "todos")
 
 
@@ -66,19 +64,19 @@ def read_todos(drive_service, folder_id):
     if content is None:
         return dict(_EMPTY_DATA)
     try:
-        data = json.loads(content)
-        if not isinstance(data, dict):
+        todos_data = json.loads(content)
+        if not isinstance(todos_data, dict):
             return dict(_EMPTY_DATA)
-        data.setdefault("todos", [])
-        data.setdefault("lists", [])
-        return data
+        todos_data.setdefault("todos", [])
+        todos_data.setdefault("lists", [])
+        return todos_data
     except (json.JSONDecodeError, TypeError):
         return dict(_EMPTY_DATA)
 
 
-def write_todos(drive_service, folder_id, data):
+def write_todos(drive_service, folder_id, todos_data):
     t = _transport(drive_service, folder_id)
     todos_folder_id = _ensure_plugin_folder(t, folder_id)
     todos_transport = GoogleDriveTransport(drive_service, todos_folder_id)
-    content = json.dumps(data, indent=2, ensure_ascii=False)
+    content = json.dumps(todos_data, indent=2, ensure_ascii=False)
     todos_transport.upload_file(TODOS_FILE, content)

@@ -1687,14 +1687,14 @@
             try {
                 const res = await authenticatedFetch('/api/todos/sync');
                 if (!res.ok) return false;
-                const data = await res.json();
-                if (data.todos) {
-                    for (const todo of data.todos) {
+                const syncPayload = await res.json();
+                if (syncPayload.todos) {
+                    for (const todo of syncPayload.todos) {
                         await putInStore(STORES.TODOS, todo);
                     }
                 }
-                if (data.lists) {
-                    for (const list of data.lists) {
+                if (syncPayload.lists) {
+                    for (const list of syncPayload.lists) {
                         await putInStore(STORES.TODO_LISTS, list);
                     }
                 }
