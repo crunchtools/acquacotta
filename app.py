@@ -17,6 +17,7 @@ import json
 import os
 from http import HTTPStatus
 from pathlib import Path
+from types import SimpleNamespace
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 # Allow OAuth scope changes (users may have previously granted different scopes)
@@ -46,6 +47,21 @@ plugin_registry.register(
 )
 plugin_registry.register("extension", "todos", todos_plugin, todos_plugin.PLUGIN_METADATA)
 plugin_registry.activate_extension("todos")
+
+# MCP access appears in the plugin list. It has no server-side module contract —
+# enable/disable and per-user state live in the /api/mcp/* routes + user_map, so a
+# metadata-only registration is enough. `has_mcp` flags the frontend to render its
+# token UI and route its toggle to the MCP endpoints instead of the generic toggle.
+MCP_PLUGIN_METADATA = {
+    "id": "mcp",
+    "name": "MCP Access",
+    "description": "Let AI agents (Claude, Kagetora, Takeda) read and manage your todos and time data over MCP.",
+    "version": "1.0.0",
+    "type": "integration",
+    "author": "crunchtools",
+    "has_mcp": True,
+}
+plugin_registry.register("integration", "mcp", SimpleNamespace(), MCP_PLUGIN_METADATA)
 plugin_registry.activate_storage("sheets")
 
 app = Flask(__name__)
