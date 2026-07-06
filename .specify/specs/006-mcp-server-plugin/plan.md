@@ -10,7 +10,7 @@ Add a hosted MCP endpoint to the existing Flask app as a new plugin. The endpoin
 ## Technical Context
 
 **Language/Version**: Python 3.x (matches existing Flask app)
-**Primary Dependencies**: Flask (existing), `mcp` Python SDK (or a minimal MCP-over-HTTP handler), `cryptography` (Fernet) for token sealing, `google-api-python-client` / `gspread` (existing), `google-auth` for refresh-token → access-token exchange
+**Primary Dependencies**: Flask (existing web app, WSGI), **FastMCP >= 2.0** (Streamable HTTP MCP server — same framework as `mcp-trentina`; ASGI/Starlette), `cryptography` (Fernet) for token sealing, `google-api-python-client` / `gspread` (existing), `google-auth` for refresh-token → access-token exchange
 **Storage**: None new — reuses user's Google Drive via existing storage/plugin functions. No server-side persistence, no new volume.
 **Testing**: pytest (existing `tests/`), following the project's manual-verification-before-merge gate
 **Target Platform**: Linux container (existing Containerfile), served by Gunicorn behind Apache/reverse proxy on lotor
@@ -41,8 +41,10 @@ Add a hosted MCP endpoint to the existing Flask app as a new plugin. The endpoin
 - Revocation paths: disable plugin / regenerate (bump a per-user `issued_at` floor — see below), rotate `MCP_TOKEN_SEAL_KEY` (global), or revoke the Google grant.
 - **Regenerate/disable without server state**: store only a tiny per-user `mcp_token_epoch` alongside the user's existing `location`/settings record (the app already persists per-user `location` via `save_location`). Tokens carry `issued_at`; the server rejects tokens with `issued_at < epoch`. This is metadata, not user content, and keeps revocation real without storing the token itself. (If we want truly zero per-user metadata, fall back to key-rotation-only revocation — flagged as an open question.)
 
-### Transport
-- Prefer the official `mcp` Python SDK's Streamable HTTP server mounted as a Flask/WSGI sub-app at `/mcp`. If SDK/WSGI integration is friction, implement the minimal Streamable HTTP MCP handler (initialize, tools/list, tools/call) directly as Flask routes. Decide in Phase 0 research.
+### Transport — FastMCP behind the in-container Apache
+- Use **FastMCP 2.0**, the same framework `mcp-trentina` runs (FastMCP + Starlette). It gives us Streamable HTTP, tool registration by decorator, and MCP protocol handling for free — no hand-rolled handler.
+- **WSGI/ASGI reality**: Flask is WSGI; FastMCP is ASGI/Starlette. Rather than bridge them in one process, run FastMCP as a second process (uvicorn) inside the *same* container and let the container's **existing Apache reverse proxy** route `/mcp` → FastMCP and everything else → Gunicorn/Flask. Single container, no new volume — still Constitution VI compliant. (Apache already fronts Flask in the container per project CLAUDE.md.)
+- FastMCP's auth hook validates the `Authorization: Bearer aqc_v1.<blob>` token (unseal → epoch check) before any tool runs; tools receive the built `ctx`.
 
 ### Tool contribution contract (#93 alignment)
 - Extend plugin metadata with an optional `MCP_TOOLS` list; each entry: `{name, description, input_schema, handler}` where `handler(ctx, args)` returns a JSON-serializable result.
@@ -91,7 +93,7 @@ tests/
 
 ## Risks & Open Questions
 
-- **MCP-over-HTTP in Flask/WSGI**: SDK may assume ASGI. Mitigation: minimal hand-rolled Streamable HTTP handler if integration is heavy. (Resolve in Phase 0.)
+- **FastMCP (ASGI) alongside Flask (WSGI)**: resolved by running FastMCP as a second uvicorn process behind the in-container Apache (route `/mcp`). Phase 0 spike confirms Apache routing + FastMCP bearer-auth hook.
 - **Revocation vs. zero-state purity**: per-user `mcp_token_epoch` is tiny metadata but not literally zero state. Confirm this is acceptable vs. key-rotation-only revocation. **[Decision needed]**
 - **Concurrent writes** to the full-replace todos file (agent + browser): last-write-wins, same as today. Document; revisit if it bites.
 - **Refresh-token longevity**: if Google expires/revokes the grant, agents break until re-enable. Surface a clear error.
