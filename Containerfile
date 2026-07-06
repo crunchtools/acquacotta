@@ -33,4 +33,7 @@ COPY static/ static/
 # (not in the base) so it ships without rebuilding the prebuilt base image.
 COPY static/acquacotta-http.conf /etc/httpd/conf.d/acquacotta.conf
 COPY static/mcp.service /etc/systemd/system/mcp.service
+# Refresh gunicorn.service so it forwards the dev/OAuth env vars (and the MCP seal
+# key). Shipped here so it lands regardless of the prebuilt base's version.
+COPY static/gunicorn.service /etc/systemd/system/gunicorn.service
 RUN systemctl enable mcp
