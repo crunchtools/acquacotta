@@ -32,11 +32,13 @@ jobs:
           fi
           echo "No workflow files changed."
 
+  # Advisory only — posts findings as PR comments and always passes.
+  # Do NOT mark this job a required status check (see crunchtools constitution XII).
   review:
     name: Gatehouse review
     permissions:
       contents: read
       pull-requests: write
-    uses: crunchtools/gatehouse/.github/workflows/review.yml@v0.2.0
+    uses: crunchtools/gatehouse/.github/workflows/review.yml@v0.4.0
     secrets:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
