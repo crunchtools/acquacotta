@@ -4,3 +4,5 @@ google-auth-oauthlib>=1.0
 google-api-python-client>=2.0
 gspread>=6.0
 gunicorn>=21.0
+fastmcp>=2.0
+cryptography>=42.0

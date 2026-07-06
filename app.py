@@ -31,10 +31,12 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 import json_google_drive_storage
+import mcp_tokens
 import plugin_registry
 import sheets_storage
 import storage_api
 import todos_plugin
+import user_map
 from storage_api import StorageUnavailable
 
 # Register built-in plugins
@@ -1175,6 +1177,95 @@ def api_save_todos():
         return jsonify({"status": "ok"})
     except HttpError as e:
         return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+
+
+# =============================================================================
+# MCP Access — enable/disable the hosted MCP endpoint and mint per-user tokens.
+#
+# The token seals the user's refresh_token + folder_id (see mcp_tokens). The
+# server stores only the revocation state (enabled flag + epoch) via user_map —
+# no token, no user content. Regenerate/disable advance the epoch to invalidate
+# previously issued tokens.
+# =============================================================================
+
+
+def _public_base_url():
+    """Best-effort public base URL from proxy headers (for the MCP endpoint)."""
+    oauth_base = os.environ.get("OAUTH_REDIRECT_BASE")
+    if oauth_base:
+        return oauth_base.rstrip("/")
+    proto = request.headers.get("X-Forwarded-Proto", request.scheme).split(",")[0].strip()
+    host = request.headers.get("X-Forwarded-Host", request.host).split(",")[0].strip()
+    return f"{proto}://{host}"
+
+
+def _mcp_endpoint():
+    return f"{_public_base_url()}/mcp"
+
+
+@app.route("/api/mcp/status", methods=["GET"])
+def api_mcp_status():
+    """Report whether MCP access is enabled for the requesting user."""
+    request_creds = get_credentials_from_request()
+    email = request_creds.get("user_email") if request_creds else None
+    if not email:
+        return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
+    state = user_map.get_mcp_state(email)
+    return jsonify({"enabled": state["enabled"], "endpoint": _mcp_endpoint()})
+
+
+def _mint_mcp_token():
+    """Shared enable/regenerate logic. Returns (response, status)."""
+    request_creds = get_credentials_from_request()
+    if not request_creds:
+        return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
+    email = request_creds.get("user_email")
+    refresh_token = request_creds.get("refresh_token")
+    folder_id = request_creds.get("folder_id")
+    if not email:
+        return jsonify({"error": "No user email in credentials"}), HTTPStatus.BAD_REQUEST
+    if not refresh_token:
+        return jsonify(
+            {"error": "No Google refresh token available — sign out and sign in again to grant offline access"}
+        ), HTTPStatus.BAD_REQUEST
+    if not folder_id:
+        return jsonify(
+            {"error": "MCP access requires the JSON-on-Google-Drive backend (no folder_id configured)"}
+        ), HTTPStatus.BAD_REQUEST
+
+    import time
+
+    epoch = int(time.time())
+    user_map.set_mcp_state(email, enabled=True, epoch=epoch)
+    try:
+        token = mcp_tokens.seal(email, refresh_token, folder_id, issued_at=epoch)
+    except mcp_tokens.TokenError as e:
+        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+    return jsonify({"status": "ok", "enabled": True, "token": token, "endpoint": _mcp_endpoint()})
+
+
+@app.route("/api/mcp/enable", methods=["POST"])
+def api_mcp_enable():
+    """Enable MCP access and mint a bearer token (shown once)."""
+    return _mint_mcp_token()
+
+
+@app.route("/api/mcp/regenerate", methods=["POST"])
+def api_mcp_regenerate():
+    """Rotate the token: advance the epoch (invalidating old tokens) and mint a new one."""
+    return _mint_mcp_token()
+
+
+@app.route("/api/mcp/disable", methods=["POST"])
+def api_mcp_disable():
+    """Disable MCP access. Existing tokens stop working immediately."""
+    request_creds = get_credentials_from_request()
+    email = request_creds.get("user_email") if request_creds else None
+    if not email:
+        return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
+    state = user_map.get_mcp_state(email)
+    user_map.set_mcp_state(email, enabled=False, epoch=state["epoch"])
+    return jsonify({"status": "ok", "enabled": False})
 
 
 if __name__ == "__main__":

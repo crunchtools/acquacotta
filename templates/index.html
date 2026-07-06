@@ -1067,6 +1067,32 @@
                 <div id="plugins-list"></div>
                 <div id="plugins-loading" style="color: var(--text-secondary); font-size: 0.875rem;">Loading plugins...</div>
             </div>
+            <div class="card" id="mcp-access-card">
+                <h3>MCP Access (Agents)</h3>
+                <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1rem;">
+                    Let AI agents (Claude, Kagetora, Takeda, …) read and manage your todos and time data over MCP.
+                    Access uses a per-user token; the server stores nothing — every request reaches your own Google Drive.
+                </p>
+                <label style="display: flex; align-items: center; cursor: pointer; gap: 0.5rem; margin-bottom: 0.75rem;">
+                    <input type="checkbox" id="mcp-toggle" onchange="toggleMcp(this)" style="width: auto; cursor: pointer;">
+                    <span id="mcp-toggle-label" style="font-size: 0.875rem;">Off</span>
+                </label>
+                <div id="mcp-details" style="display: none;">
+                    <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.25rem;">Endpoint</div>
+                    <input type="text" id="mcp-endpoint" readonly onclick="this.select()"
+                           style="width: 100%; font-family: monospace; font-size: 0.8rem; margin-bottom: 0.75rem;">
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button class="secondary" onclick="regenerateMcp()" style="padding: 0.25rem 0.75rem; font-size: 0.75rem;">Regenerate token</button>
+                    </div>
+                </div>
+                <div id="mcp-token-box" style="display: none; margin-top: 0.75rem; padding: 0.75rem; background: var(--bg-tertiary); border-radius: 6px;">
+                    <div style="font-size: 0.8rem; font-weight: 500; margin-bottom: 0.25rem;">Your token — copy it now, it won't be shown again</div>
+                    <textarea id="mcp-token" readonly onclick="this.select()" rows="3"
+                              style="width: 100%; font-family: monospace; font-size: 0.75rem; word-break: break-all;"></textarea>
+                    <button class="secondary" onclick="copyMcpToken()" style="padding: 0.25rem 0.75rem; font-size: 0.75rem; margin-top: 0.25rem;">Copy</button>
+                </div>
+                <div id="mcp-message" style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.5rem;"></div>
+            </div>
             <p style="color: var(--text-secondary); font-size: 0.75rem; text-align: center; margin-top: 1rem;">Settings are saved automatically</p>
         </div>
 
@@ -3762,6 +3788,78 @@
 
             // Load plugin list
             loadPlugins();
+            loadMcpStatus();
+        }
+
+        // ── MCP Access ──────────────────────────────────────────────
+        function _mcpSetMessage(text, isError) {
+            const el = document.getElementById('mcp-message');
+            el.textContent = text || '';
+            el.style.color = isError ? 'var(--danger, #c0392b)' : 'var(--text-secondary)';
+        }
+
+        function _mcpRender(enabled, endpoint) {
+            document.getElementById('mcp-toggle').checked = enabled;
+            document.getElementById('mcp-toggle-label').textContent = enabled ? 'On' : 'Off';
+            document.getElementById('mcp-details').style.display = enabled ? 'block' : 'none';
+            if (endpoint) document.getElementById('mcp-endpoint').value = endpoint;
+            if (!enabled) document.getElementById('mcp-token-box').style.display = 'none';
+        }
+
+        async function loadMcpStatus() {
+            try {
+                const res = await Storage.authenticatedFetch('/api/mcp/status');
+                if (!res.ok) return;
+                const data = await res.json();
+                _mcpRender(data.enabled, data.endpoint);
+            } catch (e) {
+                // Not logged in / no storage location — leave the card in its default Off state.
+            }
+        }
+
+        async function toggleMcp(checkbox) {
+            if (checkbox.checked) {
+                await _mcpMint('/api/mcp/enable');
+            } else {
+                try {
+                    const res = await Storage.authenticatedFetch('/api/mcp/disable', { method: 'POST' });
+                    if (!res.ok) throw new Error((await res.json()).error || 'Failed');
+                    _mcpRender(false, null);
+                    _mcpSetMessage('MCP access disabled. Existing tokens no longer work.');
+                } catch (e) {
+                    checkbox.checked = true;
+                    _mcpSetMessage(e.message, true);
+                }
+            }
+        }
+
+        async function regenerateMcp() {
+            await _mcpMint('/api/mcp/regenerate');
+        }
+
+        async function _mcpMint(url) {
+            try {
+                const res = await Storage.authenticatedFetch(url, { method: 'POST' });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Failed');
+                _mcpRender(true, data.endpoint);
+                document.getElementById('mcp-token').value = data.token;
+                document.getElementById('mcp-token-box').style.display = 'block';
+                _mcpSetMessage('Token minted. Copy it now — it will not be shown again.');
+            } catch (e) {
+                document.getElementById('mcp-toggle').checked = false;
+                _mcpRender(false, null);
+                _mcpSetMessage(e.message, true);
+            }
+        }
+
+        function copyMcpToken() {
+            const el = document.getElementById('mcp-token');
+            el.select();
+            navigator.clipboard.writeText(el.value).then(
+                () => _mcpSetMessage('Copied to clipboard.'),
+                () => _mcpSetMessage('Select the text and copy manually.', true)
+            );
         }
 
         async function loadPlugins() {

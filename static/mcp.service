@@ -1,0 +1,16 @@
+[Unit]
+Description=Acquacotta MCP server (FastMCP, Streamable HTTP)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/app
+Environment=MCP_HOST=127.0.0.1
+Environment=MCP_PORT=5001
+PassEnvironment=FLASK_SECRET_KEY MCP_TOKEN_SEAL_KEY GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET XDG_DATA_HOME
+ExecStart=/usr/bin/python3.12 /app/mcp_server.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
