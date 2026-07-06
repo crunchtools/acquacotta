@@ -94,7 +94,7 @@ tests/
 ## Risks & Open Questions
 
 - **FastMCP (ASGI) alongside Flask (WSGI)**: resolved by running FastMCP as a second uvicorn process behind the in-container Apache (route `/mcp`). Phase 0 spike confirms Apache routing + FastMCP bearer-auth hook.
-- **Revocation vs. zero-state purity**: per-user `mcp_token_epoch` is tiny metadata but not literally zero state. Confirm this is acceptable vs. key-rotation-only revocation. **[Decision needed]**
+- **Revocation vs. zero-state purity**: **DECIDED (2026-07-06)** — use the per-user `mcp_token_epoch` watermark (Option A) for real per-user revoke. It is access metadata, not user content, and is the only per-user state kept. Key rotation remains the global panic-revoke.
 - **Concurrent writes** to the full-replace todos file (agent + browser): last-write-wins, same as today. Document; revisit if it bites.
 - **Refresh-token longevity**: if Google expires/revokes the grant, agents break until re-enable. Surface a clear error.
 - **Token exposure**: bearer token grants full data access. One-time display, treat like a password; regenerate is the mitigation.
