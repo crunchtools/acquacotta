@@ -88,7 +88,9 @@ def require_ctx():
 
     Raises ToolError (never touching storage) on any missing/invalid/revoked token.
     """
-    headers = get_http_headers()
+    # include_all=True is required: FastMCP 3.x strips `authorization` from the
+    # default header view (2.x kept it), so ask for the full set explicitly.
+    headers = get_http_headers(include_all=True)
     auth = headers.get("authorization", "")
     if not auth.lower().startswith("bearer "):
         raise ToolError("Missing bearer token — set Authorization: Bearer <acquacotta MCP token>")
