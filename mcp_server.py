@@ -118,7 +118,13 @@ for registrar in plugin_registry.get_mcp_tool_registrars():
 def main():
     host = os.environ.get("MCP_HOST", "127.0.0.1")
     port = int(os.environ.get("MCP_PORT", "5001"))
-    mcp.run(transport="streamable-http", host=host, port=port)
+    # FastMCP's DNS-rebinding host/origin protection assumes a localhost-browser
+    # threat model: it rejects any Host header that isn't localhost with a 421.
+    # Acquacotta runs the server bound to 127.0.0.1 behind a trusted reverse proxy
+    # that terminates TLS and forwards the public Host, and every data operation
+    # requires a bearer token — so Apache + token auth are the real controls and
+    # this check only breaks the proxied /mcp path. Disable it.
+    mcp.run(transport="streamable-http", host=host, port=port, host_origin_protection=False)
 
 
 if __name__ == "__main__":
