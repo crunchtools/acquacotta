@@ -56,7 +56,12 @@ max-complexity = 10
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["PLR2004"]  # Magic values acceptable in test assertions
-"app.py" = ["PLR0915"]  # auth_callback is complex by nature (OAuth + IndexedDB setup)
+"app.py" = ["PLR0915", "PLR0911"]  # auth_callback / token-mint routes are guard-clause heavy by nature
+# MCP tool + storage functions expose many named parameters that agents pass by
+# name; bundling them into an object would obscure the tool schema, so PLR0913 is
+# accepted here. register_mcp_tools is a flat list of @mcp.tool definitions.
+"todos_plugin.py" = ["PLR0915", "C901", "PLR0913"]
+"pomodoro_tools.py" = ["PLR0913"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["app", "sheets_storage"]

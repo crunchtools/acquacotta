@@ -174,3 +174,38 @@ justification = "storage.js implements the Todos feature — 'Todo' in section h
 check = "conditional_wrapper"
 path = "json_google_drive_storage.py"
 justification = "save_pomodoros_batch guard clause avoids needless download/parse/upload cycle on empty input — legitimate API boundary validation"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# MCP server plugin (#111) — new files triaged into the same
+# patterns already accepted for app.py and the storage modules.
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[[exceptions]]
+check = "random_scripts"
+path = "mcp_server.py"
+justification = "Second entry point — the FastMCP server systemd runs alongside Flask, same status as app.py"
+
+[[exceptions]]
+check = "deferred_work"
+path = "mcp_server.py"
+justification = "'todos' refers to the todos plugin it activates — a domain term, not a deferred-work marker"
+
+[[exceptions]]
+check = "single_use_helpers"
+path = "mcp_server.py"
+justification = "_build_drive_service isolates the Google OAuth/Drive boundary; same rationale as app.py's extracted helpers"
+
+[[exceptions]]
+check = "verbose_comments"
+path = "mcp_server.py"
+justification = "Comments document the sealed-token auth and per-user epoch revocation model"
+
+[[exceptions]]
+check = "verbose_comments"
+path = "todos_plugin.py"
+justification = "Comments document the read-modify-write full-replace contract shared with the web UI's sync path"
+
+[[exceptions]]
+check = "verbose_comments"
+path = "tests/test_mcp_tokens.py"
+justification = "Test comments provide test structure clarity"

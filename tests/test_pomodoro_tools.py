@@ -46,3 +46,55 @@ class TestQueryPomodoros:
     def test_no_filter_returns_all(self, pomodoros):
         result = pomodoro_tools.query_pomodoros(None, "folder")
         assert len(result) == 4
+
+
+class TestRecordPomodoro:
+    @pytest.fixture
+    def saved(self, monkeypatch):
+        """Capture whatever record_pomodoro persists."""
+        captured = []
+        monkeypatch.setattr(pomodoro_tools.drive_storage, "save_pomodoro", lambda _d, _f, p: captured.append(p))
+        return captured
+
+    def test_builds_record_and_derives_start(self, saved):
+        record = pomodoro_tools.record_pomodoro(
+            None, "folder", "Deep work", "Product", 30, end_time="2026-07-08T12:30:00Z"
+        )
+        assert saved == [record]
+        assert record["name"] == "Deep work"
+        assert record["type"] == "Product"
+        assert record["duration_minutes"] == 30
+        assert record["start_time"] == "2026-07-08T12:00:00Z"
+        assert record["end_time"] == "2026-07-08T12:30:00Z"
+        assert record["synced"] is False
+        assert record["id"]
+
+    def test_defaults_end_time_to_now(self, saved):
+        record = pomodoro_tools.record_pomodoro(None, "folder", "X", "Product", 25)
+        assert record["start_time"] < record["end_time"]
+
+    def test_rejects_blank_name(self, saved):
+        with pytest.raises(ValueError):
+            pomodoro_tools.record_pomodoro(None, "folder", "  ", "Product", 25)
+
+    def test_rejects_nonpositive_duration(self, saved):
+        with pytest.raises(ValueError):
+            pomodoro_tools.record_pomodoro(None, "folder", "X", "Product", 0)
+
+
+class TestCompareTimeSummary:
+    def test_delta_is_a_minus_b(self, monkeypatch):
+        by_range = {
+            "2026-07-01": [{"type": "Product", "duration_minutes": 60}],
+            "2026-06-01": [{"type": "Product", "duration_minutes": 100}],
+        }
+        monkeypatch.setattr(
+            pomodoro_tools.drive_storage, "get_pomodoros", lambda _d, _f, start, _end: list(by_range[start])
+        )
+        out = pomodoro_tools.compare_time_summary(
+            None, "folder", "2026-07-01", "2026-07-31", "2026-06-01", "2026-06-30"
+        )
+        assert out["period_a"]["total_minutes"] == 60
+        assert out["period_b"]["total_minutes"] == 100
+        assert out["delta"]["total_minutes"] == -40
+        assert out["delta"]["by_category"]["Product"] == -40

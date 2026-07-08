@@ -94,39 +94,52 @@ def write_todos(drive_service, folder_id, todos_data):
 # =============================================================================
 
 _VALID_PRIORITIES = ("none", "low", "medium", "high")
+_UNSORTED_LAST = 999999  # todos lacking a sort_order sort after those that have one
 
 
 def _now_iso():
     return datetime.now(timezone.utc).isoformat()
 
 
-def query_todos(drive_service, folder_id, status=None, list_id=None):
-    """Return todos, optionally filtered by status ('pending'/'completed') and list_id."""
-    data = read_todos(drive_service, folder_id)
-    todos = data.get("todos", [])
+def query_todos(drive_service, folder_id, status=None, list_id=None, priority=None, q=None):
+    """Return todos, optionally filtered by status, list_id, priority, and a text query.
+
+    `q` matches case-insensitively against title and notes.
+    """
+    if priority is not None and priority not in _VALID_PRIORITIES:
+        raise ValueError(f"priority must be one of {_VALID_PRIORITIES}")
+    todos_doc = read_todos(drive_service, folder_id)
+    todos = todos_doc.get("todos", [])
     if status:
         todos = [t for t in todos if t.get("status") == status]
     if list_id is not None:
         todos = [t for t in todos if t.get("list_id") == list_id]
-    todos = sorted(todos, key=lambda t: (t.get("status") != "pending", t.get("sort_order", 999999)))
+    if priority is not None:
+        todos = [t for t in todos if t.get("priority") == priority]
+    if q:
+        needle = q.lower()
+        todos = [
+            t for t in todos if needle in (t.get("title") or "").lower() or needle in (t.get("notes") or "").lower()
+        ]
+    todos = sorted(todos, key=lambda t: (t.get("status") != "pending", t.get("sort_order", _UNSORTED_LAST)))
     return todos
 
 
 def query_lists(drive_service, folder_id):
     """Return the user's custom todo lists ordered by their `order` field."""
-    data = read_todos(drive_service, folder_id)
-    return sorted(data.get("lists", []), key=lambda listing: listing.get("order", 0))
+    todos_doc = read_todos(drive_service, folder_id)
+    return sorted(todos_doc.get("lists", []), key=lambda listing: listing.get("order", 0))
 
 
-def add_todo(drive_service, folder_id, title, notes="", priority="none", due_date=None, list_id=None):  # noqa: PLR0913
+def add_todo(drive_service, folder_id, title, notes="", priority="none", due_date=None, list_id=None):
     """Create a todo and persist it. Returns the new todo record."""
     if not title or not title.strip():
         raise ValueError("title is required")
     if priority not in _VALID_PRIORITIES:
         raise ValueError(f"priority must be one of {_VALID_PRIORITIES}")
-    data = read_todos(drive_service, folder_id)
-    todos = data.setdefault("todos", [])
-    if list_id is not None and list_id not in {listing.get("id") for listing in data.get("lists", [])}:
+    todos_doc = read_todos(drive_service, folder_id)
+    todos = todos_doc.setdefault("todos", [])
+    if list_id is not None and list_id not in {listing.get("id") for listing in todos_doc.get("lists", [])}:
         raise ValueError(f"Unknown list_id: {list_id}")
     max_order = max((t.get("sort_order", 0) for t in todos), default=0)
     todo = {
@@ -142,7 +155,7 @@ def add_todo(drive_service, folder_id, title, notes="", priority="none", due_dat
         "completed_at": None,
     }
     todos.append(todo)
-    write_todos(drive_service, folder_id, data)
+    write_todos(drive_service, folder_id, todos_doc)
     return todo
 
 
@@ -150,12 +163,12 @@ def set_todo_status(drive_service, folder_id, todo_id, status):
     """Mark a todo 'completed' or 'pending'. Returns the updated todo or None if not found."""
     if status not in ("pending", "completed"):
         raise ValueError("status must be 'pending' or 'completed'")
-    data = read_todos(drive_service, folder_id)
-    for todo in data.get("todos", []):
+    todos_doc = read_todos(drive_service, folder_id)
+    for todo in todos_doc.get("todos", []):
         if todo.get("id") == todo_id:
             todo["status"] = status
             todo["completed_at"] = _now_iso() if status == "completed" else None
-            write_todos(drive_service, folder_id, data)
+            write_todos(drive_service, folder_id, todos_doc)
             return todo
     return None
 
@@ -166,16 +179,105 @@ def modify_todo(drive_service, folder_id, todo_id, fields):
     updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
     if "priority" in updates and updates["priority"] not in _VALID_PRIORITIES:
         raise ValueError(f"priority must be one of {_VALID_PRIORITIES}")
-    data = read_todos(drive_service, folder_id)
-    known_lists = {listing.get("id") for listing in data.get("lists", [])}
+    todos_doc = read_todos(drive_service, folder_id)
+    known_lists = {listing.get("id") for listing in todos_doc.get("lists", [])}
     if "list_id" in updates and updates["list_id"] not in known_lists:
         raise ValueError(f"Unknown list_id: {updates['list_id']}")
-    for todo in data.get("todos", []):
+    for todo in todos_doc.get("todos", []):
         if todo.get("id") == todo_id:
             todo.update(updates)
-            write_todos(drive_service, folder_id, data)
+            write_todos(drive_service, folder_id, todos_doc)
             return todo
     return None
+
+
+def remove_todo(drive_service, folder_id, todo_id):
+    """Permanently remove a todo. Returns True if it existed, False otherwise."""
+    todos_doc = read_todos(drive_service, folder_id)
+    todos = todos_doc.get("todos", [])
+    remaining = [t for t in todos if t.get("id") != todo_id]
+    if len(remaining) == len(todos):
+        return False
+    todos_doc["todos"] = remaining
+    write_todos(drive_service, folder_id, todos_doc)
+    return True
+
+
+def complete_todos_bulk(drive_service, folder_id, todo_ids, status="completed"):
+    """Set status on many todos in one read-modify-write.
+
+    Returns ``{"updated": [ids], "not_found": [ids]}``.
+    """
+    if status not in ("pending", "completed"):
+        raise ValueError("status must be 'pending' or 'completed'")
+    todos_doc = read_todos(drive_service, folder_id)
+    by_id = {t.get("id"): t for t in todos_doc.get("todos", [])}
+    updated, not_found = [], []
+    stamp = _now_iso() if status == "completed" else None
+    for todo_id in todo_ids:
+        todo = by_id.get(todo_id)
+        if todo is None:
+            not_found.append(todo_id)
+            continue
+        todo["status"] = status
+        todo["completed_at"] = stamp
+        updated.append(todo_id)
+    if updated:
+        write_todos(drive_service, folder_id, todos_doc)
+    return {"updated": updated, "not_found": not_found}
+
+
+def set_todo_order(drive_service, folder_id, todo_id, sort_order):
+    """Set a todo's sort_order (its position within its list). Returns the todo or None."""
+    if not isinstance(sort_order, int):
+        raise ValueError("sort_order must be an integer")
+    todos_doc = read_todos(drive_service, folder_id)
+    for todo in todos_doc.get("todos", []):
+        if todo.get("id") == todo_id:
+            todo["sort_order"] = sort_order
+            write_todos(drive_service, folder_id, todos_doc)
+            return todo
+    return None
+
+
+def add_list(drive_service, folder_id, name):
+    """Create a custom todo list. Returns the new list record."""
+    if not name or not name.strip():
+        raise ValueError("name is required")
+    todos_doc = read_todos(drive_service, folder_id)
+    lists = todos_doc.setdefault("lists", [])
+    listing = {"id": str(uuid.uuid4()), "name": name.strip(), "order": len(lists)}
+    lists.append(listing)
+    write_todos(drive_service, folder_id, todos_doc)
+    return listing
+
+
+def rename_list(drive_service, folder_id, list_id, name):
+    """Rename a custom todo list. Returns the updated list or None if not found."""
+    if not name or not name.strip():
+        raise ValueError("name is required")
+    todos_doc = read_todos(drive_service, folder_id)
+    for listing in todos_doc.get("lists", []):
+        if listing.get("id") == list_id:
+            listing["name"] = name.strip()
+            write_todos(drive_service, folder_id, todos_doc)
+            return listing
+    return None
+
+
+def delete_list(drive_service, folder_id, list_id):
+    """Delete a custom list, orphaning its todos (list_id → None). Returns True if it existed."""
+    todos_doc = read_todos(drive_service, folder_id)
+    lists = todos_doc.get("lists", [])
+    remaining = [listing for listing in lists if listing.get("id") != list_id]
+    if len(remaining) == len(lists):
+        return False
+    todos_doc["lists"] = remaining
+    for todo in todos_doc.get("todos", []):
+        if todo.get("list_id") == list_id:
+            todo["list_id"] = None
+    write_todos(drive_service, folder_id, todos_doc)
+    return True
 
 
 def register_mcp_tools(mcp, require_ctx):
@@ -187,15 +289,25 @@ def register_mcp_tools(mcp, require_ctx):
     from fastmcp.exceptions import ToolError
 
     @mcp.tool()
-    def list_todos(status: str | None = None, list_id: str | None = None) -> list:
+    def list_todos(
+        status: str | None = None,
+        list_id: str | None = None,
+        priority: str | None = None,
+        q: str | None = None,
+    ) -> list:
         """List the user's todos.
 
         Args:
             status: Optional filter — 'pending' or 'completed'.
             list_id: Optional filter — only todos in this custom list.
+            priority: Optional filter — 'none', 'low', 'medium', or 'high'.
+            q: Optional text search — matches title and notes, case-insensitively.
         """
         ctx = require_ctx()
-        return query_todos(ctx["service"], ctx["folder_id"], status=status, list_id=list_id)
+        try:
+            return query_todos(ctx["service"], ctx["folder_id"], status=status, list_id=list_id, priority=priority, q=q)
+        except ValueError as exc:
+            raise ToolError(str(exc)) from exc
 
     @mcp.tool()
     def list_todo_lists() -> list:
@@ -234,13 +346,13 @@ def register_mcp_tools(mcp, require_ctx):
             todo_id: The id of the todo to complete.
         """
         ctx = require_ctx()
-        result = set_todo_status(ctx["service"], ctx["folder_id"], todo_id, "completed")
-        if result is None:
+        completed = set_todo_status(ctx["service"], ctx["folder_id"], todo_id, "completed")
+        if completed is None:
             raise ToolError(f"No todo found with id {todo_id}")
-        return result
+        return completed
 
     @mcp.tool()
-    def update_todo(  # noqa: PLR0913
+    def update_todo(
         todo_id: str,
         title: str | None = None,
         notes: str | None = None,
@@ -261,9 +373,92 @@ def register_mcp_tools(mcp, require_ctx):
         ctx = require_ctx()
         fields = {"title": title, "notes": notes, "priority": priority, "due_date": due_date, "list_id": list_id}
         try:
-            result = modify_todo(ctx["service"], ctx["folder_id"], todo_id, fields)
+            updated = modify_todo(ctx["service"], ctx["folder_id"], todo_id, fields)
         except ValueError as exc:
             raise ToolError(str(exc)) from exc
-        if result is None:
+        if updated is None:
             raise ToolError(f"No todo found with id {todo_id}")
-        return result
+        return updated
+
+    @mcp.tool()
+    def delete_todo(todo_id: str) -> dict:
+        """Permanently delete a todo (distinct from complete_todo, which only resolves it).
+
+        Args:
+            todo_id: The id of the todo to delete.
+        """
+        ctx = require_ctx()
+        if not remove_todo(ctx["service"], ctx["folder_id"], todo_id):
+            raise ToolError(f"No todo found with id {todo_id}")
+        return {"status": "ok", "deleted": todo_id}
+
+    @mcp.tool()
+    def complete_todos(todo_ids: list[str]) -> dict:
+        """Mark several todos completed in a single operation.
+
+        Args:
+            todo_ids: The ids of the todos to complete.
+
+        Returns which ids were updated and which weren't found.
+        """
+        ctx = require_ctx()
+        return complete_todos_bulk(ctx["service"], ctx["folder_id"], todo_ids, "completed")
+
+    @mcp.tool()
+    def reorder_todo(todo_id: str, sort_order: int) -> dict:
+        """Change a todo's sort position without touching its other fields.
+
+        Args:
+            todo_id: The id of the todo to move.
+            sort_order: The new sort_order (lower sorts earlier).
+        """
+        ctx = require_ctx()
+        try:
+            moved = set_todo_order(ctx["service"], ctx["folder_id"], todo_id, sort_order)
+        except ValueError as exc:
+            raise ToolError(str(exc)) from exc
+        if moved is None:
+            raise ToolError(f"No todo found with id {todo_id}")
+        return moved
+
+    @mcp.tool()
+    def create_todo_list(name: str) -> dict:
+        """Create a custom todo list.
+
+        Args:
+            name: The list name.
+        """
+        ctx = require_ctx()
+        try:
+            return add_list(ctx["service"], ctx["folder_id"], name)
+        except ValueError as exc:
+            raise ToolError(str(exc)) from exc
+
+    @mcp.tool()
+    def rename_todo_list(list_id: str, name: str) -> dict:
+        """Rename a custom todo list.
+
+        Args:
+            list_id: The id of the list to rename.
+            name: The new name.
+        """
+        ctx = require_ctx()
+        try:
+            renamed = rename_list(ctx["service"], ctx["folder_id"], list_id, name)
+        except ValueError as exc:
+            raise ToolError(str(exc)) from exc
+        if renamed is None:
+            raise ToolError(f"No list found with id {list_id}")
+        return renamed
+
+    @mcp.tool()
+    def delete_todo_list(list_id: str) -> dict:
+        """Delete a custom todo list. Todos in it are kept but moved to no list.
+
+        Args:
+            list_id: The id of the list to delete.
+        """
+        ctx = require_ctx()
+        if not delete_list(ctx["service"], ctx["folder_id"], list_id):
+            raise ToolError(f"No list found with id {list_id}")
+        return {"status": "ok", "deleted": list_id}
