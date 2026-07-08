@@ -7,7 +7,7 @@ It stores nothing: every request carries a sealed bearer token (see
 Drive storage, through the exact same plugin functions the web app uses.
 
 Auth: `Authorization: Bearer aqc_v1.<blob>` → unseal → check the per-user
-revocation epoch (:mod:`user_map`) → build a Google Drive service → dispatch.
+Google Drive service → check the per-user revocation epoch (in the user's Drive) → dispatch.
 
 Run: ``python3 mcp_server.py`` (host/port from MCP_HOST / MCP_PORT).
 Behind the in-container Apache, `/mcp` proxies here; nothing else changes.
@@ -28,7 +28,6 @@ import plugin_registry
 import pomodoro_tools
 import sheets_storage
 import todos_plugin
-import user_map
 
 # OAuth scopes needed to exchange a refresh token for Drive access.
 SCOPES = [
@@ -94,18 +93,18 @@ def require_ctx():
     auth = headers.get("authorization", "")
     if not auth.lower().startswith("bearer "):
         raise ToolError("Missing bearer token — set Authorization: Bearer <acquacotta MCP token>")
-    token = auth[len("bearer "):].strip()
+    token = auth[len("bearer ") :].strip()
 
     try:
         payload = mcp_tokens.unseal(token)
     except mcp_tokens.TokenError as exc:
         raise ToolError(f"Invalid token: {exc}") from exc
 
-    state = user_map.get_mcp_state(payload["email"])
+    drive_service = _build_drive_service(payload["refresh_token"])
+    state = json_google_drive_storage.get_mcp_state(drive_service, payload["folder_id"])
     if mcp_tokens.is_revoked(payload, state):
         raise ToolError("Token revoked — MCP access is disabled or this token was superseded")
 
-    drive_service = _build_drive_service(payload["refresh_token"])
     return {"service": drive_service, "folder_id": payload["folder_id"], "email": payload["email"]}
 
 

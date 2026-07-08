@@ -8,7 +8,7 @@ request, uses it, and discards it (constitution I & II).
 Format: ``aqc_v1.<fernet-token>`` where the Fernet token is the encrypted JSON
 payload ``{v, email, refresh_token, folder_id, issued_at}``. Fernet provides
 the confidentiality + tamper detection; ``issued_at`` (unix seconds) is checked
-against the per-user revocation epoch in :mod:`user_map`.
+against the per-user revocation epoch stored in the user's own Drive.
 
 Sealing key: ``MCP_TOKEN_SEAL_KEY`` (a urlsafe-base64 32-byte Fernet key). If
 unset, it is derived deterministically from ``FLASK_SECRET_KEY`` so the Flask
@@ -70,7 +70,7 @@ def unseal(token):
     """
     if not token or not token.startswith(TOKEN_PREFIX):
         raise TokenError("Malformed token")
-    blob = token[len(TOKEN_PREFIX):].encode()
+    blob = token[len(TOKEN_PREFIX) :].encode()
     try:
         raw = Fernet(_seal_key()).decrypt(blob)
     except InvalidToken as exc:

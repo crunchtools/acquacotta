@@ -307,3 +307,29 @@ class TestClearPomodoros:
         assert result["cleared"] == 2
         uploaded = json.loads(t.upload_file.call_args[0][1])
         assert uploaded["pomodoros"] == []
+
+
+class TestMcpState:
+    @patch("json_google_drive_storage._transport")
+    def test_defaults_when_absent(self, mock_transport_fn):
+        mock_transport_fn.return_value = _mock_transport(None)
+        assert storage.get_mcp_state("svc", "folder") == {"enabled": False, "epoch": 0}
+
+    @patch("json_google_drive_storage._transport")
+    def test_reads_stored_state(self, mock_transport_fn):
+        mock_transport_fn.return_value = _mock_transport('{"enabled": true, "epoch": 123}')
+        assert storage.get_mcp_state("svc", "folder") == {"enabled": True, "epoch": 123}
+
+    @patch("json_google_drive_storage._transport")
+    def test_tolerates_corrupt_json(self, mock_transport_fn):
+        mock_transport_fn.return_value = _mock_transport("{not json")
+        assert storage.get_mcp_state("svc", "folder") == {"enabled": False, "epoch": 0}
+
+    @patch("json_google_drive_storage._transport")
+    def test_set_writes_state_file(self, mock_transport_fn):
+        t = _mock_transport(None)
+        mock_transport_fn.return_value = t
+        storage.set_mcp_state("svc", "folder", enabled=True, epoch=456)
+        name, content = t.upload_file.call_args[0]
+        assert name == "mcp_access.json"
+        assert json.loads(content) == {"enabled": True, "epoch": 456}

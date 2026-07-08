@@ -23,7 +23,6 @@ COPY todos_plugin.py .
 COPY pomodoro_tools.py .
 COPY mcp_server.py .
 COPY mcp_tokens.py .
-COPY user_map.py .
 COPY transports/ transports/
 COPY templates/ templates/
 COPY static/ static/
