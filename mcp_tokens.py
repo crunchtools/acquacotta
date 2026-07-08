@@ -10,10 +10,11 @@ payload ``{v, email, refresh_token, folder_id, issued_at}``. Fernet provides
 the confidentiality + tamper detection; ``issued_at`` (unix seconds) is checked
 against the per-user revocation epoch stored in the user's own Drive.
 
-Sealing key: ``MCP_TOKEN_SEAL_KEY`` (a urlsafe-base64 32-byte Fernet key). If
-unset, it is derived deterministically from ``FLASK_SECRET_KEY`` so the Flask
-and MCP processes agree without extra config in development. Set an explicit key
-in production; rotating it is the global panic-revoke.
+Sealing key: ``MCP_TOKEN_SEAL_KEY`` (a urlsafe-base64 32-byte Fernet key),
+REQUIRED in production. In development (``FLASK_ENV=development``) it may be
+derived from ``FLASK_SECRET_KEY`` so the Flask and MCP processes agree without
+extra config; outside development an unset key fails closed. Rotating the key is
+the global panic-revoke.
 """
 
 import base64
@@ -33,13 +34,24 @@ class TokenError(Exception):
 
 
 def _seal_key():
-    """Return the Fernet key, from env or derived from FLASK_SECRET_KEY."""
+    """Return the Fernet key that protects sealed refresh tokens.
+
+    In production ``MCP_TOKEN_SEAL_KEY`` MUST be set explicitly (a high-entropy,
+    independently rotatable key). Deriving it from ``FLASK_SECRET_KEY`` is a
+    convenience allowed ONLY in development (``FLASK_ENV=development``); outside
+    development we fail closed rather than couple token security to the Flask
+    secret.
+    """
     explicit = os.environ.get("MCP_TOKEN_SEAL_KEY")
     if explicit:
         return explicit.encode() if isinstance(explicit, str) else explicit
+    if os.environ.get("FLASK_ENV") != "development":
+        raise TokenError(
+            "MCP_TOKEN_SEAL_KEY must be set explicitly (it is only derived from FLASK_SECRET_KEY in development)"
+        )
     secret = os.environ.get("FLASK_SECRET_KEY")
     if not secret:
-        raise TokenError("Neither MCP_TOKEN_SEAL_KEY nor FLASK_SECRET_KEY is set")
+        raise TokenError("Set MCP_TOKEN_SEAL_KEY (or FLASK_SECRET_KEY for local development)")
     digest = hashlib.sha256(secret.encode()).digest()  # 32 bytes
     return base64.urlsafe_b64encode(digest)
 

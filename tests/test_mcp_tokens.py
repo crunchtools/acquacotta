@@ -4,8 +4,10 @@ import os
 
 import pytest
 
-# Ensure a known sealing key basis before import (mirrors conftest).
+# Ensure a known sealing key basis before import (mirrors conftest). FLASK_ENV
+# is development here so the seal key may derive from FLASK_SECRET_KEY.
 os.environ.setdefault("FLASK_SECRET_KEY", "test-secret-key")
+os.environ.setdefault("FLASK_ENV", "development")
 
 import mcp_tokens
 
@@ -67,3 +69,27 @@ class TestRevocation:
 
     def test_issued_at_equal_epoch_not_revoked(self):
         assert mcp_tokens.is_revoked(self._payload(1000), {"enabled": True, "epoch": 1000}) is False
+
+
+class TestSealKeyPolicy:
+    def test_explicit_key_used_when_set(self, monkeypatch):
+        from cryptography.fernet import Fernet
+
+        monkeypatch.setenv("MCP_TOKEN_SEAL_KEY", Fernet.generate_key().decode())
+        monkeypatch.setenv("FLASK_ENV", "production")
+        token = mcp_tokens.seal("u@e.com", "r", "f", issued_at=1)
+        assert mcp_tokens.unseal(token)["email"] == "u@e.com"
+
+    def test_production_without_explicit_key_fails_closed(self, monkeypatch):
+        monkeypatch.delenv("MCP_TOKEN_SEAL_KEY", raising=False)
+        monkeypatch.setenv("FLASK_ENV", "production")
+        monkeypatch.setenv("FLASK_SECRET_KEY", "some-flask-secret")
+        with pytest.raises(mcp_tokens.TokenError):
+            mcp_tokens.seal("u@e.com", "r", "f")
+
+    def test_development_derives_from_flask_secret(self, monkeypatch):
+        monkeypatch.delenv("MCP_TOKEN_SEAL_KEY", raising=False)
+        monkeypatch.setenv("FLASK_ENV", "development")
+        monkeypatch.setenv("FLASK_SECRET_KEY", "some-flask-secret")
+        token = mcp_tokens.seal("u@e.com", "r", "f", issued_at=1)
+        assert mcp_tokens.unseal(token)["folder_id"] == "f"
