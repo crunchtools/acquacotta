@@ -3764,6 +3764,108 @@
             loadPlugins();
         }
 
+        // ── MCP Access (rendered inline as a plugin card by loadPlugins) ─────
+        // Transient per-render state: the freshly minted token (shown once) and
+        // the last status message. Both survive the list re-render on toggle.
+        let mcpMintedToken = null;
+        let mcpMessage = '';
+        let mcpMessageError = false;
+
+        function _mcpSetMessage(text, isError) {
+            mcpMessage = text || '';
+            mcpMessageError = !!isError;
+        }
+
+        async function renderMcpCard(plugin) {
+            let enabled = false, endpoint = '';
+            try {
+                const res = await Storage.authenticatedFetch('/api/mcp/status');
+                if (res.ok) { const d = await res.json(); enabled = d.enabled; endpoint = d.endpoint || ''; }
+            } catch (e) { /* not logged in / no storage location — render as Off */ }
+
+            const typeBadge = `<span style="display: inline-block; padding: 0.125rem 0.5rem; border-radius: 4px; font-size: 0.75rem; background: var(--bg-tertiary); color: var(--text-secondary);">${plugin.plugin_type}</span>`;
+
+            let actions = '';
+            if (enabled) {
+                actions += `<div style="margin-top: 0.5rem;">
+                    <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.25rem;">Endpoint</div>
+                    <input type="text" readonly onclick="this.select()" value="${endpoint}"
+                           style="width: 100%; font-family: monospace; font-size: 0.75rem; margin-bottom: 0.5rem;">
+                    <button class="secondary" onclick="regenerateMcp()" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">Regenerate token</button>`;
+                if (mcpMintedToken) {
+                    actions += `<div style="margin-top: 0.5rem; padding: 0.5rem; background: var(--bg-tertiary); border-radius: 6px;">
+                        <div style="font-size: 0.75rem; font-weight: 500; margin-bottom: 0.25rem;">Token — copy now, it won't be shown again</div>
+                        <textarea readonly rows="3" onclick="this.select()"
+                                  style="width: 100%; font-family: monospace; font-size: 0.75rem; word-break: break-all;">${mcpMintedToken}</textarea>
+                        <button class="secondary" onclick="copyMcpToken(this)" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; margin-top: 0.25rem;">Copy</button>
+                    </div>`;
+                }
+                actions += `</div>`;
+            }
+            if (mcpMessage) {
+                actions += `<div style="font-size: 0.75rem; margin-top: 0.5rem; color: ${mcpMessageError ? 'var(--danger, #c0392b)' : 'var(--text-secondary)'};">${mcpMessage}</div>`;
+                mcpMessage = '';  // show once, then clear so it doesn't linger on later re-renders
+            }
+
+            return `<div class="type-item" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+                <div style="flex: 1;">
+                    <div style="font-weight: 500;">${plugin.name}</div>
+                    <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem;">${plugin.description}</div>
+                    <div style="display: flex; gap: 0.5rem; align-items: center; margin-top: 0.375rem;">
+                        ${typeBadge}
+                        <span style="font-size: 0.75rem; color: var(--text-secondary);">v${plugin.version}</span>
+                    </div>
+                    ${actions}
+                </div>
+                <label style="display: flex; align-items: center; cursor: pointer; gap: 0.5rem; margin-left: 1rem;">
+                    <span style="font-size: 0.75rem; color: ${enabled ? 'var(--success)' : 'var(--text-secondary)'};">${enabled ? 'On' : 'Off'}</span>
+                    <input type="checkbox" ${enabled ? 'checked' : ''} onchange="toggleMcp(this)" style="width: auto; cursor: pointer;">
+                </label>
+            </div>`;
+        }
+
+        async function toggleMcp(checkbox) {
+            if (checkbox.checked) {
+                await _mcpMint('/api/mcp/enable');
+            } else {
+                try {
+                    const res = await Storage.authenticatedFetch('/api/mcp/disable', { method: 'POST' });
+                    if (!res.ok) throw new Error((await res.json()).error || 'Failed');
+                    mcpMintedToken = null;
+                    _mcpSetMessage('MCP access disabled. Existing tokens no longer work.');
+                } catch (e) {
+                    _mcpSetMessage(e.message, true);
+                }
+                loadPlugins();
+            }
+        }
+
+        async function regenerateMcp() {
+            await _mcpMint('/api/mcp/regenerate');
+        }
+
+        async function _mcpMint(url) {
+            try {
+                const res = await Storage.authenticatedFetch(url, { method: 'POST' });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Failed');
+                mcpMintedToken = data.token;
+                _mcpSetMessage('Token minted. Copy it now — it will not be shown again.');
+            } catch (e) {
+                mcpMintedToken = null;
+                _mcpSetMessage(e.message, true);
+            }
+            loadPlugins();
+        }
+
+        function copyMcpToken(btn) {
+            if (!mcpMintedToken) return;
+            navigator.clipboard.writeText(mcpMintedToken).then(
+                () => { if (btn) btn.textContent = 'Copied'; },
+                () => { _mcpSetMessage('Select the token text and copy manually.', true); loadPlugins(); }
+            );
+        }
+
         async function loadPlugins() {
             const container = document.getElementById('plugins-list');
             const loading = document.getElementById('plugins-loading');
@@ -3780,6 +3882,9 @@
 
                 // Build cards with dynamic counts
                 const cardPromises = data.plugins.map(async plugin => {
+                    // MCP access renders its own card (per-user state + token UI).
+                    if (plugin.has_mcp) return await renderMcpCard(plugin);
+
                     const isActive = plugin.active;
                     const typeBadge = `<span style="display: inline-block; padding: 0.125rem 0.5rem; border-radius: 4px; font-size: 0.75rem; background: var(--bg-tertiary); color: var(--text-secondary);">${plugin.plugin_type}</span>`;
                     const toggleId = `plugin-toggle-${plugin.id}`;

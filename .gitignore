@@ -43,3 +43,6 @@ Screenshot.png
 # Other
 start.sh
 .env
+
+# Python coverage
+.coverage

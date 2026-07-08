@@ -17,6 +17,7 @@ import json
 import os
 from http import HTTPStatus
 from pathlib import Path
+from types import SimpleNamespace
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 # Allow OAuth scope changes (users may have previously granted different scopes)
@@ -31,6 +32,7 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 import json_google_drive_storage
+import mcp_tokens
 import plugin_registry
 import sheets_storage
 import storage_api
@@ -44,6 +46,21 @@ plugin_registry.register(
 )
 plugin_registry.register("extension", "todos", todos_plugin, todos_plugin.PLUGIN_METADATA)
 plugin_registry.activate_extension("todos")
+
+# MCP access appears in the plugin list. It has no server-side module contract —
+# enable/disable and per-user state live in the /api/mcp/* routes + the user's Drive, so a
+# metadata-only registration is enough. `has_mcp` flags the frontend to render its
+# token UI and route its toggle to the MCP endpoints instead of the generic toggle.
+MCP_PLUGIN_METADATA = {
+    "id": "mcp",
+    "name": "MCP Access",
+    "description": "Let AI agents (Claude, Kagetora, Takeda) read and manage your todos and time data over MCP.",
+    "version": "1.0.0",
+    "type": "integration",
+    "author": "crunchtools",
+    "has_mcp": True,
+}
+plugin_registry.register("integration", "mcp", SimpleNamespace(), MCP_PLUGIN_METADATA)
 plugin_registry.activate_storage("sheets")
 
 app = Flask(__name__)
@@ -1175,6 +1192,115 @@ def api_save_todos():
         return jsonify({"status": "ok"})
     except HttpError as e:
         return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+
+
+# =============================================================================
+# MCP Access — enable/disable the hosted MCP endpoint and mint per-user tokens.
+#
+# The token seals the user's refresh_token + folder_id (see mcp_tokens). The
+# revocation state (enabled flag + epoch) lives in the user's own Drive, not on
+# the server — the server stays stateless. Regenerate/disable advance the epoch
+# to invalidate previously issued tokens.
+# =============================================================================
+
+
+def _public_base_url():
+    """Best-effort public base URL from proxy headers (for the MCP endpoint)."""
+    oauth_base = os.environ.get("OAUTH_REDIRECT_BASE")
+    if oauth_base:
+        return oauth_base.rstrip("/")
+    proto = request.headers.get("X-Forwarded-Proto", request.scheme).split(",")[0].strip()
+    host = request.headers.get("X-Forwarded-Host", request.host).split(",")[0].strip()
+    return f"{proto}://{host}"
+
+
+def _mcp_endpoint():
+    return f"{_public_base_url()}/mcp"
+
+
+def _mcp_drive_context():
+    """Return (drive_service, folder_id, email) for the logged-in user.
+
+    drive_service is None when credentials or the Drive folder aren't available
+    (MCP access requires the JSON-on-Drive backend).
+    """
+    request_creds = get_credentials_from_request()
+    if not request_creds:
+        return None, None, None
+    email = request_creds.get("user_email")
+    folder_id = request_creds.get("folder_id")
+    credentials = get_credentials()
+    if not credentials or not folder_id:
+        return None, folder_id, email
+    return build("drive", "v3", credentials=credentials), folder_id, email
+
+
+@app.route("/api/mcp/status", methods=["GET"])
+def api_mcp_status():
+    """Report whether MCP access is enabled for the requesting user."""
+    drive_service, folder_id, email = _mcp_drive_context()
+    if not email:
+        return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
+    enabled = bool(drive_service) and json_google_drive_storage.get_mcp_state(drive_service, folder_id)["enabled"]
+    return jsonify({"enabled": enabled, "endpoint": _mcp_endpoint()})
+
+
+def _mint_mcp_token():
+    """Shared enable/regenerate logic. Returns (response, status)."""
+    request_creds = get_credentials_from_request()
+    if not request_creds:
+        return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
+    email = request_creds.get("user_email")
+    refresh_token = request_creds.get("refresh_token")
+    folder_id = request_creds.get("folder_id")
+    if not email:
+        return jsonify({"error": "No user email in credentials"}), HTTPStatus.BAD_REQUEST
+    if not refresh_token:
+        return jsonify(
+            {"error": "No Google refresh token available — sign out and sign in again to grant offline access"}
+        ), HTTPStatus.BAD_REQUEST
+    if not folder_id:
+        return jsonify(
+            {"error": "MCP access requires the JSON-on-Google-Drive backend (no folder_id configured)"}
+        ), HTTPStatus.BAD_REQUEST
+
+    import time
+
+    credentials = get_credentials()
+    if not credentials:
+        return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
+    drive_service = build("drive", "v3", credentials=credentials)
+    epoch = int(time.time())
+    json_google_drive_storage.set_mcp_state(drive_service, folder_id, enabled=True, epoch=epoch)
+    try:
+        token = mcp_tokens.seal(email, refresh_token, folder_id, issued_at=epoch)
+    except mcp_tokens.TokenError as e:
+        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+    return jsonify({"status": "ok", "enabled": True, "token": token, "endpoint": _mcp_endpoint()})
+
+
+@app.route("/api/mcp/enable", methods=["POST"])
+def api_mcp_enable():
+    """Enable MCP access and mint a bearer token (shown once)."""
+    return _mint_mcp_token()
+
+
+@app.route("/api/mcp/regenerate", methods=["POST"])
+def api_mcp_regenerate():
+    """Rotate the token: advance the epoch (invalidating old tokens) and mint a new one."""
+    return _mint_mcp_token()
+
+
+@app.route("/api/mcp/disable", methods=["POST"])
+def api_mcp_disable():
+    """Disable MCP access. Existing tokens stop working immediately."""
+    drive_service, folder_id, email = _mcp_drive_context()
+    if not email:
+        return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
+    if drive_service:
+        state = json_google_drive_storage.get_mcp_state(drive_service, folder_id)
+        json_google_drive_storage.set_mcp_state(drive_service, folder_id, enabled=False, epoch=state["epoch"])
+    return jsonify({"status": "ok", "enabled": False})
 
 
 if __name__ == "__main__":

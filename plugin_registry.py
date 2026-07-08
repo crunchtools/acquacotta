@@ -130,6 +130,27 @@ def list_plugins(plugin_type=None):
     return plugin_summaries
 
 
+def get_mcp_tool_registrars():
+    """Return `register_mcp_tools` callables from every active plugin that has one.
+
+    This is how enabled plugins contribute tools to the MCP server without the
+    core server knowing about them: a plugin module exposes
+    ``register_mcp_tools(mcp, require_ctx)`` and it is collected here only while
+    the plugin is active. Covers extensions/integrations/imports and the active
+    storage backend.
+    """
+    registrars = []
+    for ptype, plugins in _plugins.items():
+        for pid, info in plugins.items():
+            is_active = (pid == _active_storage) if ptype == "storage" else info["active"]
+            if not is_active:
+                continue
+            registrar = getattr(info["module"], "register_mcp_tools", None)
+            if callable(registrar):
+                registrars.append(registrar)
+    return registrars
+
+
 def list_plugin_types():
     """List all available plugin types with descriptions."""
     return {
