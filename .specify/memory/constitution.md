@@ -42,8 +42,8 @@ The application MUST be deployable as a single container with no external depend
 
 ### Security Requirements
 - HTTPS required for production deployments
-- OAuth tokens stored only in server-side sessions
-- No client-side storage of credentials
+- The server is stateless: it persists no OAuth credentials and no sessions. Credentials are held client-side — the browser in IndexedDB, agent/MCP access via an encrypted, server-sealed bearer token — and the server decrypts them in memory per request, retaining nothing (Principles I & VI)
+- Client-side credential custody is bounded by: minimal OAuth scope (`drive.file` only), authenticated encryption of sealed tokens, and durable per-user revocation stored in the user's own storage (not on the server). No refresh token is ever persisted server-side
 - CSRF protection on all state-changing endpoints
 - Input validation on all API endpoints
 
