@@ -33,7 +33,7 @@ The application MUST be deployable as a single container with no external depend
 ## Technology Constraints
 
 ### Stack Requirements
-- **Backend**: Python 3.x with Flask
+- **Backend**: Python 3.x with Flask (WSGI). A plugin MAY run a second Python process using an ASGI framework (FastMCP/uvicorn) in the same container — e.g. the MCP server behind Apache — provided it stays stateless and single-container
 - **Frontend**: Vanilla HTML/CSS/JavaScript (no build step required)
 - **Local Storage**: SQLite for offline cache
 - **Cloud Storage**: Google Sheets API v4
@@ -95,13 +95,14 @@ directories and publishes `127.0.0.1:8080:80` behind the crunchtools reverse pro
 
 ### Monitoring
 Monitored by Zabbix: a web scenario against `https://acquacotta.crunchtools.com`,
-a container-port check on `:8080`, and a Gunicorn process check.
+a container-port check on `:8080`, a Gunicorn process check, and — when the MCP
+server plugin is enabled — an MCP (uvicorn) process check.
 
 ### Testing
 | Test | What it verifies |
 |------|------------------|
 | **Build test** | CI builds the image from the Containerfile on every push and PR |
-| **Smoke test** | Container starts and the Flask app answers a health check on `:8080` |
+| **Smoke test** | Container starts, the Flask app answers a health check on `:8080`, and the MCP endpoint completes an `initialize` handshake at `/mcp` (see `smoke_test.sh`) |
 
 ### Cascade Rebuild
 Rebuilds weekly and on `repository_dispatch` when the parent image updates
