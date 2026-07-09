@@ -5361,6 +5361,8 @@
             if (!document.hidden) {
                 // Tab became visible - trigger clock update to check for date change
                 updateClock();
+                // Pick up out-of-band (MCP) todo changes immediately on refocus
+                refreshTodosIfChanged();
             }
         });
 
@@ -5591,6 +5593,10 @@
         let todoSelectedListId = 'all';
         let todoCompletedVisible = false;
         let todoSortOrder = 'manual';
+        // Per-list sort preferences ({ listId|'all': sortMode }), persisted in the
+        // settings store and synced to the active backend. todoSortOrder mirrors the
+        // entry for the currently selected list.
+        let todoSortOrders = {};
 
         function escTodo(s) { return escapeHtml(s); }
 
@@ -5608,6 +5614,10 @@
             const bar = document.getElementById('todo-lists-bar');
             bar.innerHTML = `<button class="${todoSelectedListId === 'all' ? 'active' : ''}" onclick="selectTodoList('all')">All</button>` +
                 lists.map(l => `<button class="${todoSelectedListId === l.id ? 'active' : ''}" onclick="selectTodoList('${l.id}')">${escTodo(l.name)}</button>`).join('');
+
+            // Keep the sort dropdown in sync with this list's saved preference
+            const sortSelect = document.getElementById('todo-sort');
+            if (sortSelect) sortSelect.value = todoSortOrder;
 
             // Filter by selected list
             const filtered = todoSelectedListId === 'all' ? todos : todos.filter(t => t.list_id === todoSelectedListId);
@@ -5720,6 +5730,7 @@
 
         function selectTodoList(listId) {
             todoSelectedListId = listId;
+            todoSortOrder = todoSortOrders[listId] || 'manual';
             loadTodos();
         }
 
@@ -5741,7 +5752,26 @@
 
         function setTodoSort(value) {
             todoSortOrder = value;
+            todoSortOrders[todoSelectedListId] = value;
+            // Persists to IndexedDB and syncs to the active backend (JSON/Sheets).
+            Storage.saveSetting('todo_sort_orders', todoSortOrders);
             loadTodos();
+        }
+
+        let _todoRefreshTimer = null;
+        // Poll for out-of-band todo changes (e.g. made via the MCP server) and
+        // reconcile IndexedDB, re-rendering only when the todos view is visible.
+        async function refreshTodosIfChanged() {
+            if (document.hidden) return;
+            if (!authStatus || !authStatus.logged_in) return;
+            const changed = await Storage.refreshTodosFromCloudIfChanged();
+            if (changed && document.getElementById('todos-view').classList.contains('active')) {
+                await loadTodos();
+            }
+        }
+        function startTodoAutoRefresh() {
+            if (_todoRefreshTimer) return;
+            _todoRefreshTimer = setInterval(refreshTodosIfChanged, 30000);
         }
 
         // ── Todo drag-to-reorder (manual sort) ───────────────────
@@ -6058,7 +6088,18 @@
             if (authStatus.logged_in) {
                 await Storage.loadTodosFromCloud();
             }
+            // Restore per-list sort preferences (persisted in settings, synced to backend)
+            try {
+                const _settings = await Storage.getSettings();
+                todoSortOrders = _settings.todo_sort_orders || {};
+                todoSortOrder = todoSortOrders[todoSelectedListId] || 'manual';
+            } catch (e) { /* fall back to defaults */ }
             await loadTodos();
+            // Start auto-refresh so out-of-band (MCP) todo changes appear without a manual reload
+            if (authStatus.logged_in) {
+                await Storage.seedTodoSignature();
+                startTodoAutoRefresh();
+            }
         })();
     </script>
 </body>

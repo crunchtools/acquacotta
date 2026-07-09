@@ -1665,6 +1665,9 @@
         _debounceTodoSync: function() {
             if (this._todoSyncTimer) clearTimeout(this._todoSyncTimer);
             if (!authStatus || !authStatus.logged_in || !isOnline) return;
+            // Mark a local change as pending so the auto-refresh poll doesn't
+            // pull remote state and clobber an edit that hasn't synced yet.
+            this._todoSyncPending = true;
             this._todoSyncTimer = setTimeout(() => this.syncTodosToCloud(), 2000);
         },
 
@@ -1677,8 +1680,68 @@
                     method: 'POST',
                     body: JSON.stringify({ todos, lists })
                 });
+                // Remote now matches what we just wrote — record the signature so the
+                // next auto-refresh poll recognizes our own change and skips a redraw.
+                this._lastTodoSignature = this._todoSignature(todos, lists);
             } catch (e) {
                 console.error('Todo sync to cloud failed:', e);
+            } finally {
+                this._todoSyncPending = false;
+            }
+        },
+
+        // Stable fingerprint of the todo document, used to detect out-of-band
+        // (e.g. MCP-made) changes without re-rendering on every poll.
+        _todoSignature: function(todos, lists) {
+            const todoRows = todos
+                .map(todo => [todo.id, todo.status, todo.title, todo.notes, todo.priority, todo.due_date, todo.list_id, todo.sort_order])
+                .sort((a, b) => (a[0] < b[0] ? -1 : 1));
+            const listRows = lists
+                .map(listing => [listing.id, listing.name, listing.order])
+                .sort((a, b) => (a[0] < b[0] ? -1 : 1));
+            return JSON.stringify([todoRows, listRows]);
+        },
+
+        // Seed the signature from local state (call once after the initial load) so
+        // the first poll only fires when something actually changed remotely.
+        seedTodoSignature: async function() {
+            const todos = await getAllFromStore(STORES.TODOS);
+            const lists = await getAllFromStore(STORES.TODO_LISTS);
+            this._lastTodoSignature = this._todoSignature(todos, lists);
+        },
+
+        // Pull the todo document from the cloud and reconcile IndexedDB to match it
+        // exactly (adds, updates, AND deletes) when it differs from what we last saw.
+        // Returns true if local state changed, so the caller can re-render.
+        refreshTodosFromCloudIfChanged: async function() {
+            if (!authStatus || !authStatus.logged_in || !isOnline) return false;
+            if (this._todoSyncPending) return false;  // don't stomp an unsynced local edit
+            try {
+                const res = await authenticatedFetch('/api/todos/sync');
+                if (!res.ok) return false;
+                const payload = await res.json();
+                const remoteTodos = payload.todos || [];
+                const remoteLists = payload.lists || [];
+                const sig = this._todoSignature(remoteTodos, remoteLists);
+                if (sig === this._lastTodoSignature) return false;
+
+                const localTodos = await getAllFromStore(STORES.TODOS);
+                const localLists = await getAllFromStore(STORES.TODO_LISTS);
+                const remoteTodoIds = new Set(remoteTodos.map(t => t.id));
+                const remoteListIds = new Set(remoteLists.map(l => l.id));
+                for (const t of localTodos) {
+                    if (!remoteTodoIds.has(t.id)) await deleteFromStore(STORES.TODOS, t.id);
+                }
+                for (const l of localLists) {
+                    if (!remoteListIds.has(l.id)) await deleteFromStore(STORES.TODO_LISTS, l.id);
+                }
+                for (const t of remoteTodos) await putInStore(STORES.TODOS, t);
+                for (const l of remoteLists) await putInStore(STORES.TODO_LISTS, l);
+                this._lastTodoSignature = sig;
+                return true;
+            } catch (e) {
+                console.error('Todo refresh check failed:', e);
+                return false;
             }
         },
 
