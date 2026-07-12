@@ -121,8 +121,7 @@ def _make_plugin_ctx(plugin_id):
         settings = json_google_drive_storage.get_settings(ctx["service"], ctx["folder_id"], {})
         if not settings.get(f"plugin_state_{plugin_id}", True):
             raise ToolError(
-                f"The '{plugin_id}' plugin is disabled for your account — "
-                f"enable it in Acquacotta to use these tools"
+                f"The '{plugin_id}' plugin is disabled for your account — enable it in Acquacotta to use these tools"
             )
         return ctx
 

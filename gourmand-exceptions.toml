@@ -216,6 +216,21 @@ path = "mcp_server.py"
 justification = "'todos' refers to the todos plugin it activates — a domain term, not a deferred-work marker"
 
 [[exceptions]]
+check = "deferred_work"
+path = "tests/test_app.py"
+justification = "'todos' refers to the todos plugin under test — a domain term, not a deferred-work marker"
+
+[[exceptions]]
+check = "deferred_work"
+path = "tests/test_mcp_plugin_gating.py"
+justification = "'todos' refers to the todos plugin under test — a domain term, not a deferred-work marker"
+
+[[exceptions]]
+check = "deferred_work"
+path = "tests/test_mcp_todos.py"
+justification = "'todos' refers to the todos plugin under test — a domain term, not a deferred-work marker"
+
+[[exceptions]]
 check = "single_use_helpers"
 path = "mcp_server.py"
 justification = "_build_drive_service isolates the Google OAuth/Drive boundary; same rationale as app.py's extracted helpers"
