@@ -56,6 +56,16 @@ check = "summary_litter"
 path = "specs/001-slidable-timer/checklists/requirements.md"
 justification = "Spec-kit requirements checklist - RFC/ADR-style development workflow"
 
+[[exceptions]]
+check = "summary_litter"
+path = "specs/007-per-user-storage/spec.md"
+justification = "Spec-kit feature specification - RFC/ADR-style development workflow"
+
+[[exceptions]]
+check = "summary_litter"
+path = "specs/007-per-user-storage/checklists/requirements.md"
+justification = "Spec-kit requirements checklist - RFC/ADR-style development workflow"
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # random_scripts - Intentional entry points
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
