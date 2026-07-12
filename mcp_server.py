@@ -46,7 +46,6 @@ plugin_registry.register(
 )
 plugin_registry.register("extension", "todos", todos_plugin, todos_plugin.PLUGIN_METADATA)
 plugin_registry.activate_storage("json-google-drive")
-plugin_registry.activate_extension("todos")
 
 mcp = FastMCP(
     "acquacotta",
@@ -108,11 +107,33 @@ def require_ctx():
     return {"service": drive_service, "folder_id": payload["folder_id"], "email": payload["email"]}
 
 
-# Core tools (pomodoros) are always available; plugin-contributed tools (todos,
-# and future plugins) register only while their plugin is active.
+def _make_plugin_ctx(plugin_id):
+    """Wrap require_ctx so a plugin's tools are gated on the CALLER's own choice.
+
+    Extension enablement is per-user: a tool only works while the caller has that
+    plugin enabled in their own settings (``plugin_state_<id>`` in their storage).
+    A plugin is enabled unless the user has explicitly turned it off, so newly added
+    plugins default on. Core tools (pomodoros) bypass this entirely.
+    """
+
+    def require_plugin_ctx():
+        ctx = require_ctx()
+        settings = json_google_drive_storage.get_settings(ctx["service"], ctx["folder_id"], {})
+        if not settings.get(f"plugin_state_{plugin_id}", True):
+            raise ToolError(
+                f"The '{plugin_id}' plugin is disabled for your account — "
+                f"enable it in Acquacotta to use these tools"
+            )
+        return ctx
+
+    return require_plugin_ctx
+
+
+# Core tools (pomodoros) are always available. Plugin-contributed tools register for
+# every plugin, but each is gated per-user on the calling user's own plugin choice.
 pomodoro_tools.register_mcp_tools(mcp, require_ctx)
-for registrar in plugin_registry.get_mcp_tool_registrars():
-    registrar(mcp, require_ctx)
+for plugin_id, registrar in plugin_registry.get_mcp_tool_registrars():
+    registrar(mcp, _make_plugin_ctx(plugin_id))
 
 
 def main():

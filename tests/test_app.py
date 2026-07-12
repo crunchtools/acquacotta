@@ -16,6 +16,7 @@ from unittest.mock import patch
 import pytest
 
 import app as app_module
+import plugin_registry
 import storage_api
 
 
@@ -195,6 +196,38 @@ class TestPluginsAPI:
         assert sheets_plugin["active"] is False
         json_plugin = next(p for p in data["plugins"] if p["id"] == "json-google-drive")
         assert json_plugin["active"] is True
+
+
+class TestExtensionTogglePerUser:
+    """Extension enablement is a per-user client preference; the toggle endpoint
+    validates the plugin but never flips shared global registry state (spec 008)."""
+
+    def test_toggle_known_extension_ok(self, client):
+        response = client.post(
+            "/api/plugins/toggle",
+            json={"plugin_id": "todos", "plugin_type": "extension", "enable": False},
+        )
+        assert response.status_code == 200
+        assert json.loads(response.data)["status"] == "ok"
+
+    def test_toggle_unknown_extension_400(self, client):
+        response = client.post(
+            "/api/plugins/toggle",
+            json={"plugin_id": "nope", "plugin_type": "extension", "enable": True},
+        )
+        assert response.status_code == 400
+
+    def test_toggle_does_not_mutate_global_registry(self, client):
+        def todos_active():
+            todos = next(p for p in plugin_registry.list_plugins() if p["id"] == "todos")
+            return todos["active"]
+
+        before = todos_active()
+        client.post(
+            "/api/plugins/toggle",
+            json={"plugin_id": "todos", "plugin_type": "extension", "enable": not before},
+        )
+        assert todos_active() == before  # per-user choice lives client-side, not the global flag
 
 
 class TestClearInitialSync:
