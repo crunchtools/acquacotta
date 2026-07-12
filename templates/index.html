@@ -541,7 +541,7 @@
         }
     </style>
     <script src="{{ url_for('static', filename='js/utils.js') }}?v=3"></script>
-    <script src="{{ url_for('static', filename='js/storage.js') }}?v=4"></script>
+    <script src="{{ url_for('static', filename='js/storage.js') }}?v=7"></script>
 </head>
 <body>
     <a href="#main-content" class="skip-link">Skip to main content</a>
@@ -824,9 +824,9 @@
                         Your data is stored locally by default. Optionally sign in with Google to sync your data to your Google Drive.
                     </p>
                     <div id="login-spreadsheet-section" style="margin-bottom: 1rem; display: none;">
-                        <label for="login-spreadsheet-id" style="font-size: 0.875rem; color: var(--text-secondary); display: block; margin-bottom: 0.25rem;">Existing Spreadsheet ID (optional):</label>
+                        <label id="login-location-label" for="login-spreadsheet-id" style="font-size: 0.875rem; color: var(--text-secondary); display: block; margin-bottom: 0.25rem;">Existing Spreadsheet ID (optional):</label>
                         <input type="text" id="login-spreadsheet-id" style="width: 24rem; max-width: 100%; font-family: monospace; font-size: 0.75rem; padding: 0.5rem;" placeholder="Leave blank to create new">
-                        <p style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">
+                        <p id="login-location-hint" style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">
                             Find this in your Google Sheets URL: docs.google.com/spreadsheets/d/<strong>[ID]</strong>/edit
                         </p>
                     </div>
@@ -4456,9 +4456,15 @@
                 } catch (e) {
                     console.error('Sync error:', e);
                 }
-                // Refresh count after init sync (which runs inside Storage.init)
-                // to pick up any pomodoros that were batch-uploaded during init
+                // The bidirectional sync now runs in the BACKGROUND, so this screen
+                // rendered instantly. Show current counts now, then refresh once the
+                // sync settles to pick up merged/batch-uploaded records. The header
+                // indicator shows "Syncing…" → "Synced" while this runs.
                 updateGooglePomodoroCount();
+                Storage.whenInitialSyncDone().then(() => {
+                    updateGooglePomodoroCount();
+                    updateStorageIndicator();
+                });
             }
 
         }
@@ -4817,8 +4823,30 @@
         });
 
         // Listen for sync status changes
+        // Set the cloud card's status line to reflect the live sync state. While the
+        // background bidirectional sync runs, say so plainly; when it settles, confirm.
+        function updateCloudSyncStatusText(pluginName) {
+            const el = document.getElementById('cloud-sync-status-text');
+            if (!el) return;
+            const name = pluginName || (activePluginInfo ? activePluginInfo.name : 'the cloud');
+            const s = Storage.getSyncStatus ? Storage.getSyncStatus() : {};
+            if (s.syncing) {
+                el.textContent = '⟳ Syncing your data with ' + name + '…';
+                el.style.color = 'var(--text-secondary)';
+            } else if (s.pending > 0) {
+                el.textContent = '⟳ ' + s.pending + ' change' + (s.pending === 1 ? '' : 's') + ' pending sync…';
+                el.style.color = 'var(--text-secondary)';
+            } else {
+                el.textContent = '✓ Data synced to ' + name;
+                el.style.color = 'var(--success)';
+            }
+        }
+
         window.addEventListener('acquacotta-sync-status', async (event) => {
             await updateStorageIndicator();
+            if (authStatus && authStatus.logged_in) {
+                updateCloudSyncStatusText();
+            }
         });
 
         async function showInitialSyncModal() {
@@ -4975,19 +5003,26 @@
         }
 
         async function loginWithGoogle() {
-            let spreadsheetId = document.getElementById('login-spreadsheet-id').value.trim();
+            // Which backend is the login form offering? Send the id under the
+            // matching param name so a folder id is never treated as a
+            // spreadsheet id (or vice versa). The server resolves the user's
+            // authoritative backend in the callback regardless; this only
+            // controls which explicit location the user may have typed.
+            const isJsonDrive = activePluginInfo && activePluginInfo.id === 'json-google-drive';
+            const field = isJsonDrive ? 'folder_id' : 'spreadsheet_id';
 
-            // If input is empty, try to get stored spreadsheet ID from IndexedDB
-            if (!spreadsheetId) {
-                const storedId = await Storage.getStoredSpreadsheetId();
+            let locationId = document.getElementById('login-spreadsheet-id').value.trim();
+
+            // If input is empty, try to get the stored id for this backend from IndexedDB
+            if (!locationId) {
+                const storedId = await Storage.getStoredLocationId(field);
                 if (storedId) {
-                    spreadsheetId = storedId;
+                    locationId = storedId;
                 }
             }
 
-            if (spreadsheetId) {
-                // Pass spreadsheet ID as query parameter
-                window.location.href = '/auth/google?spreadsheet_id=' + encodeURIComponent(spreadsheetId);
+            if (locationId) {
+                window.location.href = '/auth/google?' + field + '=' + encodeURIComponent(locationId);
             } else {
                 window.location.href = '/auth/google';
             }
@@ -5023,15 +5058,27 @@
             const isSheets = !activePluginInfo || activePluginInfo.id === 'sheets';
             const pluginName = activePluginInfo ? activePluginInfo.name : 'Google Sheets';
 
-            // Update card title and sync status text
+            // Update card title and sync status text (live sync state, honest while syncing)
             const remoteLabel = isSheets ? 'Remote Data: Sheets' : isJsonDrive ? 'Remote Data: JSON-Google Drive' : 'Remote Data: ' + pluginName;
             document.getElementById('cloud-sync-title').textContent = remoteLabel;
-            document.getElementById('cloud-sync-status-text').textContent = '✓ Data synced to ' + pluginName;
+            updateCloudSyncStatusText(pluginName);
 
-            // Show spreadsheet ID input on login only for Sheets plugin
+            // Show the location-id input on login, labelled for the active backend.
+            // JSON-on-Drive uses a Drive Folder ID; Sheets uses a Spreadsheet ID.
+            // The two are distinct ids and are never conflated.
             const loginSpreadsheetSection = document.getElementById('login-spreadsheet-section');
+            const loginLocationLabel = document.getElementById('login-location-label');
+            const loginLocationHint = document.getElementById('login-location-hint');
             if (loginSpreadsheetSection) {
-                loginSpreadsheetSection.style.display = isSheets ? 'block' : 'none';
+                loginSpreadsheetSection.style.display = 'block';
+                loginSpreadsheetSection.dataset.backend = isJsonDrive ? 'json-google-drive' : 'sheets';
+                if (isJsonDrive) {
+                    if (loginLocationLabel) loginLocationLabel.textContent = 'Existing Drive Folder ID (optional):';
+                    if (loginLocationHint) loginLocationHint.innerHTML = 'Find this in your Google Drive folder URL: drive.google.com/drive/folders/<strong>[ID]</strong>';
+                } else {
+                    if (loginLocationLabel) loginLocationLabel.textContent = 'Existing Spreadsheet ID (optional):';
+                    if (loginLocationHint) loginLocationHint.innerHTML = 'Find this in your Google Sheets URL: docs.google.com/spreadsheets/d/<strong>[ID]</strong>/edit';
+                }
             }
 
             if (authStatus.logged_in) {
@@ -6066,10 +6113,18 @@
 
             // Phase 2b: Restore saved plugin states from IndexedDB.
             // Server-side plugin registry resets on restart; this re-applies user's choices.
+            //
+            // Storage plugins are EXCLUDED: the active storage backend is an
+            // authoritative, per-user, server-side choice resolved per request.
+            // The client must never toggle it on page load — doing so would let
+            // stale browser state overwrite the user's recorded backend choice
+            // (the root cause of JSON users being flipped onto Sheets). See
+            // spec 007-per-user-storage.
             try {
                 const pluginRes = await fetch('/api/plugins');
                 const pluginData = await pluginRes.json();
                 for (const plugin of pluginData.plugins) {
+                    if (plugin.plugin_type === 'storage') continue;
                     const savedState = settings[`plugin_state_${plugin.id}`];
                     if (savedState !== undefined && savedState !== plugin.active) {
                         await fetch('/api/plugins/toggle', {

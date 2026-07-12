@@ -61,7 +61,11 @@ MCP_PLUGIN_METADATA = {
     "has_mcp": True,
 }
 plugin_registry.register("integration", "mcp", SimpleNamespace(), MCP_PLUGIN_METADATA)
-plugin_registry.activate_storage("sheets")
+# Default backend for users with no recorded choice (post-migration standard).
+DEFAULT_STORAGE_BACKEND = "json-google-drive"
+# The active backend is resolved per-user (see _active_storage_id); this only sets a
+# harmless registry default for the no-user case, matching DEFAULT_STORAGE_BACKEND.
+plugin_registry.activate_storage(DEFAULT_STORAGE_BACKEND)
 
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
@@ -174,8 +178,15 @@ OAUTH_STATE_MAX_AGE_SECONDS = 600
 DEFAULT_PORT = 5000
 
 
+# Per-user storage preference file. Holds ONLY routing metadata (each user's chosen
+# backend + the location pointer for each backend) — never user content or PII beyond
+# the account email used as the key. Shape:
+#   {email: {"backend": "<id>", "sheets": "<spreadsheet_id>", "json-google-drive": "<folder_id>"}}
+_BACKEND_KEY = "backend"
+
+
 def _user_mapping_path():
-    """Get path to the user-to-storage-location mapping file."""
+    """Path to the per-user storage-preference file (migrates the legacy name)."""
     new_path = DATA_DIR / "user_storage.json"
     if not new_path.exists():
         legacy_path = DATA_DIR / "user_spreadsheets.json"
@@ -184,39 +195,56 @@ def _user_mapping_path():
     return new_path
 
 
-def get_stored_location(email, plugin_id):
-    """Get stored storage location for a user+plugin combination."""
-    mapping_path = _user_mapping_path()
-    if mapping_path.exists():
+def _read_user_mapping():
+    path = _user_mapping_path()
+    if path.exists():
         try:
-            with open(mapping_path) as f:
-                mapping = json.load(f)
+            with open(path) as f:
+                return json.load(f)
         except (json.JSONDecodeError, OSError):
-            return None
-        user_entry = mapping.get(email, {})
-        if isinstance(user_entry, str):
-            return user_entry if plugin_id == "sheets" else None
-        return user_entry.get(plugin_id)
-    return None
+            return {}
+    return {}
+
+
+def _write_user_mapping(mapping):
+    with open(_user_mapping_path(), "w") as f:
+        json.dump(mapping, f)
+
+
+def _user_entry(mapping, email):
+    """The per-user dict, upgrading the legacy bare-spreadsheet-id form."""
+    entry = mapping.get(email, {})
+    if isinstance(entry, str):  # legacy value was always a Sheets spreadsheet id
+        return {"sheets": entry}
+    return entry
+
+
+def get_stored_location(email, plugin_id):
+    """Get the stored location id for a user's given backend, or None."""
+    return _user_entry(_read_user_mapping(), email).get(plugin_id)
 
 
 def save_location(email, plugin_id, location_id):
-    """Save storage location for a user+plugin combination."""
-    mapping_path = _user_mapping_path()
-    mapping = {}
-    if mapping_path.exists():
-        try:
-            with open(mapping_path) as f:
-                mapping = json.load(f)
-        except (json.JSONDecodeError, OSError):
-            mapping = {}
-    user_entry = mapping.get(email, {})
-    if isinstance(user_entry, str):
-        user_entry = {"sheets": user_entry}
-    user_entry[plugin_id] = location_id
-    mapping[email] = user_entry
-    with open(mapping_path, "w") as f:
-        json.dump(mapping, f)
+    """Persist a user's location id for a backend."""
+    mapping = _read_user_mapping()
+    entry = _user_entry(mapping, email)
+    entry[plugin_id] = location_id
+    mapping[email] = entry
+    _write_user_mapping(mapping)
+
+
+def get_user_backend(email):
+    """Return the user's authoritative chosen storage backend id, or None if unset."""
+    return _user_entry(_read_user_mapping(), email).get(_BACKEND_KEY)
+
+
+def set_user_backend(email, plugin_id):
+    """Persist the user's authoritative storage-backend choice."""
+    mapping = _read_user_mapping()
+    entry = _user_entry(mapping, email)
+    entry[_BACKEND_KEY] = plugin_id
+    mapping[email] = entry
+    _write_user_mapping(mapping)
 
 
 def get_google_flow():
@@ -328,9 +356,38 @@ def get_drive_service():
     return build("drive", "v3", credentials=credentials)
 
 
+def _request_user_email():
+    """Email of the user making the current request — from the OAuth session (during
+    the callback) or the credentials the client sends (stateless API requests)."""
+    if session.get("user_email"):
+        return session["user_email"]
+    creds = get_credentials_from_request()
+    return creds.get("user_email") if creds else None
+
+
+def _active_storage_id():
+    """The storage backend for THIS request's user: their authoritative recorded
+    choice, never a shared global. Users with no recorded choice get the default."""
+    email = _request_user_email()
+    if email:
+        backend = get_user_backend(email)
+        if backend:
+            return backend
+    return DEFAULT_STORAGE_BACKEND
+
+
+def _active_storage_backend():
+    """The storage backend module for this request's user, or None if unregistered."""
+    return plugin_registry.get_plugin("storage", _active_storage_id())
+
+
 def _storage_context():
-    """Build storage context for the active backend, or None if no backend is active."""
-    backend = plugin_registry.get_active_storage()
+    """Build storage context for the requesting user's backend, or None.
+
+    The resolved per-user backend is carried in the context so the data layer
+    dispatches to THIS user's backend — never a shared global.
+    """
+    backend = _active_storage_backend()
     if backend is None:
         return None
     credentials = get_credentials()
@@ -339,7 +396,9 @@ def _storage_context():
     request_creds = get_credentials_from_request()
     if not request_creds:
         return None
-    return backend.build_context(credentials, request_creds)
+    ctx = backend.build_context(credentials, request_creds)
+    ctx["backend"] = backend
+    return ctx
 
 
 def is_logged_in():
@@ -347,7 +406,7 @@ def is_logged_in():
     creds = get_credentials_from_request()
     if not creds or not creds.get("token"):
         return False
-    backend = plugin_registry.get_active_storage()
+    backend = _active_storage_backend()
     if backend is None:
         return True
     metadata = getattr(backend, "PLUGIN_METADATA", {})
@@ -399,13 +458,18 @@ def auth_google():
         # Bundle PKCE code_verifier + CSRF nonce into a signed state parameter.
         # Google echoes `state` back in the callback URL, so it survives the redirect
         # chain regardless of cookie behavior. No session/cookie dependency for PKCE.
-        requested_spreadsheet_id = request.args.get("spreadsheet_id", "").strip()
+        # The client sends the location id under the field matching its backend —
+        # spreadsheet_id for Sheets, folder_id for JSON-on-Drive — never conflated.
         state_payload = {
             "s": state,  # Original CSRF nonce
             "cv": flow.code_verifier,  # PKCE code_verifier
         }
+        requested_spreadsheet_id = request.args.get("spreadsheet_id", "").strip()
+        requested_folder_id = request.args.get("folder_id", "").strip()
         if requested_spreadsheet_id:
             state_payload["sid"] = requested_spreadsheet_id
+        if requested_folder_id:
+            state_payload["fid"] = requested_folder_id
 
         s = URLSafeTimedSerializer(app.config["SECRET_KEY"])
         signed_state = s.dumps(state_payload)
@@ -547,6 +611,7 @@ def auth_callback():
 
         code_verifier = state_data["cv"]
         requested_spreadsheet_id = state_data.get("sid")
+        requested_folder_id = state_data.get("fid")
 
         flow = get_google_flow()
         if not flow:
@@ -595,11 +660,17 @@ def auth_callback():
         session["user_name"] = user_info.get("name")
         session["user_picture"] = user_info.get("picture")
 
-        # Determine which storage plugin is active and provision accordingly
-        active_storage_id = plugin_registry.get_active_storage_id()
-        location_id, location_existed = _provision_storage(
-            active_storage_id, credentials, user_email, requested_spreadsheet_id
+        # Resolve THIS user's backend (their recorded choice, or the default for a
+        # first-time user) and provision it with the id matching that backend.
+        active_storage_id = _active_storage_id()
+        requested_location_id = (
+            requested_folder_id if active_storage_id == "json-google-drive" else requested_spreadsheet_id
         )
+        location_id, location_existed = _provision_storage(
+            active_storage_id, credentials, user_email, requested_location_id
+        )
+        # Record the backend as this user's authoritative choice (survives sign-out).
+        set_user_backend(user_email, active_storage_id)
 
         # Build credentials data for frontend storage (AUTH store - ephemeral)
         credentials_data = {
@@ -616,7 +687,7 @@ def auth_callback():
 
         # Settings data (SETTINGS store - persistent)
         # Write the plugin's frontend_fields so the browser sends them with API requests
-        backend = plugin_registry.get_active_storage()
+        backend = _active_storage_backend()
         metadata = getattr(backend, "PLUGIN_METADATA", {})
         frontend_fields = metadata.get("frontend_fields", [])
 
@@ -627,81 +698,27 @@ def auth_callback():
         # Clear server session - credentials will live in browser IndexedDB
         session.clear()
 
-        # Build the JS that writes plugin-specific settings to IndexedDB
-        settings_js_lines = []
-        for field in frontend_fields:
-            settings_js_lines.append(
-                f"        settingsStore.put({{ key: '{field}', value: settings.{field}, synced: true }});"
-            )
-        settings_js_lines.append(
-            "        settingsStore.put({ key: 'storage_existed', value: settings.storage_existed, synced: true });"
-        )
-        settings_js = "\n".join(settings_js_lines)
-
-        # Return HTML page that stores credentials in IndexedDB then redirects
-        # Note: DB_VERSION must match storage.js (currently 2)
+        # Hand the login off to storage.js via sessionStorage, then redirect.
+        #
+        # The callback deliberately does NOT open IndexedDB itself. storage.js is
+        # the single owner of the IndexedDB schema (store list + DB version); it
+        # picks up this pending login on load and writes it with the correct
+        # version. This removes the duplicated schema that previously let the
+        # callback's stale DB version throw VersionError and silently drop
+        # credentials, leaving the user logged out after a "successful" login.
+        pending_auth = {"credentials": credentials_data, "settings": settings_data}
         return f"""<!DOCTYPE html>
 <html>
 <head><title>Logging in...</title></head>
 <body>
 <p>Completing login...</p>
 <script>
-const credentials = {json.dumps(credentials_data)};
-const settings = {json.dumps(settings_data)};
-const DB_VERSION = 2;  // Must match storage.js
-
-// Store in IndexedDB
-const dbRequest = indexedDB.open('acquacotta', DB_VERSION);
-dbRequest.onupgradeneeded = (e) => {{
-    const db = e.target.result;
-    // Create all stores that storage.js expects
-    if (!db.objectStoreNames.contains('pomodoros')) {{
-        const pomodorosStore = db.createObjectStore('pomodoros', {{ keyPath: 'id' }});
-        pomodorosStore.createIndex('start_time', 'start_time', {{ unique: false }});
-        pomodorosStore.createIndex('type', 'type', {{ unique: false }});
-        pomodorosStore.createIndex('synced', 'synced', {{ unique: false }});
-    }}
-    if (!db.objectStoreNames.contains('settings')) {{
-        db.createObjectStore('settings', {{ keyPath: 'key' }});
-    }}
-    if (!db.objectStoreNames.contains('sync_queue')) {{
-        const syncStore = db.createObjectStore('sync_queue', {{ keyPath: 'id', autoIncrement: true }});
-        syncStore.createIndex('created_at', 'created_at', {{ unique: false }});
-    }}
-    if (!db.objectStoreNames.contains('sync_status')) {{
-        db.createObjectStore('sync_status', {{ keyPath: 'key' }});
-    }}
-    if (!db.objectStoreNames.contains('auth')) {{
-        db.createObjectStore('auth', {{ keyPath: 'key' }});
-    }}
-}};
-dbRequest.onsuccess = (e) => {{
-    const db = e.target.result;
-    // Store auth credentials (ephemeral)
-    const authTx = db.transaction('auth', 'readwrite');
-    authTx.objectStore('auth').put({{ key: 'credentials', ...credentials }});
-    authTx.oncomplete = () => {{
-        // Store plugin-specific settings (persistent)
-        const settingsTx = db.transaction('settings', 'readwrite');
-        const settingsStore = settingsTx.objectStore('settings');
-{settings_js}
-        settingsTx.oncomplete = () => {{
-            window.location.href = '/?view=settings';
-        }};
-        settingsTx.onerror = (err) => {{
-            console.error('Settings transaction error:', err);
-            window.location.href = '/?view=settings';
-        }};
-    }};
-    authTx.onerror = (err) => {{
-        console.error('Auth transaction error:', err);
-        window.location.href = '/?view=settings';
-    }};
-}};
-dbRequest.onerror = (e) => {{
-    console.error('Failed to open IndexedDB:', e.target.error);
-    window.location.href = '/?view=settings';
-}};
+try {{
+    sessionStorage.setItem('acquacotta_pending_auth', JSON.stringify({json.dumps(pending_auth)}));
+}} catch (e) {{
+    console.error('Failed to stash pending auth:', e);
+}}
+window.location.href = '/?view=settings';
 </script>
 </body>
 </html>"""
@@ -797,7 +814,7 @@ def api_provision_storage():
     if not user_email:
         return jsonify({"error": "No user email in credentials"}), HTTPStatus.BAD_REQUEST
 
-    active_id = plugin_registry.get_active_storage_id()
+    active_id = _active_storage_id()
     if not active_id:
         return jsonify({"error": "No storage plugin active"}), HTTPStatus.BAD_REQUEST
 
@@ -807,7 +824,7 @@ def api_provision_storage():
         app.logger.error(f"Storage provisioning failed: {e}")
         return jsonify({"error": f"Provisioning failed: {e}"}), HTTPStatus.INTERNAL_SERVER_ERROR
 
-    backend = plugin_registry.get_active_storage()
+    backend = _active_storage_backend()
     metadata = getattr(backend, "PLUGIN_METADATA", {})
     frontend_fields = metadata.get("frontend_fields", [])
 
@@ -840,7 +857,7 @@ def api_migrate_to_json():
         msg = "Not authenticated" if not credentials else "No user email in credentials"
         return jsonify({"error": msg}), status
 
-    if plugin_registry.get_active_storage_id() != "sheets":
+    if _active_storage_id() != "sheets":
         return jsonify({"error": "Migration is only available when using the Sheets backend"}), HTTPStatus.BAD_REQUEST
 
     try:
@@ -864,9 +881,9 @@ def api_migrate_to_json():
         app.logger.error(f"Migration failed: {e}")
         return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
 
-    # Step 4: Switch backend (only after successful write)
+    # Step 4: Switch this user's backend (only after successful write)
     save_location(user_email, "json-google-drive", folder_id)
-    plugin_registry.activate_storage("json-google-drive")
+    set_user_backend(user_email, "json-google-drive")
 
     return jsonify(
         {
@@ -884,12 +901,21 @@ def api_migrate_to_json():
 
 @app.route("/api/plugins")
 def api_list_plugins():
-    """List all registered plugins with their status."""
+    """List all registered plugins with their status.
+
+    Storage `active` is resolved per-request from the requesting user's own recorded
+    backend choice, never a shared global.
+    """
+    active_storage = _active_storage_id()
+    plugins = plugin_registry.list_plugins()
+    for plugin in plugins:
+        if plugin.get("plugin_type") == "storage":
+            plugin["active"] = plugin.get("id") == active_storage
     return jsonify(
         {
-            "plugins": plugin_registry.list_plugins(),
+            "plugins": plugins,
             "types": plugin_registry.list_plugin_types(),
-            "active_storage": plugin_registry.get_active_storage_id(),
+            "active_storage": active_storage,
         }
     )
 
@@ -906,13 +932,15 @@ def api_toggle_plugin():
     enable = toggle_request.get("enable", True)
 
     if plugin_type == "storage":
+        # A storage backend is a per-user authoritative choice, not a global toggle:
+        # enabling one records it as this user's backend (they switch by enabling another).
+        email = _request_user_email()
+        if not email:
+            return jsonify({"error": "Not authenticated"}), HTTPStatus.UNAUTHORIZED
         if enable:
-            try:
-                plugin_registry.activate_storage(plugin_id)
-            except ValueError as e:
-                return jsonify({"error": str(e)}), HTTPStatus.BAD_REQUEST
-        else:
-            plugin_registry.deactivate_storage()
+            if plugin_registry.get_plugin("storage", plugin_id) is None:
+                return jsonify({"error": f"Storage plugin not registered: {plugin_id}"}), HTTPStatus.BAD_REQUEST
+            set_user_backend(email, plugin_id)
     elif plugin_type == "extension":
         try:
             if enable:
@@ -927,7 +955,7 @@ def api_toggle_plugin():
     return jsonify(
         {
             "status": "ok",
-            "active_storage": plugin_registry.get_active_storage_id(),
+            "active_storage": _active_storage_id(),
         }
     )
 

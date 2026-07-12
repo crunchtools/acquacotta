@@ -18,6 +18,9 @@
     const DB_NAME = 'acquacotta';
     const DB_VERSION = 3;  // Bumped for todos stores
 
+    // sessionStorage handoff key the OAuth callback writes a pending login to
+    const PENDING_AUTH_KEY = 'acquacotta_pending_auth';
+
     // Object store names
     const STORES = {
         POMODOROS: 'pomodoros',
@@ -84,6 +87,7 @@
     let syncLockPromise = null;  // Promise-based lock to prevent race conditions
     let pendingSyncCount = 0;
     let lastSyncError = null;
+    let initialSyncPromise = null;  // Background bidirectional sync started at login
 
     /**
      * Generate a UUID v4
@@ -251,6 +255,44 @@
             console.error('Error loading credentials:', e);
         }
         return null;
+    }
+
+    /**
+     * Consume a pending login handed off by the OAuth callback via sessionStorage.
+     *
+     * The callback used to write IndexedDB itself, duplicating the schema (store
+     * list + DB version). When storage.js bumped the DB version, the callback's
+     * lower hard-coded version threw VersionError and credentials were silently
+     * dropped — login "succeeded" but the browser stayed logged out. To make
+     * that impossible, the callback now only stashes {credentials, settings} in
+     * sessionStorage; storage.js — the single owner of the IndexedDB schema —
+     * writes them here using its own openDatabase(). One source of truth.
+     */
+    async function consumePendingAuth() {
+        let pending;
+        try {
+            const raw = sessionStorage.getItem(PENDING_AUTH_KEY);
+            if (!raw) return;
+            pending = JSON.parse(raw);
+        } catch (e) {
+            console.error('Error reading pending auth:', e);
+            return;
+        }
+        try {
+            if (pending.credentials) {
+                await putInStore(STORES.AUTH, { key: 'credentials', ...pending.credentials });
+            }
+            if (pending.settings) {
+                for (const [key, value] of Object.entries(pending.settings)) {
+                    await putInStore(STORES.SETTINGS, { key, value, synced: true });
+                }
+            }
+        } catch (e) {
+            console.error('Error persisting pending auth:', e);
+            return;
+        }
+        // Only clear once safely written, so a mid-write failure can retry next load.
+        try { sessionStorage.removeItem(PENDING_AUTH_KEY); } catch (e) { /* ignore */ }
     }
 
     /**
@@ -672,6 +714,9 @@
             // Open IndexedDB first (idempotent if already opened)
             await openDatabase();
 
+            // Persist any login the OAuth callback just handed off (single schema owner)
+            await consumePendingAuth();
+
             // Load credentials from AUTH store (ephemeral - OAuth tokens only)
             const creds = await loadCredentials();
 
@@ -800,9 +845,17 @@
             // Update pending count
             await updatePendingCount();
 
-            // Bidirectional sync on every page load when logged in
+            // Bidirectional sync on every page load when logged in.
+            // Runs in the BACKGROUND (not awaited) so init() returns immediately and
+            // the logged-in UI renders instantly. It flips syncInProgress and emits
+            // sync-status events, so the header shows "Syncing…" then "Synced" and the
+            // data counts fill in when it completes. Callers can await
+            // Storage.whenInitialSyncDone() if they need the merged data.
             if (authStatus.logged_in && storedCredentials) {
-                try {
+                initialSyncPromise = (async () => {
+                    syncInProgress = true;
+                    dispatchSyncStatusEvent();
+                    try {
                     // Clear any stale sync queue — the batch push below handles everything
                     await clearStore(STORES.SYNC_QUEUE);
 
@@ -876,10 +929,24 @@
 
                     // Mark storage as existing
                     await putInStore(STORES.SETTINGS, { key: 'storage_existed', value: true, synced: true });
-                } catch (e) {
-                    console.error('Bidirectional sync during init failed:', e);
-                }
+                    } catch (e) {
+                        console.error('Bidirectional sync during init failed:', e);
+                    } finally {
+                        syncInProgress = false;
+                        await updatePendingCount();  // dispatches sync-status → UI flips to "Synced"
+                    }
+                })();
             }
+        },
+
+        /**
+         * Resolve when the background bidirectional sync started at login has
+         * finished (or immediately if none is running). Lets callers refresh
+         * counts/render once the merged data is available.
+         * @returns {Promise}
+         */
+        whenInitialSyncDone: function() {
+            return initialSyncPromise || Promise.resolve();
         },
 
         /**
@@ -929,15 +996,26 @@
          * @returns {Promise<string|null>}
          */
         getStoredSpreadsheetId: async function() {
+            return this.getStoredLocationId('spreadsheet_id');
+        },
+
+        /**
+         * Get a stored location id (spreadsheet_id or folder_id) from settings,
+         * for auto-fill on login. Folder ids and spreadsheet ids are kept
+         * distinct and are never conflated.
+         * @param {string} field - 'spreadsheet_id' or 'folder_id'
+         * @returns {Promise<string|null>}
+         */
+        getStoredLocationId: async function(field) {
             try {
                 // Ensure database is open
                 if (!db) {
                     await openDatabase();
                 }
-                const setting = await getFromStore(STORES.SETTINGS, 'spreadsheet_id');
+                const setting = await getFromStore(STORES.SETTINGS, field);
                 return setting ? setting.value : null;
             } catch (e) {
-                console.error('getStoredSpreadsheetId error:', e);
+                console.error('getStoredLocationId error:', e);
                 return null;
             }
         },

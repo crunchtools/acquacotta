@@ -9,9 +9,13 @@ The server only handles:
 All data storage and CRUD operations happen in the browser's IndexedDB.
 """
 
+import base64
 import json
 from unittest.mock import patch
 
+import pytest
+
+import app as app_module
 import storage_api
 
 
@@ -177,20 +181,20 @@ class TestPluginsAPI:
     """Tests for the plugin registry API."""
 
     def test_list_plugins(self, client):
-        """GET /api/plugins should return registered plugins."""
+        """GET /api/plugins should return registered plugins; a request with no
+        recorded user resolves to the default backend (JSON-on-Drive)."""
         response = client.get("/api/plugins")
         assert response.status_code == 200
         data = json.loads(response.data)
         assert "plugins" in data
         assert "types" in data
-        assert "active_storage" in data
-        assert data["active_storage"] == "sheets"
+        assert data["active_storage"] == "json-google-drive"
         sheets_plugin = next(p for p in data["plugins"] if p["id"] == "sheets")
         assert sheets_plugin["name"] == "Google Sheets"
         assert sheets_plugin["plugin_type"] == "storage"
-        assert sheets_plugin["active"] is True
+        assert sheets_plugin["active"] is False
         json_plugin = next(p for p in data["plugins"] if p["id"] == "json-google-drive")
-        assert json_plugin["active"] is False
+        assert json_plugin["active"] is True
 
 
 class TestClearInitialSync:
@@ -267,3 +271,72 @@ class TestStaticPages:
         """Terms page should be accessible."""
         response = client.get("/terms")
         assert response.status_code == 200
+
+
+class TestPerUserBackend:
+    """The storage backend is an authoritative, per-user choice recorded server-side
+    and resolved per request — never a shared global."""
+
+    def _ctx(self, app, creds_dict):
+        header = base64.b64encode(json.dumps(creds_dict).encode()).decode()
+        return app.test_request_context(headers={"X-Credentials": header})
+
+    def test_backend_choice_roundtrip(self, app):
+        with app.test_request_context():
+            app_module.set_user_backend("a@example.com", "json-google-drive")
+            app_module.set_user_backend("b@example.com", "sheets")
+            assert app_module.get_user_backend("a@example.com") == "json-google-drive"
+            assert app_module.get_user_backend("b@example.com") == "sheets"
+            assert app_module.get_user_backend("unset@example.com") is None
+
+    def test_resolves_per_user_and_isolates(self, app):
+        with app.test_request_context():
+            app_module.set_user_backend("a@example.com", "sheets")
+            app_module.set_user_backend("b@example.com", "json-google-drive")
+        with self._ctx(app, {"user_email": "a@example.com"}):
+            assert app_module._active_storage_id() == "sheets"
+        # b's request is unaffected by a's choice
+        with self._ctx(app, {"user_email": "b@example.com"}):
+            assert app_module._active_storage_id() == "json-google-drive"
+
+    def test_unknown_user_gets_default(self, app):
+        with self._ctx(app, {"user_email": "new@example.com"}):
+            assert app_module._active_storage_id() == app_module.DEFAULT_STORAGE_BACKEND
+
+    def test_choice_persists_across_requests(self, app):
+        with self._ctx(app, {"user_email": "c@example.com"}):
+            app_module.set_user_backend("c@example.com", "sheets")
+        # a later, separate request resolves the recorded choice (survives sign-out)
+        with self._ctx(app, {"user_email": "c@example.com"}):
+            assert app_module._active_storage_id() == "sheets"
+
+    def test_location_stored_per_backend(self, app):
+        with app.test_request_context():
+            app_module.save_location("d@example.com", "json-google-drive", "FOLDER1")
+            app_module.save_location("d@example.com", "sheets", "SHEET1")
+            assert app_module.get_stored_location("d@example.com", "json-google-drive") == "FOLDER1"
+            assert app_module.get_stored_location("d@example.com", "sheets") == "SHEET1"
+
+
+class TestStorageApiDispatch:
+    """The data layer dispatches to the backend carried in the request context —
+    never a shared global — so concurrent users never cross backends."""
+
+    def test_dispatches_to_context_backend(self):
+        class FakeBackend:
+            def __init__(self, tag):
+                self.tag = tag
+
+            def get_pomodoros(self, service, location, start_date, end_date):
+                return [self.tag, service, location]
+
+        ctx_a = {"service": "svc-a", "location": "loc-a", "backend": FakeBackend("A")}
+        ctx_b = {"service": "svc-b", "location": "loc-b", "backend": FakeBackend("B")}
+        assert storage_api.get_pomodoros(ctx_a)[0] == "A"
+        assert storage_api.get_pomodoros(ctx_b)[0] == "B"
+
+    def test_missing_backend_raises(self):
+        with pytest.raises(storage_api.StorageUnavailable):
+            storage_api.get_pomodoros({"service": "s", "location": "l"})
+        with pytest.raises(storage_api.StorageUnavailable):
+            storage_api.get_pomodoros(None)
