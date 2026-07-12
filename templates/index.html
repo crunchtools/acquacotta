@@ -3885,7 +3885,7 @@
                     // MCP access renders its own card (per-user state + token UI).
                     if (plugin.has_mcp) return await renderMcpCard(plugin);
 
-                    const isActive = plugin.active;
+                    const isActive = pluginEffectiveActive(plugin);
                     const typeBadge = `<span style="display: inline-block; padding: 0.125rem 0.5rem; border-radius: 4px; font-size: 0.75rem; background: var(--bg-tertiary); color: var(--text-secondary);">${plugin.plugin_type}</span>`;
                     const toggleId = `plugin-toggle-${plugin.id}`;
                     const toggleChecked = isActive ? 'checked' : '';
@@ -3960,8 +3960,11 @@
                 }
                 const data = await resp.json();
 
-                // Persist plugin state to IndexedDB so it survives container restarts
+                // Persist plugin state to IndexedDB (syncs to the user's storage) and
+                // update the in-memory settings so pluginEffectiveActive() reflects the
+                // change immediately for this user — no shared/global state is touched.
                 await Storage.saveSetting(`plugin_state_${pluginId}`, enable);
+                settings[`plugin_state_${pluginId}`] = enable;
 
                 // Refresh plugin info and auth UI to reflect the new active plugin
                 activePluginInfo = await fetch('/api/plugins').then(r => r.json()).then(d =>
@@ -3979,15 +3982,27 @@
             }
         }
 
+        // Extension enablement is per-user: the authoritative value is the user's own
+        // plugin_state_<id> setting (default enabled), NOT the server's shared active
+        // flag. Storage stays server-resolved (per-user, from /api/plugins). See spec 008.
+        function pluginEffectiveActive(plugin) {
+            if (plugin.plugin_type === 'extension') {
+                const saved = settings[`plugin_state_${plugin.id}`];
+                return saved !== undefined ? saved : plugin.active;
+            }
+            return plugin.active;
+        }
+
         function updateExtensionTabs(plugins) {
             if (!plugins) return;
             const extensions = plugins.filter(p => p.plugin_type === 'extension' && p.has_tab);
             for (const plugin of extensions) {
+                const active = pluginEffectiveActive(plugin);
                 const tab = document.getElementById(`tab-${plugin.tab_id}`);
                 const settingsCard = document.getElementById(`${plugin.tab_id}-settings-card`);
                 if (tab) {
-                    tab.style.display = plugin.active ? '' : 'none';
-                    if (!plugin.active) {
+                    tab.style.display = active ? '' : 'none';
+                    if (!active) {
                         const view = document.getElementById(`${plugin.tab_id}-view`);
                         if (view && view.classList.contains('active')) {
                             document.getElementById('tab-timer').click();
@@ -3995,7 +4010,7 @@
                     }
                 }
                 if (settingsCard) {
-                    settingsCard.style.display = plugin.active ? '' : 'none';
+                    settingsCard.style.display = active ? '' : 'none';
                 }
             }
         }
@@ -6111,32 +6126,16 @@
                 loadWeeklyOverview()
             ]);
 
-            // Phase 2b: Restore saved plugin states from IndexedDB.
-            // Server-side plugin registry resets on restart; this re-applies user's choices.
+            // Phase 2b: Apply the user's own plugin choices to the UI.
             //
-            // Storage plugins are EXCLUDED: the active storage backend is an
-            // authoritative, per-user, server-side choice resolved per request.
-            // The client must never toggle it on page load — doing so would let
-            // stale browser state overwrite the user's recorded backend choice
-            // (the root cause of JSON users being flipped onto Sheets). See
-            // spec 007-per-user-storage.
+            // Plugin enablement is per-user and the client is authoritative: storage
+            // is resolved per-user server-side (spec 007) and extensions come from the
+            // user's own plugin_state_<id> setting (spec 008). We no longer POST toggle
+            // to mutate shared server state on page load — that reconfigured the app for
+            // every user. We just reflect the current user's choices in the UI.
             try {
-                const pluginRes = await fetch('/api/plugins');
-                const pluginData = await pluginRes.json();
-                for (const plugin of pluginData.plugins) {
-                    if (plugin.plugin_type === 'storage') continue;
-                    const savedState = settings[`plugin_state_${plugin.id}`];
-                    if (savedState !== undefined && savedState !== plugin.active) {
-                        await fetch('/api/plugins/toggle', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ plugin_id: plugin.id, plugin_type: plugin.plugin_type, enable: savedState })
-                        });
-                    }
-                }
-                // Refresh extension tab visibility after restoring states
-                const refreshedData = await fetch('/api/plugins').then(r => r.json());
-                updateExtensionTabs(refreshedData.plugins);
+                const pluginData = await fetch('/api/plugins').then(r => r.json());
+                updateExtensionTabs(pluginData.plugins);
             } catch (e) { /* offline — use server defaults */ }
 
             // Phase 3: Sync cloud data then render todos once with fresh state.

@@ -66,6 +66,16 @@ check = "summary_litter"
 path = "specs/007-per-user-storage/checklists/requirements.md"
 justification = "Spec-kit requirements checklist - RFC/ADR-style development workflow"
 
+[[exceptions]]
+check = "summary_litter"
+path = "specs/008-per-user-extensions/spec.md"
+justification = "Spec-kit feature specification - RFC/ADR-style development workflow"
+
+[[exceptions]]
+check = "summary_litter"
+path = "specs/008-per-user-extensions/checklists/requirements.md"
+justification = "Spec-kit requirements checklist - RFC/ADR-style development workflow"
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # random_scripts - Intentional entry points
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -204,6 +214,21 @@ justification = "Second entry point — the FastMCP server systemd runs alongsid
 check = "deferred_work"
 path = "mcp_server.py"
 justification = "'todos' refers to the todos plugin it activates — a domain term, not a deferred-work marker"
+
+[[exceptions]]
+check = "deferred_work"
+path = "tests/test_app.py"
+justification = "'todos' refers to the todos plugin under test — a domain term, not a deferred-work marker"
+
+[[exceptions]]
+check = "deferred_work"
+path = "tests/test_mcp_plugin_gating.py"
+justification = "'todos' refers to the todos plugin under test — a domain term, not a deferred-work marker"
+
+[[exceptions]]
+check = "deferred_work"
+path = "tests/test_mcp_todos.py"
+justification = "'todos' refers to the todos plugin under test — a domain term, not a deferred-work marker"
 
 [[exceptions]]
 check = "single_use_helpers"

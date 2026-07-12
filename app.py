@@ -942,13 +942,13 @@ def api_toggle_plugin():
                 return jsonify({"error": f"Storage plugin not registered: {plugin_id}"}), HTTPStatus.BAD_REQUEST
             set_user_backend(email, plugin_id)
     elif plugin_type == "extension":
-        try:
-            if enable:
-                plugin_registry.activate_extension(plugin_id)
-            else:
-                plugin_registry.deactivate_extension(plugin_id)
-        except ValueError as e:
-            return jsonify({"error": str(e)}), HTTPStatus.BAD_REQUEST
+        # Extension enablement is a per-user preference, not a process-global. The
+        # client persists it as plugin_state_<id> in the user's own settings (synced
+        # to their storage); the web UI resolves it per-user and the MCP server gates
+        # each caller's tools on their own copy. So we intentionally do NOT flip the
+        # shared registry flag here (that would reconfigure the app for every user).
+        if plugin_registry.get_plugin("extension", plugin_id) is None:
+            return jsonify({"error": f"Extension plugin not registered: {plugin_id}"}), HTTPStatus.BAD_REQUEST
     else:
         return jsonify({"error": f"Toggle not yet supported for type: {plugin_type}"}), HTTPStatus.BAD_REQUEST
 
