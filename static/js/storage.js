@@ -228,6 +228,34 @@
     }
 
     /**
+     * Write many records across one or more stores in a SINGLE IndexedDB
+     * transaction. Pass { [storeName]: [records], ... }; every record is put()
+     * and the promise resolves once the whole transaction commits (or rejects
+     * atomically). This replaces per-record putInStore loops on the sync path —
+     * turning thousands of one-write transactions into a single commit — and makes
+     * multi-store writes (e.g. todos + their lists) atomic. Stores whose array is
+     * empty or missing are skipped; an all-empty call resolves without a transaction.
+     */
+    function bulkPut(recordsByStore) {
+        const entries = Object.entries(recordsByStore).filter(([, records]) => records && records.length);
+        if (entries.length === 0) return Promise.resolve();
+        return new Promise((resolve, reject) => {
+            if (!db) {
+                reject(new Error('Database not initialized'));
+                return;
+            }
+            const transaction = db.transaction(entries.map(([name]) => name), 'readwrite');
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error);
+            transaction.onabort = () => reject(transaction.error || new Error('bulkPut aborted'));
+            for (const [name, records] of entries) {
+                const store = transaction.objectStore(name);
+                for (const record of records) store.put(record);
+            }
+        });
+    }
+
+    /**
      * Delete a record from a store
      */
     function deleteFromStore(storeName, key) {
@@ -658,25 +686,23 @@
 
             // Add/update pomodoros from Sheets
             let imported = 0;
+            const toStore = [];
             for (const pomo of sheetsPomodoros) {
                 if (!localIds.has(pomo.id)) {
                     pomo.synced = true;
-                    await putInStore(STORES.POMODOROS, pomo);
+                    toStore.push(pomo);
                     imported++;
                 }
             }
 
-            // Update settings from Sheets
-            for (const [key, value] of Object.entries(sheetsSettings)) {
-                await putInStore(STORES.SETTINGS, { key, value, synced: true });
+            // Settings from Sheets, plus preserved storage location fields (not in
+            // the backend data). Pomodoros and settings commit in one transaction.
+            const settingRecords = Object.entries(sheetsSettings).map(([key, value]) => ({ key, value, synced: true }));
+            for (const [field, value] of Object.entries(cachedLocationFields)) {
+                if (value) settingRecords.push({ key: field, value, synced: true });
             }
 
-            // Preserve storage location fields (they're not in the backend data)
-            for (const [field, value] of Object.entries(cachedLocationFields)) {
-                if (value) {
-                    await putInStore(STORES.SETTINGS, { key: field, value, synced: true });
-                }
-            }
+            await bulkPut({ [STORES.POMODOROS]: toStore, [STORES.SETTINGS]: settingRecords });
 
             // Update last sync time
             await putInStore(STORES.SYNC_STATUS, {
@@ -869,11 +895,13 @@
                         const localPomodoros = await getAllFromStore(STORES.POMODOROS);
                         const localIds = new Set(localPomodoros.map(p => p.id));
 
-                        // 3. Pull pomodoros from Sheets that don't exist locally
+                        // 3. Pull pomodoros from Sheets that don't exist locally, and
+                        //    mark already-synced locals — collect both and commit once.
+                        const toStore = [];
                         for (const pomo of sheetsPomodoros) {
                             if (!localIds.has(pomo.id)) {
                                 pomo.synced = true;
-                                await putInStore(STORES.POMODOROS, pomo);
+                                toStore.push(pomo);
                             }
                         }
 
@@ -884,19 +912,18 @@
                                 toPush.push(pomo);
                             } else {
                                 pomo.synced = true;
-                                await putInStore(STORES.POMODOROS, pomo);
+                                toStore.push(pomo);
                             }
                         }
+                        await bulkPut({ [STORES.POMODOROS]: toStore });
                         if (toPush.length > 0) {
                             const batchRes = await authenticatedFetch('/api/sheets/pomodoros/batch', {
                                 method: 'POST',
                                 body: JSON.stringify({ pomodoros: toPush })
                             });
                             if (batchRes.ok) {
-                                for (const pomo of toPush) {
-                                    pomo.synced = true;
-                                    await putInStore(STORES.POMODOROS, pomo);
-                                }
+                                for (const pomo of toPush) pomo.synced = true;
+                                await bulkPut({ [STORES.POMODOROS]: toPush });
                             }
                         }
 
@@ -913,15 +940,12 @@
                             const sheetsSettings = await settingsRes.json();
                             if (Object.keys(sheetsSettings).length > 0) {
                                 await clearStore(STORES.SETTINGS);
-                                for (const [key, value] of Object.entries(sheetsSettings)) {
-                                    await putInStore(STORES.SETTINGS, { key, value, synced: true });
-                                }
+                                const settingRecords = Object.entries(sheetsSettings).map(([key, value]) => ({ key, value, synced: true }));
                                 // Re-save location fields after clearing
                                 for (const [field, value] of Object.entries(cachedLocationFields)) {
-                                    if (value) {
-                                        await putInStore(STORES.SETTINGS, { key: field, value, synced: true });
-                                    }
+                                    if (value) settingRecords.push({ key: field, value, synced: true });
                                 }
+                                await bulkPut({ [STORES.SETTINGS]: settingRecords });
                             }
                         }
                         await putInStore(STORES.SYNC_STATUS, { key: 'initial_sync_done', value: true });
@@ -1266,12 +1290,9 @@
          * @returns {Promise<object>}
          */
         saveSettings: async function(settings) {
-            const allSettings = {};
-
-            for (const [key, value] of Object.entries(settings)) {
-                await putInStore(STORES.SETTINGS, { key, value, synced: false });
-                allSettings[key] = value;
-            }
+            const allSettings = { ...settings };
+            const records = Object.entries(settings).map(([key, value]) => ({ key, value, synced: false }));
+            await bulkPut({ [STORES.SETTINGS]: records });
 
             // Queue for sync if logged in
             if (authStatus && authStatus.logged_in) {
@@ -1392,11 +1413,12 @@
                 const localPomodoros = await getAllFromStore(STORES.POMODOROS);
                 const localIds = new Set(localPomodoros.map(p => p.id));
 
-                // Pull from Sheets
+                // Pull from Sheets (and mark already-synced locals) — one commit.
+                const toStore = [];
                 for (const pomo of sheetsPomodoros) {
                     if (!localIds.has(pomo.id)) {
                         pomo.synced = true;
-                        await putInStore(STORES.POMODOROS, pomo);
+                        toStore.push(pomo);
                         downloaded++;
                     }
                 }
@@ -1408,9 +1430,10 @@
                         uploaded++;
                     } else if (!pomo.synced) {
                         pomo.synced = true;
-                        await putInStore(STORES.POMODOROS, pomo);
+                        toStore.push(pomo);
                     }
                 }
+                await bulkPut({ [STORES.POMODOROS]: toStore });
             }
 
             // 2. Process sync queue
@@ -1567,11 +1590,9 @@
 
                 if (res.ok) {
                     const batchResponse = await res.json();
-                    // Mark all as synced
-                    for (const pomo of pomodoros) {
-                        pomo.synced = true;
-                        await putInStore(STORES.POMODOROS, pomo);
-                    }
+                    // Mark all as synced — one commit.
+                    for (const pomo of pomodoros) pomo.synced = true;
+                    await bulkPut({ [STORES.POMODOROS]: pomodoros });
                     return { migrated: batchResponse.count || 0, skipped: pomodoros.length - (batchResponse.count || 0) };
                 } else {
                     return { migrated: 0, skipped: 0, error: `HTTP ${res.status}` };
@@ -1614,11 +1635,9 @@
                 });
 
                 if (res.ok) {
-                    // Mark all settings as synced
-                    for (const record of settingsRecords) {
-                        record.synced = true;
-                        await putInStore(STORES.SETTINGS, record);
-                    }
+                    // Mark all settings as synced — one commit.
+                    for (const record of settingsRecords) record.synced = true;
+                    await bulkPut({ [STORES.SETTINGS]: settingsRecords });
                     return { migrated: true };
                 } else {
                     return { migrated: false, error: `HTTP ${res.status}` };
@@ -1813,8 +1832,7 @@
                 for (const l of localLists) {
                     if (!remoteListIds.has(l.id)) await deleteFromStore(STORES.TODO_LISTS, l.id);
                 }
-                for (const t of remoteTodos) await putInStore(STORES.TODOS, t);
-                for (const l of remoteLists) await putInStore(STORES.TODO_LISTS, l);
+                await bulkPut({ [STORES.TODOS]: remoteTodos, [STORES.TODO_LISTS]: remoteLists });
                 this._lastTodoSignature = sig;
                 return true;
             } catch (e) {
@@ -1829,16 +1847,11 @@
                 const res = await authenticatedFetch('/api/todos/sync');
                 if (!res.ok) return false;
                 const syncPayload = await res.json();
-                if (syncPayload.todos) {
-                    for (const todo of syncPayload.todos) {
-                        await putInStore(STORES.TODOS, todo);
-                    }
-                }
-                if (syncPayload.lists) {
-                    for (const list of syncPayload.lists) {
-                        await putInStore(STORES.TODO_LISTS, list);
-                    }
-                }
+                // The todos plugin's data (todos + their lists) commits atomically.
+                await bulkPut({
+                    [STORES.TODOS]: syncPayload.todos || [],
+                    [STORES.TODO_LISTS]: syncPayload.lists || [],
+                });
                 return true;
             } catch (e) {
                 console.error('Todo load from cloud failed:', e);
