@@ -34,6 +34,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 import json_google_drive_storage
 import mcp_tokens
 import plugin_registry
+import pomodoro_tools
 import sheets_storage
 import storage_api
 import todos_plugin
@@ -44,6 +45,25 @@ plugin_registry.register("storage", "sheets", sheets_storage, sheets_storage.PLU
 plugin_registry.register(
     "storage", "json-google-drive", json_google_drive_storage, json_google_drive_storage.PLUGIN_METADATA
 )
+
+# Mandatory feature plugins — always registered, always enabled, never toggleable.
+# Pomodoro carries MCP tools; Settings is UI-only (metadata registration is enough,
+# like the MCP plugin below).
+plugin_registry.register("extension", "pomodoro", pomodoro_tools, pomodoro_tools.PLUGIN_METADATA)
+SETTINGS_PLUGIN_METADATA = {
+    "id": "settings",
+    "name": "Settings",
+    "description": "App preferences and timer configuration",
+    "version": "1.0.0",
+    "type": "extension",
+    "author": "Crunchtools",
+    "mandatory": True,
+}
+plugin_registry.register("extension", "settings", SimpleNamespace(), SETTINGS_PLUGIN_METADATA)
+
+# Todos — optional plugin, per-user enable/disable (spec 008). activate_extension sets
+# the registry default to on; the per-user choice (plugin_state_todos) governs actual
+# enablement on web and MCP.
 plugin_registry.register("extension", "todos", todos_plugin, todos_plugin.PLUGIN_METADATA)
 plugin_registry.activate_extension("todos")
 
@@ -949,6 +969,11 @@ def api_toggle_plugin():
         # shared registry flag here (that would reconfigure the app for every user).
         if plugin_registry.get_plugin("extension", plugin_id) is None:
             return jsonify({"error": f"Extension plugin not registered: {plugin_id}"}), HTTPStatus.BAD_REQUEST
+        # Mandatory plugins (Pomodoro, Settings) can never be disabled (spec 009).
+        if plugin_registry.is_mandatory("extension", plugin_id):
+            return jsonify(
+                {"error": f"'{plugin_id}' is a required plugin and cannot be disabled"}
+            ), HTTPStatus.FORBIDDEN
     else:
         return jsonify({"error": f"Toggle not yet supported for type: {plugin_type}"}), HTTPStatus.BAD_REQUEST
 

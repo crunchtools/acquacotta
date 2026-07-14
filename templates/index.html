@@ -541,7 +541,7 @@
         }
     </style>
     <script src="{{ url_for('static', filename='js/utils.js') }}?v=3"></script>
-    <script src="{{ url_for('static', filename='js/storage.js') }}?v=8"></script>
+    <script src="{{ url_for('static', filename='js/storage.js') }}?v=9"></script>
 </head>
 <body>
     <a href="#main-content" class="skip-link">Skip to main content</a>
@@ -3926,11 +3926,11 @@
                             </div>
                             ${actions}
                         </div>
-                        <label style="display: flex; align-items: center; cursor: pointer; gap: 0.5rem; margin-left: 1rem;">
-                            <span style="font-size: 0.75rem; color: ${isActive ? 'var(--success)' : 'var(--text-secondary)'};">${isActive ? 'On' : 'Off'}</span>
-                            <input type="checkbox" id="${toggleId}" ${toggleChecked}
+                        <label style="display: flex; align-items: center; ${plugin.mandatory ? '' : 'cursor: pointer;'} gap: 0.5rem; margin-left: 1rem;" ${plugin.mandatory ? 'title="This plugin is required and cannot be disabled"' : ''}>
+                            <span style="font-size: 0.75rem; color: ${plugin.mandatory ? 'var(--text-secondary)' : (isActive ? 'var(--success)' : 'var(--text-secondary)')};">${plugin.mandatory ? 'Required' : (isActive ? 'On' : 'Off')}</span>
+                            <input type="checkbox" id="${toggleId}" ${toggleChecked} ${plugin.mandatory ? 'disabled' : ''}
                                 data-plugin-id="${plugin.id}" data-plugin-type="${plugin.plugin_type}"
-                                onchange="togglePlugin(this)" style="width: auto; cursor: pointer;">
+                                onchange="togglePlugin(this)" style="width: auto; ${plugin.mandatory ? 'cursor: not-allowed;' : 'cursor: pointer;'}">
                         </label>
                     </div>`;
                 });
@@ -3986,6 +3986,8 @@
         // plugin_state_<id> setting (default enabled), NOT the server's shared active
         // flag. Storage stays server-resolved (per-user, from /api/plugins). See spec 008.
         function pluginEffectiveActive(plugin) {
+            // Mandatory plugins (Pomodoro, Settings) are always on — no per-user override.
+            if (plugin.mandatory) return true;
             if (plugin.plugin_type === 'extension') {
                 const saved = settings[`plugin_state_${plugin.id}`];
                 return saved !== undefined ? saved : plugin.active;

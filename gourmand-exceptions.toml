@@ -76,6 +76,16 @@ check = "summary_litter"
 path = "specs/008-per-user-extensions/checklists/requirements.md"
 justification = "Spec-kit requirements checklist - RFC/ADR-style development workflow"
 
+[[exceptions]]
+check = "summary_litter"
+path = "specs/009-mandatory-plugins/spec.md"
+justification = "Spec-kit feature specification - RFC/ADR-style development workflow"
+
+[[exceptions]]
+check = "summary_litter"
+path = "specs/009-mandatory-plugins/checklists/requirements.md"
+justification = "Spec-kit requirements checklist - RFC/ADR-style development workflow"
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # random_scripts - Intentional entry points
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -217,6 +227,11 @@ justification = "'todos' refers to the todos plugin it activates — a domain te
 
 [[exceptions]]
 check = "deferred_work"
+path = "app.py"
+justification = "'todos' refers to the todos plugin it registers — a domain term, not a deferred-work marker"
+
+[[exceptions]]
+check = "deferred_work"
 path = "tests/test_app.py"
 justification = "'todos' refers to the todos plugin under test — a domain term, not a deferred-work marker"
 
@@ -239,6 +254,16 @@ justification = "_build_drive_service isolates the Google OAuth/Drive boundary; 
 check = "verbose_comments"
 path = "mcp_server.py"
 justification = "Comments document the sealed-token auth and per-user epoch revocation model"
+
+[[exceptions]]
+check = "verbose_comments"
+path = "plugin_registry.py"
+justification = "Comments document the plugin type system, mandatory/optional model, and MCP registrar contract"
+
+[[exceptions]]
+check = "verbose_comments"
+path = "pomodoro_tools.py"
+justification = "Comments document the pomodoro plugin metadata and MCP tool contract"
 
 [[exceptions]]
 check = "verbose_comments"

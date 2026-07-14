@@ -10,6 +10,17 @@ from datetime import datetime, timedelta, timezone
 
 import json_google_drive_storage as drive_storage
 
+# Mandatory feature plugin — always registered; its MCP tools (below) are always available.
+PLUGIN_METADATA = {
+    "id": "pomodoro",
+    "name": "Pomodoro",
+    "description": "Pomodoro time tracking — the core of Acquacotta",
+    "version": "1.0.0",
+    "type": "extension",
+    "author": "Crunchtools",
+    "mandatory": True,
+}
+
 
 def _iso_z(dt):
     """ISO 8601 with a trailing 'Z', matching the timestamps the web UI writes."""
