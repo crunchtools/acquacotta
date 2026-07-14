@@ -52,9 +52,7 @@ def register(plugin_type, plugin_id, module, metadata):
     if plugin_type not in _plugins:
         _plugins[plugin_type] = {}
 
-    # Mandatory plugins (e.g. Pomodoro, Settings) are always registered and enabled;
-    # they cannot be disabled by any user or interface. Optional plugins default off
-    # and are governed per-user (spec 008).
+    # Mandatory plugins register active and can never be disabled; others default off.
     mandatory = bool(metadata.get("mandatory", False))
     _plugins[plugin_type][plugin_id] = {
         "module": module,
@@ -143,15 +141,9 @@ def list_plugins(plugin_type=None):
 
 
 def get_mcp_tool_registrars():
-    """Return ``(plugin_id, register_mcp_tools, mandatory)`` triples from every
-    registered plugin that contributes MCP tools.
-
-    A plugin module exposes ``register_mcp_tools(mcp, require_ctx)`` to add its tools
-    to the MCP server without the core server knowing about them. Every such plugin is
-    returned here; the ``plugin_id`` and ``mandatory`` flag let the MCP server gate
-    each plugin's tools appropriately — mandatory plugins are always available, while
-    optional plugins are gated **per-user** on the calling user's own choice (spec 008).
-    Enablement is no longer decided globally by the registry.
+    """Return ``(plugin_id, register_mcp_tools, mandatory)`` triples for every plugin
+    exposing ``register_mcp_tools``. The MCP server uses ``mandatory`` to decide gating:
+    mandatory plugins are always available; optional ones are gated per-user (spec 008).
     """
     registrars = []
     for _ptype, plugins in _plugins.items():
