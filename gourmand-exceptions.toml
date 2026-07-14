@@ -76,6 +76,16 @@ check = "summary_litter"
 path = "specs/008-per-user-extensions/checklists/requirements.md"
 justification = "Spec-kit requirements checklist - RFC/ADR-style development workflow"
 
+[[exceptions]]
+check = "summary_litter"
+path = "specs/009-mandatory-plugins/spec.md"
+justification = "Spec-kit feature specification - RFC/ADR-style development workflow"
+
+[[exceptions]]
+check = "summary_litter"
+path = "specs/009-mandatory-plugins/checklists/requirements.md"
+justification = "Spec-kit requirements checklist - RFC/ADR-style development workflow"
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # random_scripts - Intentional entry points
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
