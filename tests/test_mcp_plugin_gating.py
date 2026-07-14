@@ -60,16 +60,20 @@ def test_gating_is_per_plugin(caller_ctx):
         mcp_server._make_plugin_ctx("todos")()
 
 
-def test_registry_returns_id_registrar_pairs():
-    """get_mcp_tool_registrars yields (plugin_id, callable) for every plugin with a
-    registrar, so the MCP server can gate each per-user."""
+def test_registry_returns_id_registrar_mandatory_triples():
+    """get_mcp_tool_registrars yields (plugin_id, callable, mandatory) for every
+    plugin with a registrar, so the MCP server can register each with the right
+    gating — mandatory plugins ungated, optional plugins per-user."""
     import plugin_registry
 
-    pairs = plugin_registry.get_mcp_tool_registrars()
-    assert pairs, "expected at least the todos registrar"
-    for item in pairs:
-        assert isinstance(item, tuple) and len(item) == 2
-        pid, registrar = item
+    triples = plugin_registry.get_mcp_tool_registrars()
+    assert triples, "expected at least the pomodoro and todos registrars"
+    for item in triples:
+        assert isinstance(item, tuple) and len(item) == 3
+        pid, registrar, mandatory = item
         assert isinstance(pid, str)
         assert callable(registrar)
-    assert "todos" in {pid for pid, _ in pairs}
+        assert isinstance(mandatory, bool)
+    by_id = {pid: mandatory for pid, _registrar, mandatory in triples}
+    assert by_id.get("pomodoro") is True  # mandatory
+    assert by_id.get("todos") is False  # optional

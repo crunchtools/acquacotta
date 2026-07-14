@@ -230,6 +230,48 @@ class TestExtensionTogglePerUser:
         assert todos_active() == before  # per-user choice lives client-side, not the global flag
 
 
+class TestMandatoryPlugins:
+    """Pomodoro and Settings are mandatory plugins: listed, always-on, non-toggleable
+    (spec 009). Todos remains an optional plugin."""
+
+    def test_features_listed_as_plugins(self, client):
+        response = client.get("/api/plugins")
+        plugins = {p["id"]: p for p in json.loads(response.data)["plugins"]}
+        for pid in ("pomodoro", "settings", "todos"):
+            assert pid in plugins, f"{pid} should be listed as a plugin"
+
+    def test_mandatory_flags_and_always_active(self, client):
+        plugins = {p["id"]: p for p in json.loads(client.get("/api/plugins").data)["plugins"]}
+        assert plugins["pomodoro"]["mandatory"] is True
+        assert plugins["pomodoro"]["active"] is True
+        assert plugins["settings"]["mandatory"] is True
+        assert plugins["settings"]["active"] is True
+        assert plugins["todos"]["mandatory"] is False
+
+    def test_registry_is_mandatory(self):
+        assert plugin_registry.is_mandatory("extension", "pomodoro") is True
+        assert plugin_registry.is_mandatory("extension", "settings") is True
+        assert plugin_registry.is_mandatory("extension", "todos") is False
+
+    def test_cannot_disable_mandatory_plugin(self, client):
+        for pid in ("pomodoro", "settings"):
+            response = client.post(
+                "/api/plugins/toggle",
+                json={"plugin_id": pid, "plugin_type": "extension", "enable": False},
+            )
+            assert response.status_code == 403, f"{pid} disable should be forbidden"
+            # still active afterwards
+            plugins = {p["id"]: p for p in json.loads(client.get("/api/plugins").data)["plugins"]}
+            assert plugins[pid]["active"] is True
+
+    def test_optional_plugin_still_toggleable(self, client):
+        response = client.post(
+            "/api/plugins/toggle",
+            json={"plugin_id": "todos", "plugin_type": "extension", "enable": False},
+        )
+        assert response.status_code == 200
+
+
 class TestClearInitialSync:
     """Tests for the clear-initial-sync endpoint."""
 

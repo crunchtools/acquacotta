@@ -52,11 +52,21 @@ def register(plugin_type, plugin_id, module, metadata):
     if plugin_type not in _plugins:
         _plugins[plugin_type] = {}
 
+    # Mandatory plugins (e.g. Pomodoro, Settings) are always registered and enabled;
+    # they cannot be disabled by any user or interface. Optional plugins default off
+    # and are governed per-user (spec 008).
+    mandatory = bool(metadata.get("mandatory", False))
     _plugins[plugin_type][plugin_id] = {
         "module": module,
         "metadata": metadata,
-        "active": False,
+        "active": mandatory,
+        "mandatory": mandatory,
     }
+
+
+def is_mandatory(plugin_type, plugin_id):
+    """True if the plugin is registered and marked mandatory (always-on)."""
+    return bool(_plugins.get(plugin_type, {}).get(plugin_id, {}).get("mandatory", False))
 
 
 def activate_storage(plugin_id):
@@ -123,7 +133,9 @@ def list_plugins(plugin_type=None):
             continue
         for _pid, info in _plugins[ptype].items():
             entry = dict(info["metadata"])
-            entry["active"] = info["active"]
+            # Mandatory plugins are always active; otherwise report the registry flag.
+            entry["active"] = True if info["mandatory"] else info["active"]
+            entry["mandatory"] = info["mandatory"]
             entry["plugin_type"] = ptype
             plugin_summaries.append(entry)
 
@@ -131,13 +143,14 @@ def list_plugins(plugin_type=None):
 
 
 def get_mcp_tool_registrars():
-    """Return ``(plugin_id, register_mcp_tools)`` pairs from every registered plugin
-    that contributes MCP tools.
+    """Return ``(plugin_id, register_mcp_tools, mandatory)`` triples from every
+    registered plugin that contributes MCP tools.
 
     A plugin module exposes ``register_mcp_tools(mcp, require_ctx)`` to add its tools
     to the MCP server without the core server knowing about them. Every such plugin is
-    returned here regardless of a global active flag; the ``plugin_id`` lets the MCP
-    server gate each plugin's tools **per-user** on the calling user's own choice.
+    returned here; the ``plugin_id`` and ``mandatory`` flag let the MCP server gate
+    each plugin's tools appropriately — mandatory plugins are always available, while
+    optional plugins are gated **per-user** on the calling user's own choice (spec 008).
     Enablement is no longer decided globally by the registry.
     """
     registrars = []
@@ -145,7 +158,7 @@ def get_mcp_tool_registrars():
         for pid, info in plugins.items():
             registrar = getattr(info["module"], "register_mcp_tools", None)
             if callable(registrar):
-                registrars.append((pid, registrar))
+                registrars.append((pid, registrar, info["mandatory"]))
     return registrars
 
 

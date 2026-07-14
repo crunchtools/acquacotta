@@ -38,12 +38,14 @@ SCOPES = [
 ]
 
 # Register the plugins the MCP server exposes. Drive-backed storage is the MCP
-# backend (tokens carry a folder_id); todos is an active extension. This mirrors
-# the web app's registration but is self-contained so we never import Flask.
+# backend (tokens carry a folder_id). Pomodoro is a mandatory plugin (its tools are
+# always available); Todos is an optional plugin (per-user gated). This mirrors the
+# web app's registration but is self-contained so we never import Flask.
 plugin_registry.register("storage", "sheets", sheets_storage, sheets_storage.PLUGIN_METADATA)
 plugin_registry.register(
     "storage", "json-google-drive", json_google_drive_storage, json_google_drive_storage.PLUGIN_METADATA
 )
+plugin_registry.register("extension", "pomodoro", pomodoro_tools, pomodoro_tools.PLUGIN_METADATA)
 plugin_registry.register("extension", "todos", todos_plugin, todos_plugin.PLUGIN_METADATA)
 plugin_registry.activate_storage("json-google-drive")
 
@@ -128,11 +130,11 @@ def _make_plugin_ctx(plugin_id):
     return require_plugin_ctx
 
 
-# Core tools (pomodoros) are always available. Plugin-contributed tools register for
-# every plugin, but each is gated per-user on the calling user's own plugin choice.
-pomodoro_tools.register_mcp_tools(mcp, require_ctx)
-for plugin_id, registrar in plugin_registry.get_mcp_tool_registrars():
-    registrar(mcp, _make_plugin_ctx(plugin_id))
+# Every plugin's tools register through the same path. Mandatory plugins (Pomodoro)
+# use require_ctx directly — always available; optional plugins (Todos) are gated
+# per-user on the calling user's own plugin choice (spec 008/009).
+for plugin_id, registrar, mandatory in plugin_registry.get_mcp_tool_registrars():
+    registrar(mcp, require_ctx if mandatory else _make_plugin_ctx(plugin_id))
 
 
 def main():
