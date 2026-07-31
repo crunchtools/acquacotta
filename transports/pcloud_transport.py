@@ -1,4 +1,9 @@
-"""pCloud transport — thin adapter for JSON file operations on pCloud."""
+"""pCloud transport — thin adapter for JSON file operations on pCloud.
+
+A first-run account has neither the Acquacotta folder nor pomodoros.json, so the
+NOT_FOUND_CODES are ordinary "not there yet" answers that must read as an empty
+file rather than propagate as errors.
+"""
 
 import requests
 
@@ -14,9 +19,6 @@ PCLOUD_OK = 0
 PCLOUD_PARENT_DIR_NOT_FOUND = 2002
 PCLOUD_DIR_NOT_FOUND = 2005
 PCLOUD_FILE_NOT_FOUND = 2009
-
-# A first-run account has no Acquacotta folder and no pomodoros.json. Both are
-# ordinary "not there yet" answers that must read as an empty file, not errors.
 NOT_FOUND_CODES = (PCLOUD_PARENT_DIR_NOT_FOUND, PCLOUD_DIR_NOT_FOUND, PCLOUD_FILE_NOT_FOUND)
 
 
