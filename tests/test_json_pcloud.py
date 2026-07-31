@@ -22,13 +22,13 @@ class TestPCloudTransport:
         """A client whose stat() answers with `stat_result` and whose file link
         resolves to `file_content`."""
         client = MagicMock(spec=PCloudClient)
+        responses = {
+            "stat": stat_result if stat_result is not None else {"result": PCLOUD_FILE_NOT_FOUND},
+            "getfilelink": {"result": 0, "hosts": ["c1.pcloud.com"], "path": "/dl/token/file"},
+        }
 
         def call(method, params=None, files=None, tolerate=()):
-            if method == "stat":
-                return stat_result if stat_result is not None else {"result": PCLOUD_FILE_NOT_FOUND}
-            if method == "getfilelink":
-                return {"result": 0, "hosts": ["c1.pcloud.com"], "path": "/dl/token/file"}
-            return {"result": 0}
+            return responses.get(method, {"result": 0})
 
         client.call.side_effect = call
         client.fetch_content.return_value = file_content
@@ -72,8 +72,7 @@ class TestPCloudTransport:
         t.upload_file("pomodoros.json", '{"pomodoros": []}')
         _method, kwargs = client.call.call_args[0][0], client.call.call_args[1]
         assert kwargs["params"]["path"] == "/Acquacotta"
-        # Overwrite, never sidestep into pomodoros_1.json
-        assert kwargs["params"]["renameifexists"] == 0
+        assert kwargs["params"]["renameifexists"] == 0, "must overwrite, not sidestep into pomodoros_1.json"
         filename, payload, _mimetype = kwargs["files"]["file"]
         assert filename == "pomodoros.json"
         assert payload == b'{"pomodoros": []}'
@@ -205,11 +204,11 @@ class TestSavePomodoro:
 class TestSavePomodorosBatch:
     @patch("json_pcloud_storage._transport")
     def test_batch_writes_once(self, mock_transport_fn):
+        """SC-003: a batch costs one API write, not one per item."""
         t = _mock_transport('{"pomodoros": [{"id": "1"}]}')
         mock_transport_fn.return_value = t
         count = storage.save_pomodoros_batch("client", "/Acquacotta", [{"id": "2"}, {"id": "3"}, {"id": "1"}])
         assert count == 2
-        # SC-003: one API write for the whole batch, not one per item
         t.upload_file.assert_called_once()
 
     @patch("json_pcloud_storage._transport")

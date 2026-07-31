@@ -4,9 +4,6 @@ import requests
 
 ACQUACOTTA_FOLDER_PATH = "/Acquacotta"
 
-# pCloud runs two independent regions; a token minted in one is invalid in the
-# other. The OAuth callback tells us which host to use and it travels with the
-# token from then on.
 US_API_HOST = "api.pcloud.com"
 EU_API_HOST = "eapi.pcloud.com"
 API_HOSTS_BY_LOCATION_ID = {1: US_API_HOST, 2: EU_API_HOST}
@@ -14,12 +11,12 @@ API_HOSTS_BY_LOCATION_ID = {1: US_API_HOST, 2: EU_API_HOST}
 REQUEST_TIMEOUT_SECONDS = 30
 
 PCLOUD_OK = 0
-
-# "Not there yet" answers, not failures: a first-run account has no Acquacotta
-# folder and no pomodoros.json, and both cases must read as an empty file.
 PCLOUD_PARENT_DIR_NOT_FOUND = 2002
 PCLOUD_DIR_NOT_FOUND = 2005
 PCLOUD_FILE_NOT_FOUND = 2009
+
+# A first-run account has no Acquacotta folder and no pomodoros.json. Both are
+# ordinary "not there yet" answers that must read as an empty file, not errors.
 NOT_FOUND_CODES = (PCLOUD_PARENT_DIR_NOT_FOUND, PCLOUD_DIR_NOT_FOUND, PCLOUD_FILE_NOT_FOUND)
 
 
@@ -37,6 +34,10 @@ class PCloudClient:
     Plays the same role for this transport that a googleapiclient `service`
     object plays for the Drive transport: it owns the credential and the
     endpoint, and knows nothing about Acquacotta's files.
+
+    pCloud runs two independent regions and a token minted in one is invalid in
+    the other, so `api_host` is bound to the token at link time and travels with
+    it from then on.
     """
 
     def __init__(self, access_token, api_host=None):
@@ -60,11 +61,11 @@ class PCloudClient:
             response = self._session.get(url, params=params, timeout=REQUEST_TIMEOUT_SECONDS)
         response.raise_for_status()
 
-        data = response.json()
-        result = data.get("result", PCLOUD_OK)
-        if result != PCLOUD_OK and result not in tolerate:
-            raise PCloudError(result, data.get("error", "Unknown error"))
-        return data
+        body = response.json()
+        result_code = body.get("result", PCLOUD_OK)
+        if result_code != PCLOUD_OK and result_code not in tolerate:
+            raise PCloudError(result_code, body.get("error", "Unknown error"))
+        return body
 
     def fetch_content(self, url):
         """GET a pre-signed pCloud content URL and return the body as text.
@@ -83,15 +84,12 @@ class PCloudTransport:
         self._client = client
         self._folder_path = (folder_path or ACQUACOTTA_FOLDER_PATH).rstrip("/")
 
-    def _file_path(self, filename):
-        return f"{self._folder_path}/{filename}"
-
     def _find_file(self, filename):
         """Find a file by name in the Acquacotta folder. Returns file ID or None."""
-        data = self._client.call("stat", {"path": self._file_path(filename)}, tolerate=NOT_FOUND_CODES)
-        if data.get("result", PCLOUD_OK) != PCLOUD_OK:
+        stat = self._client.call("stat", {"path": f"{self._folder_path}/{filename}"}, tolerate=NOT_FOUND_CODES)
+        if stat.get("result", PCLOUD_OK) != PCLOUD_OK:
             return None
-        return data.get("metadata", {}).get("fileid")
+        return stat.get("metadata", {}).get("fileid")
 
     def download_file(self, filename):
         """Download a file's content as a string. Returns None if not found."""
@@ -105,16 +103,14 @@ class PCloudTransport:
         return self._client.fetch_content(f"https://{hosts[0]}{link['path']}")
 
     def upload_file(self, filename, content):
-        """Upload/overwrite a file in the Acquacotta folder."""
+        """Upload/overwrite a file in the Acquacotta folder.
+
+        renameifexists=0 is load-bearing: without it pCloud sidesteps the write
+        by saving pomodoros_1.json and leaving the real file stale.
+        """
         self._client.call(
             "uploadfile",
-            params={
-                "path": self._folder_path,
-                # Without renameifexists=0 pCloud would sidestep the write by
-                # saving pomodoros_1.json and leaving the real file stale.
-                "renameifexists": 0,
-                "nopartial": 1,
-            },
+            params={"path": self._folder_path, "renameifexists": 0, "nopartial": 1},
             files={"file": (filename, content.encode("utf-8"), "application/json")},
         )
 

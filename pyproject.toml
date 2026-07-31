@@ -28,6 +28,10 @@ fail_under = 50
 [tool.ruff]
 target-version = "py310"
 line-length = 120
+# Spec documents are prose, not source. ruff 0.16 began formatting fenced code
+# blocks inside Markdown, which rewrites illustrative snippets in specs to look
+# like real code. Same exclusions gourmand.toml uses.
+exclude = ["specs", ".specify"]
 
 [tool.ruff.lint]
 select = [
@@ -58,10 +62,12 @@ max-complexity = 10
 "tests/*" = ["PLR2004"]  # Magic values acceptable in test assertions
 "app.py" = ["PLR0915", "PLR0911"]  # auth_callback / token-mint routes are guard-clause heavy by nature
 # MCP tool + storage functions expose many named parameters that agents pass by
-# name; bundling them into an object would obscure the tool schema, so PLR0913 is
-# accepted here. register_mcp_tools is a flat list of @mcp.tool definitions.
-"todos_plugin.py" = ["PLR0915", "C901", "PLR0913"]
-"pomodoro_tools.py" = ["PLR0913"]
+# name; bundling them into an object would obscure the tool schema, so PLR0913
+# and PLR0917 are accepted here (PLR0917 left preview in ruff 0.16 and started
+# firing on these same signatures). register_mcp_tools is a flat list of
+# @mcp.tool definitions.
+"todos_plugin.py" = ["PLR0915", "C901", "PLR0913", "PLR0917"]
+"pomodoro_tools.py" = ["PLR0913", "PLR0917"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["app", "sheets_storage"]
