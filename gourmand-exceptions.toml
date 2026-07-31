@@ -274,3 +274,28 @@ justification = "Comments document the read-modify-write full-replace contract s
 check = "verbose_comments"
 path = "tests/test_mcp_tokens.py"
 justification = "Test comments provide test structure clarity"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# JSON on pCloud storage plugin (#96) — same patterns already
+# accepted for the Google Drive storage plugin it mirrors.
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[[exceptions]]
+check = "conditional_wrapper"
+path = "json_pcloud_storage.py"
+justification = "save_pomodoros_batch guard clause avoids needless download/parse/upload cycle on empty input — legitimate API boundary validation, identical to json_google_drive_storage.py"
+
+[[exceptions]]
+check = "single_use_helpers"
+path = "transports/pcloud_transport.py"
+justification = "_find_file is the shared stat-and-unwrap step behind download_file and file_exists; it exists to keep the transport interface identical to GoogleDriveTransport, which is what makes the storage plugins interchangeable"
+
+[[exceptions]]
+check = "summary_litter"
+path = "specs/010-json-pcloud/spec.md"
+justification = "Spec-kit feature specification - RFC/ADR-style development workflow"
+
+[[exceptions]]
+check = "summary_litter"
+path = "specs/010-json-pcloud/plan.md"
+justification = "Spec-kit implementation plan - RFC/ADR-style development workflow"

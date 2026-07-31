@@ -19,6 +19,7 @@ COPY storage_api.py .
 COPY sheets_storage.py .
 COPY json_storage_core.py .
 COPY json_google_drive_storage.py .
+COPY json_pcloud_storage.py .
 COPY todos_plugin.py .
 COPY pomodoro_tools.py .
 COPY mcp_server.py .

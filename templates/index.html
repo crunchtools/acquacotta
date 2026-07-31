@@ -3908,6 +3908,22 @@
                         </div>`;
                     }
 
+                    // pCloud is storage, not identity: the account is linked separately
+                    // from the Google sign-in, so the card carries its own connect button.
+                    if (plugin.id === 'json-pcloud') {
+                        const linked = authStatus.logged_in && authStatus.pcloud_linked;
+                        const label = linked ? 'Re-link pCloud' : 'Connect pCloud';
+                        const hint = !authStatus.logged_in
+                            ? 'Sign in with Google first, then link your pCloud account.'
+                            : linked
+                                ? `Linked &middot; ${authStatus.pcloud_folder_path || '/Acquacotta'}`
+                                : 'Authorize pCloud to store your data in /Acquacotta';
+                        actions += `<div style="margin-top: 0.5rem;">
+                            <button class="secondary" onclick="loginPCloud()" ${authStatus.logged_in ? '' : 'disabled'} style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">${label}</button>
+                            <span style="font-size: 0.7rem; color: var(--text-secondary); margin-left: 0.25rem;">${hint}</span>
+                        </div>`;
+                    }
+
                     if (plugin.id === 'json-google-drive' && data.active_storage === 'sheets') {
                         actions += `<div style="margin-top: 0.5rem;">
                             <button class="secondary" onclick="showMigrateToJsonModal()" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">Migrate from Sheets</button>
@@ -5045,6 +5061,17 @@
             }
         }
 
+        function loginPCloud() {
+            // pCloud never learns who you are in Acquacotta terms, so the server
+            // needs the signed-in email to know whose folder it is linking. It gets
+            // signed into the OAuth state on the way out.
+            if (!authStatus.logged_in || !authStatus.email) {
+                alert('Sign in with Google first, then link your pCloud account.');
+                return;
+            }
+            window.location.href = '/auth/pcloud?user_email=' + encodeURIComponent(authStatus.email);
+        }
+
         async function logoutFromGoogle() {
             // Get spreadsheet ID from SETTINGS (persistent) before logout
             const spreadsheetId = await Storage.getStoredSpreadsheetId();
@@ -5072,6 +5099,7 @@
             const notConfigured = document.getElementById('google-not-configured');
 
             const isJsonDrive = activePluginInfo && activePluginInfo.id === 'json-google-drive';
+            const isPCloud = activePluginInfo && activePluginInfo.id === 'json-pcloud';
             const isSheets = !activePluginInfo || activePluginInfo.id === 'sheets';
             const pluginName = activePluginInfo ? activePluginInfo.name : 'Google Sheets';
 
@@ -5082,11 +5110,15 @@
 
             // Show the location-id input on login, labelled for the active backend.
             // JSON-on-Drive uses a Drive Folder ID; Sheets uses a Spreadsheet ID.
-            // The two are distinct ids and are never conflated.
+            // The two are distinct ids and are never conflated. pCloud's location is
+            // a folder path chosen when the account is linked, so there is nothing
+            // to type at the Google sign-in step.
             const loginSpreadsheetSection = document.getElementById('login-spreadsheet-section');
             const loginLocationLabel = document.getElementById('login-location-label');
             const loginLocationHint = document.getElementById('login-location-hint');
-            if (loginSpreadsheetSection) {
+            if (loginSpreadsheetSection && isPCloud) {
+                loginSpreadsheetSection.style.display = 'none';
+            } else if (loginSpreadsheetSection) {
                 loginSpreadsheetSection.style.display = 'block';
                 loginSpreadsheetSection.dataset.backend = isJsonDrive ? 'json-google-drive' : 'sheets';
                 if (isJsonDrive) {
@@ -5108,7 +5140,13 @@
                 const locationInput = document.getElementById('storage-location-id');
                 const locationLabel = document.getElementById('location-field-label');
                 const openLink = document.getElementById('storage-open-link');
-                if (isJsonDrive) {
+                if (isPCloud) {
+                    locationLabel.textContent = 'pCloud Folder:';
+                    locationInput.value = authStatus.pcloud_folder_path || '';
+                    // pCloud has no per-folder deep link, so "Open" goes to the drive root.
+                    openLink.dataset.href = 'https://my.pcloud.com/#page=filemanager';
+                    openLink.style.display = authStatus.pcloud_folder_path ? 'inline' : 'none';
+                } else if (isJsonDrive) {
                     locationLabel.textContent = 'Drive Folder ID:';
                     locationInput.value = authStatus.folder_id || '';
                     if (authStatus.folder_id) {

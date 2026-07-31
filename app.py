@@ -23,6 +23,7 @@ from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 # Allow OAuth scope changes (users may have previously granted different scopes)
 os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"
 
+import requests
 from flask import Flask, Response, jsonify, redirect, render_template, request, session
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
@@ -32,6 +33,7 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 import json_google_drive_storage
+import json_pcloud_storage
 import mcp_tokens
 import plugin_registry
 import pomodoro_tools
@@ -39,12 +41,14 @@ import sheets_storage
 import storage_api
 import todos_plugin
 from storage_api import StorageUnavailable
+from transports import pcloud_transport
 
 # Register built-in plugins
 plugin_registry.register("storage", "sheets", sheets_storage, sheets_storage.PLUGIN_METADATA)
 plugin_registry.register(
     "storage", "json-google-drive", json_google_drive_storage, json_google_drive_storage.PLUGIN_METADATA
 )
+plugin_registry.register("storage", "json-pcloud", json_pcloud_storage, json_pcloud_storage.PLUGIN_METADATA)
 
 # Mandatory feature plugins — always registered, always enabled, never toggleable.
 # Pomodoro carries MCP tools; Settings is UI-only (metadata registration is enough,
@@ -132,6 +136,14 @@ SCOPES = [
     "https://www.googleapis.com/auth/userinfo.profile",
     "openid",
 ]
+
+# pCloud OAuth configuration. pCloud is a storage backend only — Google stays the
+# identity provider — so this credential pair is optional; without it the
+# json-pcloud plugin simply cannot be linked.
+PCLOUD_CLIENT_ID = os.environ.get("PCLOUD_CLIENT_ID")
+PCLOUD_CLIENT_SECRET = os.environ.get("PCLOUD_CLIENT_SECRET")
+PCLOUD_AUTHORIZE_URL = "https://my.pcloud.com/oauth2/authorize"
+PCLOUD_DEFAULT_FOLDER_PATH = pcloud_transport.ACQUACOTTA_FOLDER_PATH
 
 # OAuth requires HTTPS by default (secure)
 # For local development, set OAUTHLIB_INSECURE_TRANSPORT=1 in your environment
@@ -267,20 +279,24 @@ def set_user_backend(email, plugin_id):
     _write_user_mapping(mapping)
 
 
+def _oauth_redirect_uri(path):
+    """Absolute redirect URI for an OAuth callback path, honoring the proxy."""
+    # Allow override via env var for development (e.g., OAUTH_REDIRECT_BASE=http://localhost:5000)
+    oauth_base = os.environ.get("OAUTH_REDIRECT_BASE")
+    if oauth_base:
+        return f"{oauth_base.rstrip('/')}{path}"
+    # Build redirect URI from X-Forwarded headers or fall back to request host
+    # Take first value if multiple proxies added headers (comma-separated)
+    proto = request.headers.get("X-Forwarded-Proto", request.scheme).split(",")[0].strip()
+    host = request.headers.get("X-Forwarded-Host", request.host).split(",")[0].strip()
+    return f"{proto}://{host}{path}"
+
+
 def get_google_flow():
     """Create Google OAuth flow."""
     if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
         return None
-    # Allow override via env var for development (e.g., OAUTH_REDIRECT_BASE=http://localhost:5000)
-    oauth_base = os.environ.get("OAUTH_REDIRECT_BASE")
-    if oauth_base:
-        redirect_uri = f"{oauth_base.rstrip('/')}/auth/callback"
-    else:
-        # Build redirect URI from X-Forwarded headers or fall back to request host
-        # Take first value if multiple proxies added headers (comma-separated)
-        proto = request.headers.get("X-Forwarded-Proto", request.scheme).split(",")[0].strip()
-        host = request.headers.get("X-Forwarded-Host", request.host).split(",")[0].strip()
-        redirect_uri = f"{proto}://{host}/auth/callback"
+    redirect_uri = _oauth_redirect_uri("/auth/callback")
 
     return Flow.from_client_config(
         {
@@ -606,11 +622,71 @@ def _provision_json_google_drive(credentials, user_email, requested_id):
     return folder_id, existed
 
 
+def _pending_auth_handoff(credentials_data, settings_data, message="Completing login..."):
+    """Hand an OAuth result off to storage.js via sessionStorage, then redirect.
+
+    The callback deliberately does NOT open IndexedDB itself. storage.js is the
+    single owner of the IndexedDB schema (store list + DB version); it picks up
+    this pending login on load and writes it with the correct version. This
+    removes the duplicated schema that previously let the callback's stale DB
+    version throw VersionError and silently drop credentials, leaving the user
+    logged out after a "successful" login.
+
+    storage.js merges `credentials` into whatever is already stored, so linking
+    pCloud does not evict the Google identity and vice versa.
+    """
+    pending_auth = {"credentials": credentials_data, "settings": settings_data}
+    return f"""<!DOCTYPE html>
+<html>
+<head><title>Logging in...</title></head>
+<body>
+<p>{message}</p>
+<script>
+try {{
+    sessionStorage.setItem('acquacotta_pending_auth', JSON.stringify({json.dumps(pending_auth)}));
+}} catch (e) {{
+    console.error('Failed to stash pending auth:', e);
+}}
+window.location.href = '/?view=settings';
+</script>
+</body>
+</html>"""
+
+
+def _provision_pcloud_folder(pcloud_client, user_email, requested_path):
+    """Create the user's Acquacotta folder on pCloud. Returns (folder_path, existed).
+
+    Only callable from the pCloud OAuth callback, which is the one place a pCloud
+    token exists server-side. "Existed" means the folder already held data, so a
+    returning user is not shown the first-run initial-sync prompt.
+    """
+    transport = pcloud_transport.PCloudTransport(pcloud_client, requested_path or PCLOUD_DEFAULT_FOLDER_PATH)
+    folder_path = transport.ensure_directory()
+    existed = transport.file_exists(json_pcloud_storage.POMODOROS_FILE)
+    save_location(user_email, "json-pcloud", folder_path)
+    return folder_path, existed
+
+
+def _provision_json_pcloud(credentials, user_email, requested_id):
+    """Resolve the JSON-on-pCloud backend during a Google sign-in.
+
+    Creating the folder needs a pCloud token, and a Google sign-in doesn't carry
+    one — that work happens once, in the pCloud OAuth callback. So this only
+    restates the path the user already linked, letting a returning pCloud user
+    sign in with Google and land back on their own folder without re-linking.
+    """
+    stored_path = get_stored_location(user_email, "json-pcloud")
+    folder_path = requested_id or stored_path or PCLOUD_DEFAULT_FOLDER_PATH
+    save_location(user_email, "json-pcloud", folder_path)
+    return folder_path, bool(stored_path)
+
+
 def _provision_storage(plugin_id, credentials, user_email, requested_id):
     """Provision the active storage backend. Returns (location_id, existed)."""
     provisioners = {
         "sheets": _provision_sheets,
         "json-google-drive": _provision_json_google_drive,
+        "json-pcloud": _provision_json_pcloud,
     }
     provisioner = provisioners.get(plugin_id)
     if not provisioner:
@@ -682,10 +758,13 @@ def auth_callback():
 
         # Resolve THIS user's backend (their recorded choice, or the default for a
         # first-time user) and provision it with the id matching that backend.
+        # The login form only offers a Google-side id, so pCloud users have nothing
+        # to state here — their linked folder path comes from their stored location.
         active_storage_id = _active_storage_id()
-        requested_location_id = (
-            requested_folder_id if active_storage_id == "json-google-drive" else requested_spreadsheet_id
-        )
+        requested_location_id = {
+            "json-google-drive": requested_folder_id,
+            "json-pcloud": None,
+        }.get(active_storage_id, requested_spreadsheet_id)
         location_id, location_existed = _provision_storage(
             active_storage_id, credentials, user_email, requested_location_id
         )
@@ -718,34 +797,95 @@ def auth_callback():
         # Clear server session - credentials will live in browser IndexedDB
         session.clear()
 
-        # Hand the login off to storage.js via sessionStorage, then redirect.
-        #
-        # The callback deliberately does NOT open IndexedDB itself. storage.js is
-        # the single owner of the IndexedDB schema (store list + DB version); it
-        # picks up this pending login on load and writes it with the correct
-        # version. This removes the duplicated schema that previously let the
-        # callback's stale DB version throw VersionError and silently drop
-        # credentials, leaving the user logged out after a "successful" login.
-        pending_auth = {"credentials": credentials_data, "settings": settings_data}
-        return f"""<!DOCTYPE html>
-<html>
-<head><title>Logging in...</title></head>
-<body>
-<p>Completing login...</p>
-<script>
-try {{
-    sessionStorage.setItem('acquacotta_pending_auth', JSON.stringify({json.dumps(pending_auth)}));
-}} catch (e) {{
-    console.error('Failed to stash pending auth:', e);
-}}
-window.location.href = '/?view=settings';
-</script>
-</body>
-</html>"""
+        return _pending_auth_handoff(credentials_data, settings_data)
     except Exception as e:
         import traceback
 
         return f"<pre>Error: {e}\n\n{traceback.format_exc()}</pre>", HTTPStatus.INTERNAL_SERVER_ERROR
+
+
+@app.route("/auth/pcloud")
+def auth_pcloud():
+    """Start the pCloud link flow.
+
+    pCloud is storage, not identity: the user is already signed in with Google,
+    so the browser tells us which account is linking. That email is signed into
+    the OAuth state (the same signed, short-lived blob the Google flow uses)
+    rather than passed as a plain round-trip parameter, so it cannot be swapped
+    for someone else's on the way back through pCloud.
+    """
+    if not PCLOUD_CLIENT_ID or not PCLOUD_CLIENT_SECRET:
+        return jsonify({"error": "pCloud OAuth not configured"}), HTTPStatus.INTERNAL_SERVER_ERROR
+
+    user_email = request.args.get("user_email", "").strip()
+    if not user_email:
+        return jsonify({"error": "Sign in with Google before linking pCloud"}), HTTPStatus.BAD_REQUEST
+
+    state_payload = {"email": user_email}
+    requested_path = request.args.get("pcloud_folder_path", "").strip()
+    if requested_path:
+        state_payload["path"] = requested_path
+    signed_state = URLSafeTimedSerializer(app.config["SECRET_KEY"]).dumps(state_payload)
+
+    params = {
+        "client_id": PCLOUD_CLIENT_ID,
+        "response_type": "code",
+        "redirect_uri": _oauth_redirect_uri("/auth/pcloud/callback"),
+        "state": signed_state,
+    }
+    return redirect(f"{PCLOUD_AUTHORIZE_URL}?{urlencode(params)}")
+
+
+@app.route("/auth/pcloud/callback")
+def auth_pcloud_callback():
+    """Exchange the pCloud code for a token, provision /Acquacotta, hand off."""
+    try:
+        if not PCLOUD_CLIENT_ID or not PCLOUD_CLIENT_SECRET:
+            return jsonify({"error": "pCloud OAuth not configured"}), HTTPStatus.INTERNAL_SERVER_ERROR
+
+        state_data, code, error = _validate_oauth_callback()
+        if error:
+            return error
+
+        user_email = state_data.get("email")
+        if not user_email:
+            return jsonify({"error": "Invalid pCloud OAuth state"}), HTTPStatus.BAD_REQUEST
+
+        # pCloud tells us in the callback which region minted the code; the token
+        # is only valid against that region's API host, so it travels with it.
+        api_host = request.args.get("hostname") or pcloud_transport.API_HOSTS_BY_LOCATION_ID.get(
+            request.args.get("locationid", type=int), pcloud_transport.US_API_HOST
+        )
+
+        token_response = requests.get(
+            f"https://{api_host}/oauth2_token",
+            params={
+                "client_id": PCLOUD_CLIENT_ID,
+                "client_secret": PCLOUD_CLIENT_SECRET,
+                "code": code,
+            },
+            timeout=pcloud_transport.REQUEST_TIMEOUT_SECONDS,
+        )
+        token_response.raise_for_status()
+        token_data = token_response.json()
+        access_token = token_data.get("access_token")
+        if not access_token:
+            app.logger.error(f"pCloud token exchange failed: result={token_data.get('result')}")
+            return jsonify({"error": "pCloud authorization failed"}), HTTPStatus.BAD_GATEWAY
+
+        client = pcloud_transport.PCloudClient(access_token, api_host)
+        folder_path, folder_existed = _provision_pcloud_folder(client, user_email, state_data.get("path"))
+        # Linking pCloud is the act of choosing it — record it as authoritative.
+        set_user_backend(user_email, "json-pcloud")
+
+        # Merged into the browser's existing credentials record, so the Google
+        # identity survives; only the pCloud half is written here.
+        credentials_data = {"pcloud_token": access_token, "pcloud_api_host": api_host}
+        settings_data = {"storage_existed": folder_existed, "pcloud_folder_path": folder_path}
+        return _pending_auth_handoff(credentials_data, settings_data, message="Linking pCloud...")
+    except Exception as e:
+        app.logger.error(f"pCloud OAuth callback failed: {e}")
+        return jsonify({"error": "pCloud authorization failed"}), HTTPStatus.INTERNAL_SERVER_ERROR
 
 
 @app.route("/auth/logout")

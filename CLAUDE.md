@@ -70,6 +70,12 @@ GOOGLE_CLIENT_ID=<your-client-id>
 GOOGLE_CLIENT_SECRET=<your-client-secret>
 ```
 
+Optional — required only to link the "JSON on pCloud" storage backend:
+```
+PCLOUD_CLIENT_ID=<your-pcloud-client-id>
+PCLOUD_CLIENT_SECRET=<your-pcloud-client-secret>
+```
+
 ## Before Making Changes
 
 1. Check if the change aligns with the constitution principles
