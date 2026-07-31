@@ -1,7 +1,7 @@
 # Implementation Plan: JSON on pCloud Storage Plugin
 
-**Branch**: `feature/96-json-pcloud-storage` | **Date**: 2026-07-21 | **Spec**: [spec.md](spec.md)
-**Spec ID**: 007-json-pcloud-storage | **Status**: Planning
+**Branch**: `feature/096-json-pcloud` | **Date**: 2026-07-21 | **Spec**: [spec.md](spec.md)
+**Spec ID**: 010-json-pcloud | **Status**: Implemented
 
 ## Summary
 
@@ -34,7 +34,7 @@ Add pCloud as a second JSON cloud storage backend by following the exact same 3-
 ### Documentation (this feature)
 
 ```text
-.specify/specs/007-json-pcloud-storage/
+specs/010-json-pcloud/
 ├── spec.md       # Feature spec
 └── plan.md       # This file
 ```
@@ -159,8 +159,18 @@ Minimal change: add `json-pcloud` to the existing plugin card conditional logic,
 
 No constitution violations — this follows the established pattern exactly.
 
-## Open Questions
+## Resolved Questions
 
-1. **EU vs US API endpoint**: pCloud has `api.pcloud.com` (US) and `eapi.pcloud.com` (EU). The token response indicates which location to use (`locationid` field). The transport should respect this.
-2. **`requests` dependency**: Check if already in `requirements.txt`; add if missing.
-3. **Mandatory plugin designation**: `json-pcloud` should be optional (same as `json-google-drive`). Only `sheets` is mandatory? Actually check: `json-google-drive` is the default but not mandatory in the strict sense — confirm before implementing.
+1. **EU vs US API endpoint** — resolved. The callback reads `hostname` (falling back to mapping `locationid` 1→US, 2→EU) and stores it as `pcloud_api_host` alongside the token, so every later call goes to the region that minted it.
+2. **`requests` dependency** — was missing; added to `requirements.txt`.
+3. **Mandatory plugin designation** — `json-pcloud` is optional, like every storage backend. No storage plugin is mandatory; `json-google-drive` is merely the default for users with no recorded choice.
+4. **Context key naming** — the plan sketched `build_context` returning `{"token", "location"}`, but `storage_api` dispatches as `backend.method(ctx["service"], ctx["location"], ...)`. The plugin therefore returns a `PCloudClient` under `service`, matching the Drive plugin's shape exactly.
+5. **Where provisioning happens** — creating `/Acquacotta` needs a pCloud token, which only exists inside the pCloud OAuth callback. So `_provision_pcloud_folder` does the real work there, and `_provision_json_pcloud` (the entry in the `_provision_storage` dispatch table, reached on a *Google* sign-in) only restates the already-linked path.
+6. **Credential handoff** — the callback reuses the existing `sessionStorage` → `storage.js` handoff, but `consumePendingAuth` now *merges* into the stored credentials record instead of replacing it, so the Google identity and the pCloud token coexist.
+
+## Deployment Prerequisite
+
+The pCloud app's **redirect URI must be registered** at <https://docs.pcloud.com/my_apps/> before the flow will complete — pCloud answers an unregistered `redirect_uri` with "redirect_uri is not autorized". Register both:
+
+- `https://acquacotta.crunchtools.com/auth/pcloud/callback` (production)
+- `http://localhost:5000/auth/pcloud/callback` (local development)

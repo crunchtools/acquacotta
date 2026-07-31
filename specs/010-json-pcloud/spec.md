@@ -1,11 +1,11 @@
 # Feature Specification: JSON on pCloud Storage Plugin
 
-**Feature Branch**: `feature/96-json-pcloud-storage`
+**Feature Branch**: `feature/096-json-pcloud`
 **Created**: 2026-07-21
-**Status**: Draft
-**Version**: 0.1.0
+**Status**: Implemented
+**Version**: 0.2.0
 **Author**: Scott McCarty
-**Spec ID**: 007-json-pcloud-storage
+**Spec ID**: 010-json-pcloud
 **GitHub Issue**: #96
 
 ## Overview
@@ -102,3 +102,17 @@ The Settings > Plugins page shows the pCloud plugin card with its active/inactiv
 - **SC-002**: All existing storage plugin tests continue to pass (no regression to `json-google-drive` or `sheets`).
 - **SC-003**: `save_pomodoros_batch` writes all queued items in exactly 1 pCloud API call.
 - **SC-004**: Switching between `json-pcloud` and `json-google-drive` backends produces no data loss.
+
+## Assumptions
+
+- **Google remains the identity provider; pCloud is storage only.** The user signs in with Google (which is how the app learns their email and resolves their per-user backend, spec 007) and then *links* a pCloud account for storage. Making pCloud a second identity provider is a much larger change to per-user backend resolution and is out of scope here.
+- The pCloud access token rides in the browser's IndexedDB `auth` store alongside the Google credentials and is sent on each request, exactly like the Google token. A Google re-login merges into — rather than replaces — that record, so a linked pCloud account survives signing back in.
+- pCloud OAuth access tokens are long-lived (valid until revoked), so there is no refresh-token flow to implement. An expired or revoked token surfaces as an auth error and the user re-links.
+- The storage location for this backend is a **path** (`/Acquacotta`), not an opaque id — pCloud's API accepts paths directly, so no folder-id cache is needed.
+
+## Out of Scope
+
+- pCloud as an identity provider (signing in *with* pCloud instead of Google).
+- Migrating existing data between `json-google-drive` and `json-pcloud` (the Sheets → JSON migration tool is not generalized here).
+- Nested custom folder paths whose parent directories do not already exist.
+- **MCP access over pCloud.** The MCP server's sealed tokens carry a Google Drive folder id and Google credentials, and every tool resolves storage through `json_google_drive_storage`. Serving pCloud-backed users over MCP means changing the sealed-token payload and the MCP auth path — a separate spec. Until then, MCP access remains Drive-backed only.

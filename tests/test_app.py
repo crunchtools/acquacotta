@@ -11,7 +11,7 @@ All data storage and CRUD operations happen in the browser's IndexedDB.
 
 import base64
 import json
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -415,3 +415,95 @@ class TestStorageApiDispatch:
             storage_api.get_pomodoros({"service": "s", "location": "l"})
         with pytest.raises(storage_api.StorageUnavailable):
             storage_api.get_pomodoros(None)
+
+
+class TestPCloudBackendWiring:
+    """json-pcloud is a registered storage backend; linking it is a separate OAuth
+    flow because pCloud is storage, not identity (spec 010)."""
+
+    def test_plugin_is_registered(self, client):
+        response = client.get("/api/plugins")
+        data = json.loads(response.data)
+        pcloud = next(p for p in data["plugins"] if p["id"] == "json-pcloud")
+        assert pcloud["plugin_type"] == "storage"
+        assert pcloud["name"] == "JSON on pCloud"
+        # Registered but not the default — the user must link it deliberately
+        assert pcloud["active"] is False
+
+    def test_provisioner_is_dispatchable(self, app):
+        with app.test_request_context():
+            path, existed = app_module._provision_storage("json-pcloud", None, "p@example.com", None)
+        assert path == app_module.PCLOUD_DEFAULT_FOLDER_PATH
+        # First link: nothing recorded yet, so this is not a returning user
+        assert existed is False
+
+    def test_google_signin_restates_linked_path(self, app):
+        """A Google sign-in must not need a pCloud token — it just re-states the
+        path the user already linked, so they land back on their own folder."""
+        with app.test_request_context():
+            app_module.save_location("q@example.com", "json-pcloud", "/Work/Acquacotta")
+            path, existed = app_module._provision_storage("json-pcloud", None, "q@example.com", None)
+        assert path == "/Work/Acquacotta"
+        assert existed is True
+
+    def test_link_requires_signed_in_email(self, client):
+        with (
+            patch.object(app_module, "PCLOUD_CLIENT_ID", "cid"),
+            patch.object(app_module, "PCLOUD_CLIENT_SECRET", "secret"),
+        ):
+            response = client.get("/auth/pcloud")
+        assert response.status_code == 400
+
+    def test_link_redirects_to_pcloud(self, client):
+        with (
+            patch.object(app_module, "PCLOUD_CLIENT_ID", "cid"),
+            patch.object(app_module, "PCLOUD_CLIENT_SECRET", "secret"),
+        ):
+            response = client.get("/auth/pcloud?user_email=p%40example.com")
+        assert response.status_code == 302
+        assert response.headers["Location"].startswith(app_module.PCLOUD_AUTHORIZE_URL)
+        # The email is signed into the state, never echoed as a plain parameter
+        assert "p%40example.com" not in response.headers["Location"].split("state=")[0]
+
+    def test_link_without_credentials_configured(self, client):
+        with patch.object(app_module, "PCLOUD_CLIENT_ID", None):
+            response = client.get("/auth/pcloud?user_email=p%40example.com")
+        assert response.status_code == 500
+
+    def test_callback_provisions_and_hands_off(self, app, client):
+        from itsdangerous import URLSafeTimedSerializer
+
+        state = URLSafeTimedSerializer(app.config["SECRET_KEY"]).dumps({"email": "p@example.com"})
+
+        token_response = MagicMock()
+        token_response.json.return_value = {"access_token": "pc-token", "locationid": 1}
+
+        fake_transport = MagicMock()
+        fake_transport.ensure_directory.return_value = "/Acquacotta"
+        fake_transport.file_exists.return_value = False
+
+        with (
+            patch.object(app_module, "PCLOUD_CLIENT_ID", "cid"),
+            patch.object(app_module, "PCLOUD_CLIENT_SECRET", "secret"),
+            patch.object(app_module.requests, "get", return_value=token_response),
+            patch.object(app_module.pcloud_transport, "PCloudTransport", return_value=fake_transport),
+        ):
+            response = client.get(f"/auth/pcloud/callback?code=abc&state={state}&hostname=eapi.pcloud.com")
+
+        assert response.status_code == 200
+        body = response.data.decode()
+        # The token reaches the browser and is never persisted server-side
+        assert "pc-token" in body
+        assert "eapi.pcloud.com" in body
+        assert "/Acquacotta" in body
+        with app.test_request_context():
+            assert app_module.get_user_backend("p@example.com") == "json-pcloud"
+            assert app_module.get_stored_location("p@example.com", "json-pcloud") == "/Acquacotta"
+
+    def test_callback_rejects_unsigned_state(self, client):
+        with (
+            patch.object(app_module, "PCLOUD_CLIENT_ID", "cid"),
+            patch.object(app_module, "PCLOUD_CLIENT_SECRET", "secret"),
+        ):
+            response = client.get("/auth/pcloud/callback?code=abc&state=forged")
+        assert response.status_code == 400

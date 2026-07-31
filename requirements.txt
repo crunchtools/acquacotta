@@ -6,3 +6,4 @@ gspread>=6.0
 gunicorn>=21.0
 fastmcp>=3.0,<4
 cryptography>=42.0
+requests>=2.31

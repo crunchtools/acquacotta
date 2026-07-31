@@ -73,7 +73,11 @@
     const MAX_SYNC_RETRIES = 5;
 
     // Storage location field names — each plugin declares its own in PLUGIN_METADATA.frontend_fields
-    const LOCATION_FIELDS = ['spreadsheet_id', 'folder_id'];
+    const LOCATION_FIELDS = ['spreadsheet_id', 'folder_id', 'pcloud_folder_path'];
+
+    // Backend credentials that are not the Google identity — kept in the AUTH store
+    // (ephemeral) next to it and sent with every request, never stored server-side.
+    const BACKEND_CREDENTIAL_FIELDS = ['pcloud_token', 'pcloud_api_host'];
 
     // Storage state
     let db = null;
@@ -308,7 +312,11 @@
         }
         try {
             if (pending.credentials) {
-                await putInStore(STORES.AUTH, { key: 'credentials', ...pending.credentials });
+                // Merge, don't replace: the Google flow hands back an identity and
+                // the pCloud flow hands back a storage token, and each must survive
+                // the other. Logout is what clears the record.
+                const existing = await getFromStore(STORES.AUTH, 'credentials') || {};
+                await putInStore(STORES.AUTH, { ...existing, key: 'credentials', ...pending.credentials });
             }
             if (pending.settings) {
                 for (const [key, value] of Object.entries(pending.settings)) {
@@ -349,6 +357,10 @@
             scopes: storedCredentials.scopes,
             user_email: storedCredentials.user_email,
         };
+        // Non-Google backend credentials (e.g. the linked pCloud token), if any
+        for (const field of BACKEND_CREDENTIAL_FIELDS) {
+            if (storedCredentials[field]) payload[field] = storedCredentials[field];
+        }
         // Include all cached location fields (spreadsheet_id, folder_id, etc.)
         Object.assign(payload, cachedLocationFields);
         return payload;
@@ -784,6 +796,8 @@
                     picture: creds.user_picture,
                     spreadsheet_id: cachedSpreadsheetId,
                     folder_id: cachedLocationFields.folder_id || null,
+                    pcloud_folder_path: cachedLocationFields.pcloud_folder_path || null,
+                    pcloud_linked: !!(creds && creds.pcloud_token),
                     needs_initial_sync: !storageExisted,
                     needs_relogin: false
                 };
@@ -833,6 +847,8 @@
                         picture: creds.user_picture,
                         spreadsheet_id: cachedSpreadsheetId,
                         folder_id: cachedLocationFields.folder_id || null,
+                    pcloud_folder_path: cachedLocationFields.pcloud_folder_path || null,
+                    pcloud_linked: !!(creds && creds.pcloud_token),
                         needs_initial_sync: true,
                         needs_relogin: false
                     };
