@@ -396,6 +396,35 @@
     }
 
     /**
+     * Fetch a /api/plugins endpoint with the user's credentials attached.
+     *
+     * These endpoints resolve the per-user storage backend from the request
+     * credentials (spec 007). A bare fetch() leaves the server unable to tell who
+     * is asking, so it answers with the default backend and rejects the storage
+     * toggle as unauthenticated. Unlike authenticatedFetch this does not require a
+     * storage location: switching backends is exactly the moment the new backend
+     * has no location yet. Logged-out callers still get a valid generic answer,
+     * which is what the pre-login settings view renders.
+     */
+    function pluginFetch(url, options = {}) {
+        if (!storedCredentials) return fetch(url, options);
+
+        const payload = _buildCredentialsPayload();
+        const method = (options.method || 'GET').toUpperCase();
+        options.headers = options.headers || {};
+
+        if (method === 'GET' || method === 'DELETE') {
+            options.headers['X-Credentials'] = btoa(JSON.stringify(payload));
+        } else {
+            options.headers['Content-Type'] = 'application/json';
+            const body = options.body ? JSON.parse(options.body) : {};
+            body._credentials = payload;
+            options.body = JSON.stringify(body);
+        }
+        return fetch(url, options);
+    }
+
+    /**
      * Add to sync queue (with duplicate prevention)
      */
     async function addToSyncQueue(operation, store, recordId, data = null) {
@@ -775,7 +804,7 @@
 
             // Fetch active plugin info to know which location fields are required
             try {
-                const pluginRes = await fetch('/api/plugins');
+                const pluginRes = await pluginFetch('/api/plugins');
                 if (pluginRes.ok) {
                     const pluginData = await pluginRes.json();
                     cachedActivePlugin = pluginData.plugins.find(p => p.active && p.plugin_type === 'storage') || null;
@@ -1007,6 +1036,21 @@
 
         getActivePlugin: function() {
             return cachedActivePlugin;
+        },
+
+        /**
+         * Fetch a /api/plugins endpoint with the user's credentials attached.
+         *
+         * These endpoints resolve the per-user storage backend from the request
+         * credentials (spec 007). A bare fetch() leaves the server unable to tell
+         * who is asking, so it answers with the default backend and rejects the
+         * storage toggle as unauthenticated. Unlike authenticatedFetch this does
+         * not require a storage location: switching backends is exactly the moment
+         * the new backend has no location yet. Logged-out callers still get a valid
+         * generic answer, which is what the pre-login settings view renders.
+         */
+        pluginFetch: function(url, options = {}) {
+            return pluginFetch(url, options);
         },
 
         /**

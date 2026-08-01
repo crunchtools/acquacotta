@@ -3870,7 +3870,7 @@
             const container = document.getElementById('plugins-list');
             const loading = document.getElementById('plugins-loading');
             try {
-                const resp = await fetch('/api/plugins');
+                const resp = await Storage.pluginFetch('/api/plugins');
                 if (!resp.ok) throw new Error('Failed to load plugins');
                 const data = await resp.json();
                 loading.style.display = 'none';
@@ -3964,14 +3964,25 @@
             const pluginType = checkbox.dataset.pluginType;
             const enable = checkbox.checked;
 
+            // Switching to pCloud isn't a preference the server can just record —
+            // it needs an access token that only the OAuth link produces. Send the
+            // user through it; its callback records the backend on the way back.
+            if (pluginId === 'json-pcloud' && enable && !(authStatus.logged_in && authStatus.pcloud_linked)) {
+                checkbox.checked = false;
+                loginPCloud();
+                return;
+            }
+
             try {
-                const resp = await fetch('/api/plugins/toggle', {
+                const resp = await Storage.pluginFetch('/api/plugins/toggle', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ plugin_id: pluginId, plugin_type: pluginType, enable }),
                 });
                 if (!resp.ok) {
                     checkbox.checked = !enable;
+                    const reason = await resp.json().then(d => d.error).catch(() => null);
+                    alert(reason || `Could not change ${pluginId} (HTTP ${resp.status}).`);
                     return;
                 }
                 const data = await resp.json();
@@ -3983,18 +3994,19 @@
                 settings[`plugin_state_${pluginId}`] = enable;
 
                 // Refresh plugin info and auth UI to reflect the new active plugin
-                activePluginInfo = await fetch('/api/plugins').then(r => r.json()).then(d =>
+                activePluginInfo = await Storage.pluginFetch('/api/plugins').then(r => r.json()).then(d =>
                     d.plugins.find(p => p.active && p.plugin_type === 'storage') || null
                 );
                 updateSyncCardVisibility(data.active_storage);
                 updateAuthUI();
                 loadPlugins();
-                fetch('/api/plugins').then(r => r.json()).then(d => updateExtensionTabs(d.plugins));
+                Storage.pluginFetch('/api/plugins').then(r => r.json()).then(d => updateExtensionTabs(d.plugins));
                 populateTypeDropdowns();
                 loadHistory();
                 loadWeeklyOverview();
             } catch (e) {
                 checkbox.checked = !enable;
+                alert(`Could not change ${pluginId}: ${e.message}`);
             }
         }
 
@@ -4246,7 +4258,7 @@
             // Query active plugins that contribute timer types
             _timerTypeProviders = [];
             try {
-                const pluginRes = await fetch('/api/plugins');
+                const pluginRes = await Storage.pluginFetch('/api/plugins');
                 const pluginData = pluginRes.ok ? await pluginRes.json() : { plugins: [] };
                 const timerTypePlugins = pluginData.plugins.filter(p => p.active && p.has_timer_types);
 
@@ -4598,7 +4610,7 @@
 
             // Todos row (if plugin active)
             try {
-                const pluginRes = await fetch('/api/plugins');
+                const pluginRes = await Storage.pluginFetch('/api/plugins');
                 const pluginData = pluginRes.ok ? await pluginRes.json() : { plugins: [] };
                 const todosActive = pluginData.plugins.find(p => p.id === 'todos' && p.active);
                 if (todosActive) {
@@ -4643,7 +4655,7 @@
             </div>`;
 
             try {
-                const pluginRes = await fetch('/api/plugins');
+                const pluginRes = await Storage.pluginFetch('/api/plugins');
                 const pluginData = pluginRes.ok ? await pluginRes.json() : { plugins: [] };
                 const todosActive = pluginData.plugins.find(p => p.id === 'todos' && p.active);
                 if (todosActive) {
@@ -6174,7 +6186,7 @@
             // to mutate shared server state on page load — that reconfigured the app for
             // every user. We just reflect the current user's choices in the UI.
             try {
-                const pluginData = await fetch('/api/plugins').then(r => r.json());
+                const pluginData = await Storage.pluginFetch('/api/plugins').then(r => r.json());
                 updateExtensionTabs(pluginData.plugins);
             } catch (e) { /* offline — use server defaults */ }
 
