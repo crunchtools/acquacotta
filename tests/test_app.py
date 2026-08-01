@@ -507,3 +507,52 @@ class TestPCloudBackendWiring:
         ):
             response = client.get("/auth/pcloud/callback?code=abc&state=forged")
         assert response.status_code == 400
+
+
+class TestPluginEndpointsResolvePerUser:
+    """The plugin endpoints identify the user from request credentials. Calling
+    them without credentials made every user look like a brand-new one, so the
+    UI always showed the default backend active and the storage toggle 401'd —
+    the whole reason a backend switch could not be completed from the UI."""
+
+    def _creds_header(self, email):
+        return base64.b64encode(json.dumps({"user_email": email}).encode()).decode()
+
+    def test_list_reports_the_callers_own_backend(self, client):
+        client.post(
+            "/api/plugins/toggle",
+            json={"plugin_id": "json-pcloud", "plugin_type": "storage", "enable": True},
+            headers={"X-Credentials": self._creds_header("pc@example.com")},
+        )
+        response = client.get("/api/plugins", headers={"X-Credentials": self._creds_header("pc@example.com")})
+        data = json.loads(response.data)
+        assert data["active_storage"] == "json-pcloud"
+        pcloud = next(p for p in data["plugins"] if p["id"] == "json-pcloud")
+        drive = next(p for p in data["plugins"] if p["id"] == "json-google-drive")
+        assert pcloud["active"] is True
+        assert drive["active"] is False
+
+    def test_storage_toggle_succeeds_with_credentials(self, client):
+        response = client.post(
+            "/api/plugins/toggle",
+            json={"plugin_id": "json-pcloud", "plugin_type": "storage", "enable": True},
+            headers={"X-Credentials": self._creds_header("switch@example.com")},
+        )
+        assert response.status_code == 200
+        assert json.loads(response.data)["active_storage"] == "json-pcloud"
+
+    def test_storage_toggle_without_credentials_is_rejected(self, client):
+        response = client.post(
+            "/api/plugins/toggle",
+            json={"plugin_id": "json-pcloud", "plugin_type": "storage", "enable": True},
+        )
+        assert response.status_code == 401
+
+    def test_one_users_switch_does_not_move_another(self, client):
+        client.post(
+            "/api/plugins/toggle",
+            json={"plugin_id": "json-pcloud", "plugin_type": "storage", "enable": True},
+            headers={"X-Credentials": self._creds_header("alice@example.com")},
+        )
+        response = client.get("/api/plugins", headers={"X-Credentials": self._creds_header("bob@example.com")})
+        assert json.loads(response.data)["active_storage"] == app_module.DEFAULT_STORAGE_BACKEND
