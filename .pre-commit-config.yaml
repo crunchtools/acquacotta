@@ -38,3 +38,15 @@ repos:
         pass_filenames: false
         always_run: true
         stages: [pre-commit, pre-merge-commit]
+
+  # Gourmand runs from its container: the PyPI package of the same name
+  # shadows the real binary on PATH, so a bare `gourmand` is the wrong tool.
+  - repo: local
+    hooks:
+      - id: gourmand
+        name: Gourmand (AI slop detection)
+        entry: podman run --rm -v .:/src:Z -w /src quay.io/crunchtools/gourmand:latest --full
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit, pre-merge-commit]
