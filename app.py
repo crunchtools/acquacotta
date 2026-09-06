@@ -376,20 +376,12 @@ def get_credentials():
         return None
 
 
-def get_sheets_service():
-    """Get Google Sheets API service."""
+def _google_service(api, version):
+    """Build a Google API client from the current credentials, or None if unauthenticated."""
     credentials = get_credentials()
     if not credentials:
         return None
-    return build("sheets", "v4", credentials=credentials)
-
-
-def get_drive_service():
-    """Get Google Drive API service."""
-    credentials = get_credentials()
-    if not credentials:
-        return None
-    return build("drive", "v3", credentials=credentials)
+    return build(api, version, credentials=credentials)
 
 
 def _request_user_email():
@@ -937,7 +929,7 @@ def update_spreadsheet():
 
     # Verify we can access this spreadsheet
     try:
-        sheets_service = get_sheets_service()
+        sheets_service = _google_service("sheets", "v4")
         sheets_service.spreadsheets().get(spreadsheetId=new_id).execute()
     except HttpError:
         return jsonify({"error": "Cannot access spreadsheet. Make sure you have edit access."}), HTTPStatus.BAD_REQUEST

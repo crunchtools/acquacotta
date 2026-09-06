@@ -18,3 +18,36 @@ excluded_paths = [
     "specs/**",
     ".specify/**",
 ]
+
+# Gourmand ships these defaults, but only applies them when no gourmand.toml
+# exists. With a config file present and no [thresholds] table, every value
+# silently becomes 0 — so a one-line comment trips a rule documented as firing
+# at nine, and checks with a minimum size stop firing at all. Restated here
+# verbatim from the binary's built-in defaults so the config file does not
+# change what the checks mean.
+[thresholds]
+max_cognitive_complexity_error = 100
+max_cognitive_complexity_warning = 50
+max_comment_block_lines = 8
+max_comment_ratio_percent = 40
+min_function_body_lines = 3
+max_elif_branches = 2
+min_state_branches = 4
+min_boolean_flags = 3
+copy_paste_same_file_threshold = 0.8
+copy_paste_across_files_threshold = 0.9
+copy_paste_min_complexity = 5
+copy_paste_min_statements = 3
+copy_paste_min_length_ratio = 0.5
+copy_paste_levenshtein_weight = 0.5
+copy_paste_jaro_winkler_weight = 0.3
+copy_paste_token_set_weight = 0.2
+copy_paste_fingerprint_boost = 0.1
+copy_paste_fingerprint_penalty = 0.1
+copy_paste_exact_match_threshold = 0.95
+copy_paste_small_function_size = 9
+copy_paste_small_function_min_statements = 3
+copy_paste_large_function_min_statements = 12
+copy_paste_small_function_threshold = 0.99
+copy_paste_exempt_tests = true
+copy_paste_exempt_constructors = true
