@@ -18,13 +18,19 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
-          AUTHOR_ASSOC: ${{ github.event.pull_request.author_association }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
         run: |
           set -euo pipefail
-          case "$AUTHOR_ASSOC" in
-            OWNER|MEMBER|COLLABORATOR)
-              echo "Author '$AUTHOR_ASSOC' is trusted; allowing."; exit 0 ;;
-          esac
+          # Gate on where the branch lives, not on the author's role. What
+          # pull_request_target actually guards against is a fork PR reaching
+          # repo secrets; a branch pushed into this repo already required write
+          # access. author_association got that backwards in both directions --
+          # it trusts a COLLABORATOR pushing from their own fork, and it
+          # distrusts Dependabot (author_association NONE) whose branches are
+          # ours, which failed every action-bump PR this repo ever got.
+          if [ "$HEAD_REPO" = "$GITHUB_REPOSITORY" ]; then
+            echo "Head branch is in $GITHUB_REPOSITORY; allowing."; exit 0
+          fi
           changed="$(gh pr diff "$PR" --repo "$GITHUB_REPOSITORY" --name-only)"
           if echo "$changed" | grep -qE '^\.github/workflows/'; then
             echo "::error::PR modifies .github/workflows/ — not accepted from external contributors."
