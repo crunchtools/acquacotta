@@ -94,7 +94,7 @@ Deployed on lotor at `/srv/acquacotta.crunchtools.com/` following the standard
 directories and publishes `127.0.0.1:8080:80` behind the crunchtools reverse proxy.
 
 ### Monitoring
-Monitored by Zabbix: a web scenario against `https://acquacotta.crunchtools.com`,
+Monitored by Nagios: an HTTP check against `https://acquacotta.crunchtools.com`,
 a container-port check on `:8080`, a Gunicorn process check, and — when the MCP
 server plugin is enabled — an MCP (uvicorn) process check.
 

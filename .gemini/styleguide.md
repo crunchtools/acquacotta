@@ -22,7 +22,7 @@
 - No hardcoded database passwords, API keys, or secrets
 
 ## Monitoring
-- Every HTTP service needs a Zabbix web scenario
+- Every HTTP service needs a Nagios HTTP check
 - Every database needs a TCP port check
 - Multi-service containers need monitoring for each service
 
