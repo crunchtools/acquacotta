@@ -40,16 +40,7 @@ jobs:
 
   gourmand-review:
     name: Code Quality (Gourmand)
-    runs-on: ubuntu-latest
-    container:
-      image: quay.io/crunchtools/gourmand:latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Run Gourmand
-        run: gourmand --full .
+    uses: crunchtools/gatehouse/.github/workflows/gourmand.yml@v0.5.0
 
   javascript-tests:
     name: JavaScript Tests
