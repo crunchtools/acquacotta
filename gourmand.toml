@@ -1,5 +1,5 @@
 # Gourmand Configuration
-# See https://codeberg.org/mattdm/gourmand for documentation
+# See https://gitlab.com/mattdm/gourmand for documentation
 
 [checks]
 # All checks enabled by default. Uncomment to disable specific checks.
