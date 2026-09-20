@@ -148,7 +148,7 @@ classification = "by_design"
 [[exceptions]]
 check = "manifest_lint_suppression"
 path = "pyproject.toml"
-justification = "Every ruff ignore and per-file-ignore entry carries an inline comment naming the specific reason: E501 is redundant with the formatter, B008/B904 are deliberate Flask/MCP-decorator style choices, PLR2004 in tests/* covers magic-value assertions, and the PLR0911/PLR0915/PLR0913/PLR0917 entries on app.py, todos_plugin.py and pomodoro_tools.py are documented as guard-clause-heavy auth routes and MCP tool signatures that need many named parameters for the tool schema. These are deliberate configuration, not suppressions parked to be cleaned up later."
+justification = "Reviewed by removing each ignore and running ruff (not by trusting the pre-existing comments alone). B008 and B904 had zero remaining hits — they were dead config claiming to be 'deliberate style choices' and were deleted outright. E501 has exactly one real hit, a Drive query-filter f-string in json_google_drive_storage.py that ruff-format cannot wrap; this matches gourmand's own stated exception for formatter-compatibility codes. The per-file-ignores were individually verified to have real hits: PLR2004 in tests/* (magic-value assertions), PLR0911/PLR0915 in app.py (guard-clause-heavy auth/token-mint routes), and PLR0913/PLR0917/PLR0915/C901 in todos_plugin.py and pomodoro_tools.py (MCP tool signatures that need many named parameters for the tool schema — bundling them into an object would only duplicate the schema)."
 classification = "by_design"
 
 [[exceptions]]

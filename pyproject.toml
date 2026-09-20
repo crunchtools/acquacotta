@@ -46,9 +46,7 @@ select = [
     "PLR",    # Pylint refactor rules
 ]
 ignore = [
-    "E501",   # line too long (handled by formatter)
-    "B008",   # do not perform function calls in argument defaults
-    "B904",   # allow raise without from in except
+    "E501",   # line too long: ruff-format can't wrap long string literals (e.g. a Drive query filter in json_google_drive_storage.py)
 ]
 
 [tool.ruff.lint.pylint]
