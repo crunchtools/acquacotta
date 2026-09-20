@@ -12,7 +12,7 @@
 **Rationale**:
 - Pointer events (`pointerdown`, `pointermove`, `pointerup`) unify mouse and touch handling
 - `Math.atan2()` provides reliable angle calculation
-- Tracking angle delta (not absolute position) allows intuitive drag-to-adjust
+- Tracking angle delta (not absolute position) lets the drag continue smoothly without snapping if the pointer re-enters the control at a different radius
 
 **Alternatives Considered**:
 - Separate mouse/touch event handlers: More code, same result
@@ -39,7 +39,7 @@
 **Rationale**:
 - Matches physical timer mental model (twist clockwise to add time)
 - 1 degree = 10 seconds provides fine-grained control
-- 12 o'clock start position is intuitive (like a clock)
+- 12 o'clock start position matches a standard analog clock face, so no legend is needed to read start position as a time
 
 **Alternatives Considered**:
 - Map to current timer preset: Confusing when preset changes
@@ -55,7 +55,7 @@
 - Simpler than requiring release at zero
 
 **Alternatives Considered**:
-- Require explicit release at zero: Extra step, less intuitive
+- Require explicit release at zero: Extra step; requires a second confirmation the other two options do not
 - Prevent reaching zero via drag: Defeats user story requirement
 
 ## Browser Compatibility

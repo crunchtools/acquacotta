@@ -13,8 +13,11 @@ The server never stores any user pomodoro data.
 Credit: kirkjerk (localStorage approach idea, extended to IndexedDB)
 """
 
+import base64
 import json
 import os
+import time
+import traceback
 from http import HTTPStatus
 from pathlib import Path
 from types import SimpleNamespace
@@ -314,8 +317,6 @@ def get_google_flow():
 
 def get_credentials_from_request():
     """Extract credentials from request header or body (stateless approach)."""
-    import base64
-
     # Try X-Credentials header (for GET/DELETE)
     creds_header = request.headers.get("X-Credentials")
     if creds_header:
@@ -442,11 +443,7 @@ def is_logged_in():
     return all(creds.get(f) for f in required_fields)
 
 
-# =============================================================================
 # Static Pages
-# =============================================================================
-
-
 @app.route("/")
 def index():
     """Main page with timer."""
@@ -465,11 +462,7 @@ def terms():
     return render_template("terms.html")
 
 
-# =============================================================================
 # OAuth Authentication
-# =============================================================================
-
-
 @app.route("/auth/google")
 def auth_google():
     """Initiate Google OAuth flow."""
@@ -510,8 +503,6 @@ def auth_google():
 
         return redirect(authorization_url)
     except Exception as e:
-        import traceback
-
         return f"<pre>Error: {e}\n\n{traceback.format_exc()}</pre>", HTTPStatus.INTERNAL_SERVER_ERROR
 
 
@@ -791,8 +782,6 @@ def auth_callback():
 
         return _pending_auth_handoff(credentials_data, settings_data)
     except Exception as e:
-        import traceback
-
         return f"<pre>Error: {e}\n\n{traceback.format_exc()}</pre>", HTTPStatus.INTERNAL_SERVER_ERROR
 
 
@@ -942,11 +931,7 @@ def update_spreadsheet():
     return jsonify({"status": "ok", "spreadsheet_id": new_id})
 
 
-# =============================================================================
 # Storage Provisioning
-# =============================================================================
-
-
 @app.route("/api/storage/provision", methods=["POST"])
 def api_provision_storage():
     """Provision the active storage backend using existing credentials.
@@ -987,11 +972,7 @@ def api_provision_storage():
     return jsonify(provisioning_response)
 
 
-# =============================================================================
 # Storage Migration
-# =============================================================================
-
-
 @app.route("/api/migrate-to-json", methods=["POST"])
 def api_migrate_to_json():
     """Migrate data from Sheets backend to JSON-on-Drive.
@@ -1013,16 +994,17 @@ def api_migrate_to_json():
         return jsonify({"error": "Migration is only available when using the Sheets backend"}), HTTPStatus.BAD_REQUEST
 
     try:
-        # Step 1: Read all data from Sheets
+        # Read the existing data out of Sheets before touching anything else.
         sheets_ctx = sheets_storage.build_context(credentials, request_creds)
         pomodoros = sheets_storage.get_pomodoros(sheets_ctx["service"], sheets_ctx["location"])
         user_settings = sheets_storage.get_settings(sheets_ctx["service"], sheets_ctx["location"], DEFAULT_SETTINGS)
 
-        # Step 2: Provision JSON-on-Drive folder
+        # Provision the destination Drive folder for the JSON backend.
         folder_id, _existed = _provision_json_google_drive(credentials, user_email, None)
 
-        # Step 3: Write data to JSON backend (merge-safe — won't destroy existing Drive files)
-        # save_pomodoros_batch deduplicates by ID; save_settings merges keys
+        # Write the data into the JSON backend. This is merge-safe — won't destroy
+        # existing Drive files: save_pomodoros_batch deduplicates by ID and
+        # save_settings merges keys instead of overwriting.
         json_ctx = json_google_drive_storage.build_context(credentials, {"folder_id": folder_id})
         if pomodoros:
             json_google_drive_storage.save_pomodoros_batch(json_ctx["service"], json_ctx["location"], pomodoros)
@@ -1033,7 +1015,7 @@ def api_migrate_to_json():
         app.logger.error(f"Migration failed: {e}")
         return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
 
-    # Step 4: Switch this user's backend (only after successful write)
+    # Only flip this user's active backend after the JSON write above has succeeded.
     save_location(user_email, "json-google-drive", folder_id)
     set_user_backend(user_email, "json-google-drive")
 
@@ -1046,11 +1028,7 @@ def api_migrate_to_json():
     )
 
 
-# =============================================================================
 # Plugin API
-# =============================================================================
-
-
 @app.route("/api/plugins")
 def api_list_plugins():
     """List all registered plugins with their status.
@@ -1117,12 +1095,8 @@ def api_toggle_plugin():
     )
 
 
-# =============================================================================
 # Storage Proxy Endpoints
 # Routes proxy data operations through the active storage plugin.
-# =============================================================================
-
-
 @app.route("/api/sheets/pomodoros", methods=["GET"])
 def proxy_get_pomodoros():
     """Proxy read from Google Sheets - stateless, credentials from request."""
@@ -1179,8 +1153,6 @@ def proxy_create_pomodoro():
     except HttpError as e:
         return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
     except Exception as e:
-        import traceback
-
         app.logger.error(f"Error in proxy_create_pomodoro: {e}\n{traceback.format_exc()}")
         return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
 
@@ -1204,8 +1176,6 @@ def proxy_create_pomodoros_batch():
     except HttpError as e:
         return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
     except Exception as e:
-        import traceback
-
         app.logger.error(f"Error in proxy_create_pomodoros_batch: {e}\n{traceback.format_exc()}")
         return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
 
@@ -1379,16 +1349,12 @@ def api_save_todos():
         return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
 
 
-# =============================================================================
 # MCP Access — enable/disable the hosted MCP endpoint and mint per-user tokens.
 #
 # The token seals the user's refresh_token + folder_id (see mcp_tokens). The
 # revocation state (enabled flag + epoch) lives in the user's own Drive, not on
 # the server — the server stays stateless. Regenerate/disable advance the epoch
 # to invalidate previously issued tokens.
-# =============================================================================
-
-
 def _public_base_url():
     """Best-effort public base URL from proxy headers (for the MCP endpoint)."""
     oauth_base = os.environ.get("OAUTH_REDIRECT_BASE")
@@ -1448,8 +1414,6 @@ def _mint_mcp_token():
         return jsonify(
             {"error": "MCP access requires the JSON-on-Google-Drive backend (no folder_id configured)"}
         ), HTTPStatus.BAD_REQUEST
-
-    import time
 
     credentials = get_credentials()
     if not credentials:

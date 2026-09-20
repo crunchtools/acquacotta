@@ -84,14 +84,12 @@ def write_todos(drive_service, folder_id, todos_data):
     todos_transport.upload_file(TODOS_FILE, content)
 
 
-# =============================================================================
 # Agent-facing CRUD helpers (used by the MCP tools below and reusable directly)
 #
 # These read the whole todos document, mutate it, and write it back — the same
 # full-replace contract the web UI's /api/todos/sync uses. Todo and list record
 # shapes mirror static/js/storage.js exactly so agent-created records are
 # indistinguishable from UI-created ones.
-# =============================================================================
 
 _VALID_PRIORITIES = ("none", "low", "medium", "high")
 _UNSORTED_LAST = 999999  # todos lacking a sort_order sort after those that have one

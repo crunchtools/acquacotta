@@ -75,9 +75,7 @@ function expect(actual) {
 // Get utility functions
 var utils = window.AcquacottaUtils;
 
-// ============================================
-// TEST SUITES
-// ============================================
+// Test suites (describe/it blocks) below exercise each utility function.
 
 describe('detectDateChange', function() {
     it('should return changed=false for initial state (null lastKnownDate)', function() {
@@ -337,9 +335,7 @@ describe('isToday', function() {
     });
 });
 
-// ============================================
-// TEST RUNNER
-// ============================================
+// Test runner: executes every registered suite and renders pass/fail output.
 
 function runAllTests() {
     // Tests were already run during script load (describe/it calls execute immediately)
@@ -369,14 +365,14 @@ function displayResults() {
     var html = '';
     Object.keys(suites).forEach(function(suiteName) {
         html += '<div class="test-suite">';
-        html += '<h2>' + suiteName + '</h2>';
+        html += '<h2>' + escapeHtml(suiteName) + '</h2>';
 
         suites[suiteName].forEach(function(test) {
             var statusClass = test.pass ? 'pass' : 'fail';
             var statusText = test.pass ? 'PASS' : 'FAIL';
 
             html += '<div class="test ' + statusClass + '">';
-            html += '<span class="test-name">' + test.name + '</span>';
+            html += '<span class="test-name">' + escapeHtml(test.name) + '</span>';
             html += '<span class="test-status ' + statusClass + '">' + statusText + '</span>';
             html += '</div>';
 

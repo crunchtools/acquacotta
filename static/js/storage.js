@@ -328,7 +328,7 @@
             return;
         }
         // Only clear once safely written, so a mid-write failure can retry next load.
-        try { sessionStorage.removeItem(PENDING_AUTH_KEY); } catch (e) { /* ignore */ }
+        try { sessionStorage.removeItem(PENDING_AUTH_KEY); } catch (e) { console.warn('Could not clear pending-auth sessionStorage key (non-fatal, will retry next load):', e); }
     }
 
     /**
@@ -336,11 +336,10 @@
      */
     async function clearCredentials() {
         storedCredentials = null;
-        try {
-            await deleteFromStore(STORES.AUTH, 'credentials');
-        } catch (e) {
-            console.error('Error clearing credentials:', e);
-        }
+        // Rethrow so logout() knows the IndexedDB delete didn't happen — otherwise a
+        // failed delete here leaves stale credentials that loadCredentials() would
+        // read back as "still logged in" on the next page load.
+        await deleteFromStore(STORES.AUTH, 'credentials');
     }
 
     /**
@@ -809,7 +808,7 @@
                     const pluginData = await pluginRes.json();
                     cachedActivePlugin = pluginData.plugins.find(p => p.active && p.plugin_type === 'storage') || null;
                 }
-            } catch (e) { /* offline — fall back to checking any location field */ }
+            } catch (e) { console.warn('Plugin lookup failed (offline) — falling back to checking any location field:', e); }
             const activePlugin = cachedActivePlugin;
 
             const requiredFields = activePlugin ? (activePlugin.frontend_fields || []) : [];
@@ -1110,7 +1109,14 @@
          * @returns {Promise}
          */
         logout: async function() {
-            await clearCredentials();
+            try {
+                await clearCredentials();
+            } catch (e) {
+                // Local logout still proceeds below — the user's intent is honored
+                // immediately — but loudly flag that IndexedDB may still hold stale
+                // credentials that could resurface as "logged in" on next page load.
+                console.error('Logout: failed to clear stored credentials from IndexedDB; stale credentials may persist:', e);
+            }
             cachedSpreadsheetId = null;  // Clear cached value (will reload from SETTINGS on next init)
             // Clear sync status so next login will re-sync from Sheet
             await clearStore(STORES.SYNC_STATUS);
@@ -1708,7 +1714,7 @@
             }
         },
 
-        // ── Todos CRUD ──────────────────────────────────────────────
+        // Todos CRUD (per-list create/read/update/delete against IndexedDB)
 
         getTodos: async function() {
             const todos = await getAllFromStore(STORES.TODOS);
@@ -1773,7 +1779,7 @@
             return { status: 'ok' };
         },
 
-        // ── Todo Lists CRUD ─────────────────────────────────────────
+        // Todo Lists CRUD (list metadata: create/rename/delete/reorder)
 
         getTodoLists: async function() {
             const lists = await getAllFromStore(STORES.TODO_LISTS);
@@ -1815,7 +1821,7 @@
             return { status: 'ok' };
         },
 
-        // ── Todos Sync ──────────────────────────────────────────────
+        // Todos Sync (debounced push of local todo/list changes to the cloud backend)
 
         _todoSyncTimer: null,
 
