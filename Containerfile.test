@@ -9,13 +9,19 @@
 
 FROM quay.io/crunchtools/acquacotta-base:latest
 
-# Install build tools and Rust for Gourmand
-RUN dnf install -y gcc make && dnf clean all
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-ENV PATH="/root/.cargo/bin:${PATH}"
-
-# Install Gourmand from Codeberg
-RUN cargo install --git https://codeberg.org/mattdm/gourmand.git
+# Gourmand comes from the pre-built image, not a source build.
+#
+# This previously ran `cargo install --git https://codeberg.org/mattdm/gourmand.git`,
+# which had two problems: upstream moved off Codeberg on 2026-08-20 so the URL
+# 404s (cargo reports it as a confusing auth failure), and it was unpinned, so
+# the gate's behaviour drifted with upstream. That is the RT #1468 pattern; it
+# survived the fleet sweep because this is a Containerfile.test, not a workflow.
+#
+# Pinned to :latest to match what gatehouse v0.5.0 serves this repo today. When
+# acquacotta migrates to gatehouse v0.6.0 under RT #1482, this moves to
+# :1.0.0 and the CMD below gains the `check` subcommand.
+COPY --from=quay.io/crunchtools/gourmand:latest \
+     /usr/local/bin/gourmand /usr/local/bin/gourmand
 
 # Install Python dev/test dependencies
 COPY requirements-dev.txt .
