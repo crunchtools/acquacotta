@@ -1,10 +1,15 @@
-# Dependabot config for crunchtools Python projects using requirements.txt.
+# Dependabot config for crunchtools Python projects using pip-compile.
 # See constitution.md Section XV.
 #
-# This repo declares dependencies as ranges in requirements.txt rather than
-# resolving to a committed lockfile, so "pip" is the ecosystem that applies.
-# Article XV's lockfile requirement is still outstanding here; wiring the
-# update path first is strictly better than leaving the repo unwatched.
+# Dependency sources are the .in files; the .txt files are the generated,
+# fully pinned lockfiles that the Containerfile and CI actually install:
+#   - requirements.in      -> requirements.txt      (runtime, Containerfile)
+#   - requirements-dev.in  -> requirements-dev.txt  (tests, .github/workflows/test.yml)
+#
+# Dependabot understands this pair and updates both sides together.
+# Regenerate locally with:
+#   uv pip compile requirements.in     -o requirements.txt     --python-version 3.11
+#   uv pip compile requirements-dev.in -o requirements-dev.txt --python-version 3.11
 
 version: 2
 updates:
