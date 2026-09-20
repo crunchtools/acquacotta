@@ -79,17 +79,17 @@ Container builds via GitHub Actions MUST trigger on BOTH:
 
 Container image tags MUST be unique to this repository. No other repository — including archived siblings or forks — may publish to the same `quay.io/crunchtools/<image>` tag. A zombie repo sharing a tag will silently overwrite production. (See 2026-05-19 incident: `acquacotta-old`'s weekly cron clobbered the OAuth fix six times in a row.)
 
-Deployed systemd units on lotor MUST include `--label io.containers.autoupdate=registry` and `--label PODMAN_SYSTEMD_UNIT=<unit>.service` so the nightly `podman-auto-update.timer` pulls new `:latest` images automatically.
+Deployed systemd units MUST include `--label io.containers.autoupdate=registry` and `--label PODMAN_SYSTEMD_UNIT=<unit>.service` so the nightly `podman-auto-update.timer` pulls new `:latest` images automatically.
 
 After merging a PR:
 1. Confirm the merge-to-`main` build pushed `:latest` to quay.
 2. Determine version bump type based on changes; tag (e.g., `v1.14.0`) and push to also publish a `:vX.Y.Z` tag.
-3. Lotor auto-update reconciles overnight; force-pull with `podman auto-update` on lotor if urgent.
+3. Auto-update reconciles overnight; force-pull with `podman auto-update` if urgent.
 
 ## Deployment & Operations
 
 ### Host Layout
-Deployed on lotor at `/srv/acquacotta.crunchtools.com/` following the standard
+Deployed at `/srv/<service>/` following the standard
 `code/` / `config/` / `data/` convention; the container bind-mounts these
 directories and publishes `127.0.0.1:8080:80` behind the crunchtools reverse proxy.
 

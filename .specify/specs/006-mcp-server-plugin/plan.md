@@ -13,7 +13,7 @@ Add a hosted MCP endpoint to the existing Flask app as a new plugin. The endpoin
 **Primary Dependencies**: Flask (existing web app, WSGI), **FastMCP >= 2.0** (Streamable HTTP MCP server — same framework as `mcp-trentina`; ASGI/Starlette), `cryptography` (Fernet) for token sealing, `google-api-python-client` / `gspread` (existing), `google-auth` for refresh-token → access-token exchange
 **Storage**: None new — reuses user's Google Drive via existing storage/plugin functions. No server-side persistence, no new volume.
 **Testing**: pytest (existing `tests/`), following the project's manual-verification-before-merge gate
-**Target Platform**: Linux container (existing Containerfile), served by Gunicorn behind Apache/reverse proxy on lotor
+**Target Platform**: Linux container (existing Containerfile), served by Gunicorn behind a reverse proxy
 **Project Type**: Web application (single Flask service)
 **Performance Goals**: Tool calls bounded by Drive latency (target < 5s, consistent with existing sync); auth decrypt is in-memory and negligible
 **Constraints**: Store nothing server-side; minimal OAuth scopes unchanged; all config via env vars
