@@ -10,6 +10,8 @@ on:
       - 'requirements-dev.txt'
       - 'static/acquacotta-http.conf'
       - 'static/entrypoint.sh'
+    tags:
+      - 'v*'
   repository_dispatch:
     types: [parent-image-updated]
   workflow_dispatch:
@@ -35,6 +37,16 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.BASE_IMAGE }}
+          tags: |
+            type=raw,value=latest
+            type=sha
+            type=semver,pattern={{version}}
+
       - name: Log in to Quay.io
         uses: docker/login-action@v3
         with:
@@ -48,9 +60,7 @@ jobs:
           context: .
           file: ./Containerfile.base
           push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.BASE_IMAGE }}:latest
-            ${{ env.REGISTRY }}/${{ env.BASE_IMAGE }}:${{ github.sha }}
+          tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           labels: |
@@ -80,6 +90,16 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.TEST_IMAGE }}
+          tags: |
+            type=raw,value=latest
+            type=sha
+            type=semver,pattern={{version}}
+
       - name: Log in to Quay.io
         uses: docker/login-action@v3
         with:
@@ -93,9 +113,7 @@ jobs:
           context: .
           file: ./Containerfile.test
           push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.TEST_IMAGE }}:latest
-            ${{ env.REGISTRY }}/${{ env.TEST_IMAGE }}:${{ github.sha }}
+          tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           labels: |
@@ -127,6 +145,16 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.GHCR_BASE_IMAGE }}
+          tags: |
+            type=raw,value=latest
+            type=sha
+            type=semver,pattern={{version}}
+
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -140,9 +168,7 @@ jobs:
           context: .
           file: ./Containerfile.base
           push: true
-          tags: |
-            ${{ env.GHCR_BASE_IMAGE }}:latest
-            ${{ env.GHCR_BASE_IMAGE }}:${{ github.sha }}
+          tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
@@ -164,6 +190,16 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.GHCR_TEST_IMAGE }}
+          tags: |
+            type=raw,value=latest
+            type=sha
+            type=semver,pattern={{version}}
+
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -177,9 +213,7 @@ jobs:
           context: .
           file: ./Containerfile.test
           push: true
-          tags: |
-            ${{ env.GHCR_TEST_IMAGE }}:latest
-            ${{ env.GHCR_TEST_IMAGE }}:${{ github.sha }}
+          tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}

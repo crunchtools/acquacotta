@@ -6,6 +6,20 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.16.2] - 2026-09-20
+
+### Fixed
+
+- `acquacotta-base` and `acquacotta-test` never carried a semver tag matching
+  the app's release version. `container-base.yml` only had a path-triggered
+  push to `main` (Containerfile.base/.test changes) plus `:latest`/`:sha`
+  tags -- no `tags: v*` trigger at all, so a release of the main app never
+  produced a matching base/test image. Nagios's registry-drift check
+  (crunchtools/nagios-agent) expects every image in a repo to carry its
+  newest git tag; these silently never did. Added the tag trigger and a
+  `docker/metadata-action` semver tag to all four jobs (base + test, Quay +
+  GHCR).
+
 ## [2.16.1] - 2026-08-01
 
 This changelog starts here (RT #1484). acquacotta has 76 version tags and no
