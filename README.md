@@ -91,6 +91,14 @@ python app.py
 | `FLASK_SECRET_KEY` | Yes | Random string for session encryption |
 | `FLASK_HOST` | No | Host to bind to (default: `127.0.0.1`, use `0.0.0.0` for container) |
 | `CLEAR_CACHE_ON_START` | No | Clear SQLite cache on startup (default: `true`) |
+| `MCP_HOST` | No | Host the MCP server binds to (default: `127.0.0.1`) |
+| `MCP_PORT` | No | Port the MCP server listens on (default: `5001`) |
+
+The MCP server (`mcp_server.py`) is a separate process from the Flask app. It
+binds to localhost by default and is reached through the in-container Apache,
+which proxies `/mcp` to it. Every data operation requires a bearer token, and
+TLS terminates at the proxy — so leave `MCP_HOST` on `127.0.0.1` unless you
+are deliberately putting your own proxy in front of it.
 
 ## Data Storage
 
@@ -196,6 +204,14 @@ Then open http://localhost:5000 in your browser.
 | `FLASK_SECRET_KEY` | Yes | Random string for session encryption |
 | `FLASK_HOST` | No | Host to bind to (default: `127.0.0.1`, use `0.0.0.0` for container) |
 | `CLEAR_CACHE_ON_START` | No | Clear SQLite cache on startup (default: `true`) |
+| `MCP_HOST` | No | Host the MCP server binds to (default: `127.0.0.1`) |
+| `MCP_PORT` | No | Port the MCP server listens on (default: `5001`) |
+
+The MCP server (`mcp_server.py`) is a separate process from the Flask app. It
+binds to localhost by default and is reached through the in-container Apache,
+which proxies `/mcp` to it. Every data operation requires a bearer token, and
+TLS terminates at the proxy — so leave `MCP_HOST` on `127.0.0.1` unless you
+are deliberately putting your own proxy in front of it.
 
 ## Running Without Docker
 
