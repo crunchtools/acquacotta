@@ -1,104 +1,15 @@
-# Gourmand Exceptions
-# These are intentional patterns, not violations to fix.
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# summary_litter - Legitimate project files, not AI status litter
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-[[exceptions]]
-check = "summary_litter"
-path = "CLAUDE.md"
-justification = "Claude Code project instructions file - standard AI assistant configuration"
-
-[[exceptions]]
-check = "summary_litter"
-path = "requirements.txt"
-justification = "Standard Python dependency file - pip convention"
-
-[[exceptions]]
-check = "summary_litter"
-path = "requirements-dev.txt"
-justification = "Standard Python dev dependencies file - pip convention"
-
-# Spec-kit feature specification files (RFC/ADR-style workflow)
-[[exceptions]]
-check = "summary_litter"
-path = "specs/001-slidable-timer/spec.md"
-justification = "Spec-kit feature specification - RFC/ADR-style development workflow"
-
-[[exceptions]]
-check = "summary_litter"
-path = "specs/001-slidable-timer/plan.md"
-justification = "Spec-kit implementation plan - RFC/ADR-style development workflow"
-
-[[exceptions]]
-check = "summary_litter"
-path = "specs/001-slidable-timer/tasks.md"
-justification = "Spec-kit task breakdown - RFC/ADR-style development workflow"
-
-[[exceptions]]
-check = "summary_litter"
-path = "specs/001-slidable-timer/research.md"
-justification = "Spec-kit research notes - RFC/ADR-style development workflow"
-
-[[exceptions]]
-check = "summary_litter"
-path = "specs/001-slidable-timer/data-model.md"
-justification = "Spec-kit data model documentation - RFC/ADR-style development workflow"
-
-[[exceptions]]
-check = "summary_litter"
-path = "specs/001-slidable-timer/quickstart.md"
-justification = "Spec-kit quick start guide - RFC/ADR-style development workflow"
-
-[[exceptions]]
-check = "summary_litter"
-path = "specs/001-slidable-timer/checklists/requirements.md"
-justification = "Spec-kit requirements checklist - RFC/ADR-style development workflow"
-
-[[exceptions]]
-check = "summary_litter"
-path = "specs/007-per-user-storage/spec.md"
-justification = "Spec-kit feature specification - RFC/ADR-style development workflow"
-
-[[exceptions]]
-check = "summary_litter"
-path = "specs/007-per-user-storage/checklists/requirements.md"
-justification = "Spec-kit requirements checklist - RFC/ADR-style development workflow"
-
-[[exceptions]]
-check = "summary_litter"
-path = "specs/008-per-user-extensions/spec.md"
-justification = "Spec-kit feature specification - RFC/ADR-style development workflow"
-
-[[exceptions]]
-check = "summary_litter"
-path = "specs/008-per-user-extensions/checklists/requirements.md"
-justification = "Spec-kit requirements checklist - RFC/ADR-style development workflow"
-
-[[exceptions]]
-check = "summary_litter"
-path = "specs/009-mandatory-plugins/spec.md"
-justification = "Spec-kit feature specification - RFC/ADR-style development workflow"
-
-[[exceptions]]
-check = "summary_litter"
-path = "specs/009-mandatory-plugins/checklists/requirements.md"
-justification = "Spec-kit requirements checklist - RFC/ADR-style development workflow"
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# random_scripts - Intentional entry points
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 [[exceptions]]
 check = "random_scripts"
 path = "app.py"
 justification = "Main Flask application - standard Python web app entry point"
+classification = "by_design"
 
 [[exceptions]]
 check = "random_scripts"
 path = "static/entrypoint.sh"
 justification = "Container entrypoint script for Gunicorn - required for deployment"
+classification = "by_design"
 
 [[exceptions]]
 check = "random_scripts"
@@ -108,93 +19,43 @@ justification = "Post-deploy smoke test invoked by the deploy process — a docu
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # single_use_helpers - Extracted to reduce cyclomatic complexity
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-[[exceptions]]
-check = "single_use_helpers"
-path = "app.py"
-justification = "Helper functions extracted to satisfy ruff C901 max-complexity=10. Gourmand conflicts with ruff here."
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# verbose_comments - Intentional documentation
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+classification = "by_design"
 
 [[exceptions]]
 check = "verbose_comments"
 path = "app.py"
 justification = "Comments document Flask routes and complex business logic"
+classification = "by_design"
 
 [[exceptions]]
 check = "verbose_comments"
 path = "sheets_storage.py"
 justification = "Comments document Google Sheets API interactions"
-
-[[exceptions]]
-check = "verbose_comments"
-path = "tests/test_app.py"
-justification = "Test comments provide test structure clarity"
-
-[[exceptions]]
-check = "verbose_comments"
-path = "tests/test_sheets_storage.py"
-justification = "Test comments provide test structure clarity"
-
-[[exceptions]]
-check = "verbose_comments"
-path = "tests/conftest.py"
-justification = "Fixture docstrings are required for pytest"
+classification = "by_design"
 
 [[exceptions]]
 check = "verbose_comments"
 path = "static/js/storage.js"
 justification = "Comments document IndexedDB operations and sync logic"
-
-[[exceptions]]
-check = "verbose_comments"
-path = "static/js/utils.js"
-justification = "Comments document date/time utility functions"
-
-[[exceptions]]
-check = "verbose_comments"
-path = "tests/js/test_utils.js"
-justification = "Test comments provide test structure clarity"
-
-[[exceptions]]
-check = "verbose_comments"
-path = "tests/test_timezone.js"
-justification = "Test comments provide test structure clarity"
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# single_use_helpers - JavaScript domain boundary functions
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+classification = "by_design"
 
 [[exceptions]]
 check = "single_use_helpers"
 path = "static/js/storage.js"
 justification = "Functions like loadCredentials, calculateReportStats, syncOperationToSheets are distinct domain operations, not fake modularity"
+classification = "by_design"
 
 [[exceptions]]
 check = "single_use_helpers"
 path = "static/js/utils.js"
 justification = "snapTo30Minutes and getTodayString are named utility functions with clear single responsibilities"
-
-[[exceptions]]
-check = "single_use_helpers"
-path = "tests/js/test_utils.js"
-justification = "Test helper functions (displayResults, escapeHtml) are standard test infrastructure"
-
-[[exceptions]]
-check = "single_use_helpers"
-path = "tests/test_timezone.js"
-justification = "Individual test functions (testAutomaticTimezone, etc.) are standard test organization, not fake modularity"
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# deferred_work - Domain terms, not deferred work markers
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+classification = "by_design"
 
 [[exceptions]]
 check = "deferred_work"
 path = "todos_plugin.py"
 justification = "This IS a todos plugin — 'todo' in variable/function names are domain terms, not deferred work markers"
+classification = "gourmand_bug"
 
 [[exceptions]]
 check = "deferred_work"
@@ -204,165 +65,118 @@ justification = "storage.js implements the Todos feature — 'Todo' in section h
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # conditional_wrapper - Legitimate guard clauses
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-[[exceptions]]
-check = "conditional_wrapper"
-path = "json_google_drive_storage.py"
-justification = "save_pomodoros_batch guard clause avoids needless download/parse/upload cycle on empty input — legitimate API boundary validation"
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# MCP server plugin (#111) — new files triaged into the same
-# patterns already accepted for app.py and the storage modules.
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+classification = "gourmand_bug"
 
 [[exceptions]]
 check = "random_scripts"
 path = "mcp_server.py"
 justification = "Second entry point — the FastMCP server systemd runs alongside Flask, same status as app.py"
-
-[[exceptions]]
-check = "deferred_work"
-path = "mcp_server.py"
-justification = "'todos' refers to the todos plugin it activates — a domain term, not a deferred-work marker"
-
-[[exceptions]]
-check = "deferred_work"
-path = "app.py"
-justification = "'todos' refers to the todos plugin it registers — a domain term, not a deferred-work marker"
-
-[[exceptions]]
-check = "deferred_work"
-path = "tests/test_app.py"
-justification = "'todos' refers to the todos plugin under test — a domain term, not a deferred-work marker"
-
-[[exceptions]]
-check = "deferred_work"
-path = "tests/test_mcp_plugin_gating.py"
-justification = "'todos' refers to the todos plugin under test — a domain term, not a deferred-work marker"
-
-[[exceptions]]
-check = "deferred_work"
-path = "tests/test_mcp_todos.py"
-justification = "'todos' refers to the todos plugin under test — a domain term, not a deferred-work marker"
+classification = "by_design"
 
 [[exceptions]]
 check = "single_use_helpers"
 path = "mcp_server.py"
 justification = "_build_drive_service isolates the Google OAuth/Drive boundary; same rationale as app.py's extracted helpers"
-
-[[exceptions]]
-check = "verbose_comments"
-path = "mcp_server.py"
-justification = "Comments document the sealed-token auth and per-user epoch revocation model"
-
-[[exceptions]]
-check = "verbose_comments"
-path = "plugin_registry.py"
-justification = "Comments document the plugin type system, mandatory/optional model, and MCP registrar contract"
-
-[[exceptions]]
-check = "verbose_comments"
-path = "pomodoro_tools.py"
-justification = "Comments document the pomodoro plugin metadata and MCP tool contract"
-
-[[exceptions]]
-check = "verbose_comments"
-path = "todos_plugin.py"
-justification = "Comments document the read-modify-write full-replace contract shared with the web UI's sync path"
-
-[[exceptions]]
-check = "verbose_comments"
-path = "tests/test_mcp_tokens.py"
-justification = "Test comments provide test structure clarity"
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# JSON on pCloud storage plugin (#96) — same patterns already
-# accepted for the Google Drive storage plugin it mirrors.
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-[[exceptions]]
-check = "conditional_wrapper"
-path = "json_pcloud_storage.py"
-justification = "save_pomodoros_batch guard clause avoids needless download/parse/upload cycle on empty input — legitimate API boundary validation, identical to json_google_drive_storage.py"
-
-[[exceptions]]
-check = "single_use_helpers"
-path = "transports/pcloud_transport.py"
-justification = "_find_file is the shared stat-and-unwrap step behind download_file and file_exists; it exists to keep the transport interface identical to GoogleDriveTransport, which is what makes the storage plugins interchangeable"
-
-[[exceptions]]
-check = "summary_litter"
-path = "specs/010-json-pcloud/spec.md"
-justification = "Spec-kit feature specification - RFC/ADR-style development workflow"
-
-[[exceptions]]
-check = "summary_litter"
-path = "specs/010-json-pcloud/plan.md"
-justification = "Spec-kit implementation plan - RFC/ADR-style development workflow"
-
-# --- Restored thresholds surfaced these. Each is a real decision, not a placeholder. ---
-
-[[exceptions]]
-check = "over_abstraction"
-path = "app.py"
-justification = "get_stored_location and get_user_backend each read one key out of a user's mapping entry. The wrapper is the name: callers should not know the mapping's shape or its key strings. _google_service is the single place API credentials meet the client builder."
+classification = "by_design"
 
 [[exceptions]]
 check = "over_abstraction"
 path = "json_pcloud_storage.py"
 justification = "_transport has thirteen call sites in this module. It gives every storage backend the same internal name for its transport, so the read/write functions below are identical across backends and can be compared by eye."
+classification = "by_design"
 
 [[exceptions]]
 check = "over_abstraction"
 path = "json_google_drive_storage.py"
 justification = "_transport has thirteen call sites in this module. It gives every storage backend the same internal name for its transport, so the read/write functions below are identical across backends and can be compared by eye."
+classification = "by_design"
 
 [[exceptions]]
 check = "over_abstraction"
 path = "todos_plugin.py"
 justification = "_transport gives this plugin the same internal transport name the storage backends use, so the same read/write shape applies."
+classification = "by_design"
 
 [[exceptions]]
 check = "over_abstraction"
 path = "json_storage_core.py"
 justification = "serialize_settings is the single place the on-disk JSON indent is decided. Inlining json.dumps(..., indent=2) at each writer is how the stored files drift apart in format."
+classification = "by_design"
 
 [[exceptions]]
 check = "over_abstraction"
 path = "tests/conftest.py"
 justification = "The `client` fixture is a pytest fixture; pytest requires the indirection to inject it."
+classification = "by_design"
 
 [[exceptions]]
 check = "copy_paste_detection"
 path = "app.py"
 justification = "api_mcp_status/api_mcp_disable and save_location/set_user_backend are pairs of route handlers that read or write different keys through the same three-line auth-and-lookup preamble. get_credentials matches _google_service on the same preamble."
-
-[[exceptions]]
-check = "copy_paste_detection"
-path = "json_storage_core.py"
-justification = "parse_pomodoros and parse_settings are the JSON-decode-with-default shape, three statements each. The 14-file match is that same shape repeated once per storage backend, which is what makes the backends interchangeable."
+classification = "by_design"
 
 [[exceptions]]
 check = "copy_paste_detection"
 path = "json_pcloud_storage.py"
 justification = "Every storage backend implements the same get/put interface over a different transport. The similarity between backends is the interface, and the point of having them."
+classification = "by_design"
 
 [[exceptions]]
 check = "copy_paste_detection"
 path = "json_google_drive_storage.py"
 justification = "Every storage backend implements the same get/put interface over a different transport. The similarity between backends is the interface, and the point of having them."
+classification = "by_design"
 
 [[exceptions]]
 check = "copy_paste_detection"
 path = "sheets_storage.py"
 justification = "count_pomodoros/clear_pomodoros and get_pomodoros/get_settings each open the same sheet range and then do different things with it. Sharing the range lookup is the similarity being flagged."
+classification = "by_design"
 
 [[exceptions]]
 check = "copy_paste_detection"
 path = "todos_plugin.py"
 justification = "add_list and rename_list both load the list file, change one field and write it back. The load-modify-store shape is shared; the modification is not."
+classification = "by_design"
+
+[[exceptions]]
+check = "security_practices"
+path = "tests/js/test_utils.js"
+justification = "Test-runner display harness only, never served to real users. All dynamic content (suite name, test name, error text) is passed through escapeHtml() before being concatenated into the HTML string; the flagged innerHTML assignments apply the already-sanitized result plus static markup and numeric counts."
+classification = "by_design"
+
+[[exceptions]]
+check = "manifest_lint_suppression"
+path = "pyproject.toml"
+justification = "Every ruff ignore and per-file-ignore entry carries an inline comment naming the specific reason: E501 is redundant with the formatter, B008/B904 are deliberate Flask/MCP-decorator style choices, PLR2004 in tests/* covers magic-value assertions, and the PLR0911/PLR0915/PLR0913/PLR0917 entries on app.py, todos_plugin.py and pomodoro_tools.py are documented as guard-clause-heavy auth routes and MCP tool signatures that need many named parameters for the tool schema. These are deliberate configuration, not suppressions parked to be cleaned up later."
+classification = "by_design"
 
 [[exceptions]]
 check = "copy_paste_detection"
-path = "transports/google_drive_transport.py"
-justification = "ensure_directory is part of the transport interface every backend implements. Matching the other eleven implementations is conformance to that interface, not duplication."
+path = "mcp_server.py"
+justification = "main() (start the MCP server on MCP_HOST/MCP_PORT) and GoogleDriveTransport.upload_file (create-or-update a Drive file) are semantically unrelated; the 100% match is a coincidental structural collision between two short (3-statement) functions that happen to share a get-value/get-value-with-default/single-call shape. The check's logic has no way to distinguish this from real copy-paste."
+classification = "gourmand_bug"
+
+[[exceptions]]
+check = "redundant_error_handling"
+path = "static/js/storage.js"
+justification = "loadCredentials (falls through to return null on failure — the caller already treats null as \"not logged in\"), auto-provision inside checkAuthStatus (leaves `provisioned` false so the caller's existing not-provisioned branch runs), and the bidirectional-sync-on-init / todo-sync-to-cloud handlers (each has a finally block that resets its in-progress flag so the next call can retry) all have real recovery behavior beyond the catch body itself. The check only inspects the catch block in isolation and can't see the surrounding return/conditional/finally that provides the actual handling."
+classification = "by_design"
+
+[[exceptions]]
+check = "hidden_env_config"
+path = "app.py"
+justification = "All flagged vars are documented for operators: FLASK_SECRET_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and FLASK_HOST in README.md's Environment Variables table and acquacotta.env.example; FLASK_ENV, SESSION_COOKIE_SECURE and OAUTH_REDIRECT_BASE in CLAUDE.md's Environment Variables (.env) section (SESSION_COOKIE_SECURE is additionally explained inline at its call site); PCLOUD_CLIENT_ID/PCLOUD_CLIENT_SECRET in CLAUDE.md's pCloud-optional block and acquacotta.env.example."
+classification = "by_design"
+
+[[exceptions]]
+check = "hidden_env_config"
+path = "mcp_server.py"
+justification = "GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET are documented in README.md and acquacotta.env.example; MCP_HOST/MCP_PORT are documented in README.md's MCP-specific Environment Variables row (including the network/TLS-proxy caveat for MCP_HOST)."
+classification = "by_design"
+
+[[exceptions]]
+check = "hidden_env_config"
+path = "mcp_tokens.py"
+justification = "MCP_TOKEN_SEAL_KEY is documented in acquacotta.env.example, including the fallback-to-FLASK_SECRET_KEY behavior and the production requirement to set it explicitly. FLASK_ENV and FLASK_SECRET_KEY are documented in README.md/CLAUDE.md as above."
+classification = "by_design"

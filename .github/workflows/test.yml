@@ -40,7 +40,7 @@ jobs:
 
   gourmand-review:
     name: Code Quality (Gourmand)
-    uses: crunchtools/gatehouse/.github/workflows/gourmand.yml@v0.5.0
+    uses: crunchtools/gatehouse/.github/workflows/gourmand.yml@v0.7.0
 
   javascript-tests:
     name: JavaScript Tests
