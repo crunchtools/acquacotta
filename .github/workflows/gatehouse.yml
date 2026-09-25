@@ -1,14 +1,50 @@
+# Gatehouse — fork-safe code review + workflow protection, in ONE file.
+#
+# Drop this in your repo at .github/workflows/gatehouse.yml, add a OPENROUTER_API_KEY
+# secret, and you get:
+#   • AI review of every PR (including from forks) — posted as a PR review
+#   • rejection of untrusted PRs that try to modify your workflow files
+#
+# Nothing is ever checked out from the PR. The fork's change is only ever read as
+# a diff (data); the reviewer logic lives in the pinned gatehouse container; the
+# rules (your styleguide/constitution) are fetched from YOUR base branch, not the
+# PR. The one thing you don't trust — the proposed change — is only ever read.
+#
+# Three jobs with DIFFERENT authority:
+#   • guard   — a real blocking gate. Mark it a REQUIRED status check so a PR
+#               that tampers with your workflow files is rejected.
+#   • review  — ADVISORY. It posts findings as PR comments and always passes;
+#               do NOT mark it required. An LLM reviewer is non-deterministic,
+#               so it must never hold merge authority. (Opt into blocking with
+#               `blocking: true` below only if you accept that tradeoff — and
+#               even then, keep it out of branch protection.)
+#   • triage  — deterministic. Fails while any finding has no reply
+#               (`fixed in <sha>` or `not a bug: <reason>`). Safe to mark
+#               REQUIRED: it never judges code, only whether a human answered.
+
 name: Gatehouse
 
 on:
   pull_request_target:
     types: [opened, synchronize, reopened]
+  # Re-runs triage when someone replies. A review posted with GITHUB_TOKEN
+  # cannot trigger a workflow, so the first triage runs after `review` below.
+  pull_request_review_comment:
+    types: [created, edited, deleted]
 
-permissions: {}
+permissions: {}   # default-deny; each job grants only what it needs
 
 jobs:
+  # ── 1) Protect the workflow files themselves ────────────────────────────────
+  # Rejects PRs from forks that touch .github/workflows/. Safe under
+  # pull_request_target because it only reads the changed-file LIST via the
+  # API — it never checks out or runs your code. And because pull_request_target
+  # runs the BASE version of this file, a PR can't edit this job to disable it.
   guard:
     name: Protect workflows
+    # Runs on replies too. A job skipped on the reply event reports
+    # "skipped", which a required check counts as passing: skipping the
+    # guard there would let any comment on a rejected fork PR clear it.
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -17,34 +53,57 @@ jobs:
       - name: Reject workflow changes from untrusted PRs
         env:
           GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
           PR: ${{ github.event.pull_request.number }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
         run: |
           set -euo pipefail
-          # Gate on where the branch lives, not on the author's role. What
-          # pull_request_target actually guards against is a fork PR reaching
-          # repo secrets; a branch pushed into this repo already required write
-          # access. author_association got that backwards in both directions --
-          # it trusts a COLLABORATOR pushing from their own fork, and it
-          # distrusts Dependabot (author_association NONE) whose branches are
-          # ours, which failed every action-bump PR this repo ever got.
+          # Gate on where the branch lives, not on the author's role: a branch
+          # pushed into this repo already required write access, and a fork is
+          # what pull_request_target actually guards against.
           if [ "$HEAD_REPO" = "$GITHUB_REPOSITORY" ]; then
             echo "Head branch is in $GITHUB_REPOSITORY; allowing."; exit 0
           fi
-          changed="$(gh pr diff "$PR" --repo "$GITHUB_REPOSITORY" --name-only)"
+          # Both sides of a rename: `gh pr diff --name-only` lists only the new
+          # path, so a fork could move a workflow out of .github/workflows/ unseen.
+          changed="$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" \
+            --jq '.[] | .filename, (.previous_filename // empty)')"
           if echo "$changed" | grep -qE '^\.github/workflows/'; then
             echo "::error::PR modifies .github/workflows/ — not accepted from external contributors."
+            # Explain once, on the PR event; replies re-run the check, not the comment.
+            if [ "$EVENT" = "pull_request_target" ]; then
+              gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body \
+                $'🚫 **Workflow changes are not accepted via pull request.** Please open an issue and a maintainer will make the change.'
+            fi
             exit 1
           fi
           echo "No workflow files changed."
 
-  # Advisory only — posts findings as PR comments and always passes.
-  # Do NOT mark this job a required status check (see crunchtools constitution XII).
+  # ── 2) Review the PR diff (no checkout, BYO key) ────────────────────────────
+  # The reviewer is maintained centrally in gatehouse's reusable workflow and the
+  # pinned container — so security fixes reach you without copying logic around.
+  # Scope OPENROUTER_API_KEY to this reusable workflow so only it can read the key.
   review:
     name: Gatehouse review
+    if: github.event_name == 'pull_request_target'
     permissions:
       contents: read
       pull-requests: write
     uses: crunchtools/gatehouse/.github/workflows/review.yml@v0.9.0
+    # Advisory by default — findings post as comments, the check always passes.
+    # Uncomment to let critical/high findings fail the check (still not required):
+    #   with:
+    #     blocking: true
     secrets:
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+
+  # ── 3) Every finding answered ──────────────────────────────────────────────
+  # Runs after the review on a push, and alone on a reply (review is skipped
+  # then, hence always()). Read-only, no secrets.
+  triage:
+    name: Gatehouse triage
+    needs: review
+    if: always()
+    permissions:
+      pull-requests: read
+    uses: crunchtools/gatehouse/.github/workflows/triage.yml@v0.9.0
