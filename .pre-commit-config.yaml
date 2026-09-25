@@ -50,3 +50,13 @@ repos:
         pass_filenames: false
         always_run: true
         stages: [pre-commit, pre-merge-commit]
+  # Constitution XII gates, from crunchtools/gatehouse examples/pre-commit.yaml
+  - repo: local
+    hooks:
+      - id: gatehouse
+        name: Gatehouse (AI code review, staged diff)
+        entry: bash -c 'git diff --cached | podman --events-backend=none run --rm --log-driver=none -i --env-file "$HOME/.config/mcp-env/gatehouse.env" -v .:/src:ro,Z -w /src quay.io/crunchtools/gatehouse:latest --stdin'
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit, pre-merge-commit]

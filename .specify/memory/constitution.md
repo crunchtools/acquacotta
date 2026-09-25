@@ -1,9 +1,9 @@
 # Acquacotta Constitution
 
-> **Version:** 2.0.0
+> **Version:** 2.0.1
 > **Ratified:** 2025-12-27
 > **Status:** Active
-> **Inherits:** [crunchtools/constitution](https://github.com/crunchtools/constitution) v1.6.0
+> **Inherits:** [crunchtools/constitution](https://github.com/crunchtools/constitution) v1.17.0
 > **Profile:** Web Application
 
 ## License
