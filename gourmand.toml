@@ -1,9 +1,2 @@
 # Gourmand Configuration
 # See https://gitlab.com/mattdm/gourmand for documentation
-
-[global]
-# Exclude spec-kit directories from scanning
-excluded_paths = [
-    "specs/**",
-    ".specify/**",
-]
