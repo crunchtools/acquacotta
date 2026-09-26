@@ -27,8 +27,9 @@ name: Gatehouse
 on:
   pull_request_target:
     types: [opened, synchronize, reopened]
-  # Re-runs triage when someone replies. A review posted with GITHUB_TOKEN
-  # cannot trigger a workflow, so the first triage runs after `review` below.
+  # A reply rings the doorbell: this run's own checks do not count toward
+  # branch rules, so examples/gatehouse-retriage.yml answers it by re-running
+  # triage inside the pull_request_target run. Add that file too.
   pull_request_review_comment:
     types: [created, edited, deleted]
 
@@ -89,7 +90,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-    uses: crunchtools/gatehouse/.github/workflows/review.yml@v0.9.0
+    uses: crunchtools/gatehouse/.github/workflows/review.yml@v0.12.0
     # Advisory by default — findings post as comments, the check always passes.
     # Uncomment to let critical/high findings fail the check (still not required):
     #   with:
@@ -106,4 +107,4 @@ jobs:
     if: always()
     permissions:
       pull-requests: read
-    uses: crunchtools/gatehouse/.github/workflows/triage.yml@v0.9.0
+    uses: crunchtools/gatehouse/.github/workflows/triage.yml@v0.12.0

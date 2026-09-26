@@ -1,0 +1,3 @@
+# Paths Gatehouse never reviews (gitignore syntax). Read from the base branch in CI.
+.specify/templates/
+.specify/scripts/

@@ -1,0 +1,23 @@
+# Gatehouse retriage — makes a reply to a finding clear the triage check.
+#
+# Drop this next to examples/gatehouse.yml. A reply re-runs the `Gatehouse`
+# workflow, but that run's checks do not count toward branch rules; only the
+# pull_request_target run's do. When the reply run finishes, this re-runs
+# triage inside the pull_request_target run. `workflow_run` always executes
+# the default-branch copy of this file, so a fork cannot alter it.
+
+name: Gatehouse retriage
+
+on:
+  workflow_run:
+    workflows: [Gatehouse]   # the `name:` of your gatehouse.yml
+    types: [completed]
+
+permissions: {}   # default-deny
+
+jobs:
+  retriage:
+    if: github.event.workflow_run.event == 'pull_request_review_comment'
+    permissions:
+      actions: write   # re-run the triage job; nothing else
+    uses: crunchtools/gatehouse/.github/workflows/retriage.yml@v0.12.0
