@@ -20,4 +20,4 @@ jobs:
     if: github.event.workflow_run.event == 'pull_request_review_comment'
     permissions:
       actions: write   # re-run the triage job; nothing else
-    uses: crunchtools/gatehouse/.github/workflows/retriage.yml@v0.12.0
+    uses: crunchtools/gatehouse/.github/workflows/retriage.yml@v0.15.0
