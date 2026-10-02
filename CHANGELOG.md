@@ -7,6 +7,10 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Changed
+- Relicensed from GPL-3.0 to AGPL-3.0-or-later, matching Constitution I and
+  what this repo's constitution already declared.
+
+### Changed
 
 - Constitution is now a v1.18.0 manifest: fleet and profile rules apply by
   reference, and the file keeps only what is specific to this repo.
