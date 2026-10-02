@@ -6,7 +6,7 @@ annotated-types==0.8.0
     # via pydantic
 anyio==4.15.1
     # via
-    #   httpx
+    #   httpx2
     #   mcp
     #   py-key-value-aio
     #   sse-starlette
@@ -31,10 +31,7 @@ cachetools==7.2.0
 caio==0.12.4
     # via aiofile
 certifi==2026.7.22
-    # via
-    #   httpcore
-    #   httpx
-    #   requests
+    # via requests
 cffi==2.1.1
     # via cryptography
 cfgv==3.5.0
@@ -67,9 +64,9 @@ email-validator==2.3.0
     # via pydantic
 exceptiongroup==1.3.1
     # via fastmcp-slim
-fastmcp==3.4.7
+fastmcp==4.0.10
     # via -r requirements.in
-fastmcp-slim==3.4.7
+fastmcp-slim==4.0.10
     # via fastmcp
 filelock==3.32.7
     # via
@@ -107,27 +104,25 @@ gunicorn==26.2.0
     # via -r requirements.in
 h11==0.16.0
     # via
-    #   httpcore
+    #   httpcore2
     #   uvicorn
-httpcore==1.0.9
-    # via httpx
+httpcore2==2.13.1
+    # via httpx2
 httplib2==0.32.0
     # via
     #   google-api-python-client
     #   google-auth-httplib2
-httpx==0.28.1
+httpx2==2.13.1
     # via
     #   fastmcp-slim
     #   mcp
-httpx-sse==0.4.3
-    # via mcp
 identify==2.6.19
     # via pre-commit
 idna==3.20
     # via
     #   anyio
     #   email-validator
-    #   httpx
+    #   httpx2
     #   requests
 importlib-metadata==9.0.1
     # via keyring
@@ -168,8 +163,12 @@ markupsafe==3.0.3
     #   flask
     #   jinja2
     #   werkzeug
-mcp==1.30.0
+mcp==2.2.0
     # via fastmcp-slim
+mcp-types==2.2.0
+    # via
+    #   fastmcp-slim
+    #   mcp
 mdurl==0.1.2
     # via markdown-it-py
 more-itertools==11.1.0
@@ -186,6 +185,7 @@ opentelemetry-api==1.44.0
     # via
     #   fastmcp-slim
     #   google-api-core
+    #   mcp
 packaging==26.3
     # via
     #   fastmcp-slim
@@ -221,14 +221,13 @@ pydantic==2.13.5
     # via
     #   fastmcp-slim
     #   mcp
+    #   mcp-types
     #   openapi-pydantic
     #   pydantic-settings
 pydantic-core==2.46.5
     # via pydantic
 pydantic-settings==2.15.0
-    # via
-    #   fastmcp-slim
-    #   mcp
+    # via fastmcp-slim
 pygments==2.21.0
     # via
     #   pytest
@@ -300,12 +299,18 @@ starlette==1.6.0
     #   sse-starlette
 tomli==2.4.1
     # via coverage
+truststore==0.10.4
+    # via
+    #   httpcore2
+    #   httpx2
 typing-extensions==4.16.0
     # via
     #   anyio
     #   exceptiongroup
     #   fastmcp-slim
+    #   httpx2
     #   mcp
+    #   mcp-types
     #   opentelemetry-api
     #   py-key-value-aio
     #   pydantic
