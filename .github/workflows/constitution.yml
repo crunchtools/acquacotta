@@ -1,0 +1,21 @@
+# Drop in as .github/workflows/constitution.yml. See constitution.md VII.
+#
+# The tag below is the constitution version this repo is judged by. It moves
+# together with `Inherits:` in .specify/memory/constitution.md (scripts/fleet-bump.py
+# opens that PR); Dependabot is told to ignore it, see examples/dependabot.yml.
+# Required check: `Constitution / Validate constitution`.
+
+name: Constitution
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  constitution:
+    name: Constitution
+    uses: crunchtools/constitution/.github/workflows/validate.yml@v1.18.0
