@@ -1,0 +1,18 @@
+# Drop in as .github/workflows/dependabot-automerge.yml. See constitution.md XV.
+#
+# Queues green GitHub Actions minor/patch bumps for auto-merge. Needs the repo
+# setting `allow_auto_merge`; the required checks still decide the merge.
+
+name: Dependabot auto-merge
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  automerge:
+    name: Dependabot
+    uses: crunchtools/constitution/.github/workflows/dependabot-automerge.yml@v1.18.0
