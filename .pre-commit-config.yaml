@@ -28,12 +28,14 @@ repos:
         args: [--check]
         stages: [pre-commit, pre-merge-commit]
 
-  # Run Python tests (local hook)
+  # Run Python tests from the test image CI builds (Containerfile.test), not a
+  # host pytest (constitution XII, host contract). The image's entrypoint is
+  # systemd, so pytest replaces it; the repo is mounted read-only over /app.
   - repo: local
     hooks:
       - id: pytest
         name: pytest
-        entry: pytest tests/ -v --tb=short
+        entry: podman --events-backend=none run --rm --log-driver=none --entrypoint pytest -v .:/app:ro,Z -w /app -e FLASK_SECRET_KEY=test-secret-key -e CLEAR_CACHE_ON_START=false quay.io/crunchtools/acquacotta-test:latest tests/ -v --tb=short -p no:cacheprovider
         language: system
         pass_filenames: false
         always_run: true
