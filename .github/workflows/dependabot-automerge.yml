@@ -15,4 +15,4 @@ permissions:
 jobs:
   automerge:
     name: Dependabot
-    uses: crunchtools/constitution/.github/workflows/dependabot-automerge.yml@v1.21.0
+    uses: crunchtools/constitution/.github/workflows/dependabot-automerge.yml@v1.22.0
