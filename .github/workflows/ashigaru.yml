@@ -1,0 +1,85 @@
+# Ashigaru — issues in, fixed bugs out. ONE file enrolls a repo.
+#
+# Drop this in at .github/workflows/ashigaru.yml. The organization supplies the
+# secrets (CLAUDE_CODE_OAUTH_TOKEN, ASHIGARU_APP_ID, ASHIGARU_APP_KEY,
+# OPENROUTER_API_KEY) and the switch (variable ASHIGARU_ENABLED = true).
+#
+# What happens:
+#   • a new issue from an account with write access is triaged: bug, documentation and
+#     performance issues are labeled ready-to-code and fixed; features are
+#     labeled triaged and left for you; unclear ones get needs-info
+#   • the fix arrives as a pull request from ashigaru/issue-N with auto-merge on
+#   • Gatehouse reviews it like any other; Ashigaru answers each finding
+#     (`fixed in <sha>` or `not a bug: <reason>`) for up to five rounds, then
+#     labels the pull request needs-human and stops
+#   • GitHub merges when the required checks pass. No job here can merge.
+#
+# To steer it by hand: add `ready-to-code` to have an issue fixed,
+# `ready-for-triage` to have it looked at again.
+#
+# Copy unchanged apart from the pins, which Dependabot keeps current.
+
+name: Ashigaru
+
+on:
+  issues:
+    types: [opened, labeled]
+  workflow_run:
+    workflows: [Gatehouse]
+    types: [completed]
+
+permissions: {}
+
+# One run at a time per issue or per pull request branch; a second event waits.
+concurrency:
+  group: ashigaru-${{ github.event.issue.number || github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  triage:
+    name: Triage
+    if: >-
+      github.event_name == 'issues' &&
+      (github.event.action == 'opened' || github.event.label.name == 'ready-for-triage')
+    permissions:
+      contents: read
+      issues: write
+    uses: crunchtools/ashigaru/.github/workflows/triage.yml@v2.0.1
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+  code:
+    name: Code
+    needs: triage
+    # After a triage that said ready-to-code, or when a maintainer adds the label.
+    if: >-
+      always() && github.event_name == 'issues' &&
+      (needs.triage.outputs.auto_code == 'true' ||
+       (github.event.action == 'labeled' && github.event.label.name == 'ready-to-code'))
+    permissions:
+      contents: read
+      issues: read
+    uses: crunchtools/ashigaru/.github/workflows/code.yml@v2.0.1
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      ASHIGARU_APP_ID: ${{ secrets.ASHIGARU_APP_ID }}
+      ASHIGARU_APP_KEY: ${{ secrets.ASHIGARU_APP_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+
+  fix:
+    name: Fix
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.event == 'pull_request_target' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      startsWith(github.event.workflow_run.head_branch, 'ashigaru/')
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: read
+      actions: read
+    uses: crunchtools/ashigaru/.github/workflows/fix.yml@v2.0.1
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      ASHIGARU_APP_ID: ${{ secrets.ASHIGARU_APP_ID }}
+      ASHIGARU_APP_KEY: ${{ secrets.ASHIGARU_APP_KEY }}
