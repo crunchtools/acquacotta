@@ -5,9 +5,11 @@
 # OPENROUTER_API_KEY) and the switch (variable ASHIGARU_ENABLED = true).
 #
 # What happens:
-#   • a new issue from an account with write access is triaged: bug, documentation and
-#     performance issues are labeled ready-to-code and fixed; features are
-#     labeled triaged and left for you; unclear ones get needs-info
+#   • a new issue is triaged: bug, documentation and performance issues are
+#     labeled ready-to-code and fixed; features are labeled triaged and left
+#     for you; unclear ones get needs-info
+#   • an issue from someone without write access is triaged too, but is never
+#     fixed until a maintainer adds ready-to-code
 #   • the fix arrives as a pull request from ashigaru/issue-N with auto-merge on
 #   • Gatehouse reviews it like any other; Ashigaru answers each finding
 #     (`fixed in <sha>` or `not a bug: <reason>`) for up to five rounds, then
@@ -16,6 +18,17 @@
 #
 # To steer it by hand: add `ready-to-code` to have an issue fixed,
 # `ready-for-triage` to have it looked at again.
+#
+# Where the checks are. This file only routes events. The workflows it calls
+# do the checking, at the pinned release, before any agent runs:
+#   • the switch: every called workflow stops at its first job unless the
+#     organization variable ASHIGARU_ENABLED is true
+#   • who may reach an agent: scripts/guard.py asks the API for the write
+#     access of the issue's author and of whoever triggered the event
+#   • which pull requests are touched: fix.yml acts only on ashigaru/ branches
+#     in this repository, opened by the Ashigaru app
+#   • what the secrets can do: the job that runs the model gets a read-only
+#     token; the app key is used only by jobs that run no model
 #
 # Copy unchanged apart from the pins, which Dependabot keeps current.
 
@@ -44,7 +57,7 @@ jobs:
     permissions:
       contents: read
       issues: write
-    uses: crunchtools/ashigaru/.github/workflows/triage.yml@v2.2.0
+    uses: crunchtools/ashigaru/.github/workflows/triage.yml@v2.3.0
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
@@ -59,7 +72,7 @@ jobs:
     permissions:
       contents: read
       issues: read
-    uses: crunchtools/ashigaru/.github/workflows/code.yml@v2.2.0
+    uses: crunchtools/ashigaru/.github/workflows/code.yml@v2.3.0
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
       ASHIGARU_APP_ID: ${{ secrets.ASHIGARU_APP_ID }}
@@ -78,7 +91,7 @@ jobs:
       pull-requests: read
       checks: read
       actions: read
-    uses: crunchtools/ashigaru/.github/workflows/fix.yml@v2.2.0
+    uses: crunchtools/ashigaru/.github/workflows/fix.yml@v2.3.0
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
       ASHIGARU_APP_ID: ${{ secrets.ASHIGARU_APP_ID }}
