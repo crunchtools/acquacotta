@@ -57,7 +57,7 @@ jobs:
     permissions:
       contents: read
       issues: write
-    uses: crunchtools/ashigaru/.github/workflows/triage.yml@v2.3.0
+    uses: crunchtools/ashigaru/.github/workflows/triage.yml@v2
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
@@ -72,7 +72,7 @@ jobs:
     permissions:
       contents: read
       issues: read
-    uses: crunchtools/ashigaru/.github/workflows/code.yml@v2.3.0
+    uses: crunchtools/ashigaru/.github/workflows/code.yml@v2
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
       ASHIGARU_APP_ID: ${{ secrets.ASHIGARU_APP_ID }}
@@ -91,7 +91,7 @@ jobs:
       pull-requests: read
       checks: read
       actions: read
-    uses: crunchtools/ashigaru/.github/workflows/fix.yml@v2.3.0
+    uses: crunchtools/ashigaru/.github/workflows/fix.yml@v2
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
       ASHIGARU_APP_ID: ${{ secrets.ASHIGARU_APP_ID }}
