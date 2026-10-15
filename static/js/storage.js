@@ -1824,6 +1824,7 @@
         // Todos Sync (debounced push of local todo/list changes to the cloud backend)
 
         _todoSyncTimer: null,
+        _todoSyncFailures: 0,
 
         _debounceTodoSync: function() {
             if (this._todoSyncTimer) clearTimeout(this._todoSyncTimer);
@@ -1851,12 +1852,15 @@
                 // An edit made while this push was in flight has its own timer and
                 // stays pending; only a push with nothing queued behind it clears.
                 if (!this._todoSyncTimer) this._todoSyncPending = false;
+                this._todoSyncFailures = 0;
             } catch (e) {
                 // Stay pending and retry: clearing the flag here would let the next
                 // poll reconcile to the remote copy and delete the unsynced edits.
-                console.error('Todo sync to cloud failed, retrying:', e);
+                this._todoSyncFailures = (this._todoSyncFailures || 0) + 1;
+                const delay = global.AcquacottaUtils.syncRetryDelay(this._todoSyncFailures);
+                console.error(`Todo sync to cloud failed, retrying in ${Math.round(delay / 1000)}s:`, e);
                 if (!this._todoSyncTimer) {
-                    this._todoSyncTimer = setTimeout(() => this.syncTodosToCloud(), 30000);
+                    this._todoSyncTimer = setTimeout(() => this.syncTodosToCloud(), delay);
                 }
             }
         },

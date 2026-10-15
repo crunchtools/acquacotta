@@ -335,6 +335,31 @@ describe('isToday', function() {
     });
 });
 
+describe('syncRetryDelay', function() {
+    it('should start at 30 seconds with no jitter at the midpoint', function() {
+        expect(utils.syncRetryDelay(1, 0.5)).toBe(30000);
+    });
+
+    it('should double per consecutive failure', function() {
+        expect(utils.syncRetryDelay(2, 0.5)).toBe(60000);
+        expect(utils.syncRetryDelay(3, 0.5)).toBe(120000);
+    });
+
+    it('should cap at 10 minutes', function() {
+        expect(utils.syncRetryDelay(6, 0.5)).toBe(600000);
+        expect(utils.syncRetryDelay(50, 0.5)).toBe(600000);
+    });
+
+    it('should apply jitter of plus or minus 20 percent', function() {
+        expect(utils.syncRetryDelay(1, 0)).toBe(24000);
+        expect(utils.syncRetryDelay(1, 0.999)).toBe(35988);
+    });
+
+    it('should treat a zero or negative count as the first failure', function() {
+        expect(utils.syncRetryDelay(0, 0.5)).toBe(30000);
+    });
+});
+
 // Test runner: executes every registered suite and renders pass/fail output.
 
 function runAllTests() {
