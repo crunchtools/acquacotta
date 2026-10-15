@@ -213,6 +213,21 @@
         return dateStr === getTodayString(timezone);
     }
 
+    /**
+     * Delay before retrying a failed cloud sync: doubles per failure from 30s,
+     * capped at 10 minutes, scaled by ±20% jitter so clients that failed
+     * together don't retry together.
+     *
+     * @param {number} failures - Consecutive failures so far (1 for the first)
+     * @param {number} [rand] - Value in [0, 1) for the jitter; Math.random() if omitted
+     * @returns {number} - Delay in milliseconds
+     */
+    function syncRetryDelay(failures, rand) {
+        const base = Math.min(30000 * Math.pow(2, Math.max(failures, 1) - 1), 600000);
+        const r = rand === undefined ? Math.random() : rand;
+        return Math.round(base * (0.8 + 0.4 * r));
+    }
+
     // Export functions
     var utils = {
         detectDateChange: detectDateChange,
@@ -225,7 +240,8 @@
         calculateDuration: calculateDuration,
         formatMinutesAsDuration: formatMinutesAsDuration,
         getTodayString: getTodayString,
-        isToday: isToday
+        isToday: isToday,
+        syncRetryDelay: syncRetryDelay
     };
 
     // Browser global

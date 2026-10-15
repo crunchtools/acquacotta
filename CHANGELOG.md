@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- Todo edits that fail to reach the cloud backend are no longer deleted by
+  the next auto-refresh: the push checks the response, stays pending and
+  retries.
+
 ### Changed
 - Relicensed from GPL-3.0 to AGPL-3.0-or-later, matching Constitution I and
   what this repo's constitution already declared.

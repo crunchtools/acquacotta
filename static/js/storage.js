@@ -1824,6 +1824,7 @@
         // Todos Sync (debounced push of local todo/list changes to the cloud backend)
 
         _todoSyncTimer: null,
+        _todoSyncFailures: 0,
 
         _debounceTodoSync: function() {
             if (this._todoSyncTimer) clearTimeout(this._todoSyncTimer);
@@ -1835,21 +1836,32 @@
         },
 
         syncTodosToCloud: async function() {
+            this._todoSyncTimer = null;
             if (!authStatus || !authStatus.logged_in || !isOnline) return;
             try {
                 const todos = await getAllFromStore(STORES.TODOS);
                 const lists = await getAllFromStore(STORES.TODO_LISTS);
-                await authenticatedFetch('/api/todos/sync', {
+                const res = await authenticatedFetch('/api/todos/sync', {
                     method: 'POST',
                     body: JSON.stringify({ todos, lists })
                 });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 // Remote now matches what we just wrote — record the signature so the
                 // next auto-refresh poll recognizes our own change and skips a redraw.
                 this._lastTodoSignature = this._todoSignature(todos, lists);
+                // An edit made while this push was in flight has its own timer and
+                // stays pending; only a push with nothing queued behind it clears.
+                if (!this._todoSyncTimer) this._todoSyncPending = false;
+                this._todoSyncFailures = 0;
             } catch (e) {
-                console.error('Todo sync to cloud failed:', e);
-            } finally {
-                this._todoSyncPending = false;
+                // Stay pending and retry: clearing the flag here would let the next
+                // poll reconcile to the remote copy and delete the unsynced edits.
+                this._todoSyncFailures = (this._todoSyncFailures || 0) + 1;
+                const delay = global.AcquacottaUtils.syncRetryDelay(this._todoSyncFailures);
+                console.error(`Todo sync to cloud failed, retrying in ${Math.round(delay / 1000)}s:`, e);
+                if (!this._todoSyncTimer) {
+                    this._todoSyncTimer = setTimeout(() => this.syncTodosToCloud(), delay);
+                }
             }
         },
 

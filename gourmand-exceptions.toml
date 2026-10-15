@@ -160,7 +160,7 @@ classification = "gourmand_bug"
 [[exceptions]]
 check = "redundant_error_handling"
 path = "static/js/storage.js"
-justification = "loadCredentials (falls through to return null on failure — the caller already treats null as \"not logged in\"), auto-provision inside checkAuthStatus (leaves `provisioned` false so the caller's existing not-provisioned branch runs), and the bidirectional-sync-on-init / todo-sync-to-cloud handlers (each has a finally block that resets its in-progress flag so the next call can retry) all have real recovery behavior beyond the catch body itself. The check only inspects the catch block in isolation and can't see the surrounding return/conditional/finally that provides the actual handling."
+justification = "loadCredentials (falls through to return null on failure — the caller already treats null as \"not logged in\"), auto-provision inside checkAuthStatus (leaves `provisioned` false so the caller's existing not-provisioned branch runs), the bidirectional-sync-on-init handler (its finally block resets the in-progress flag so the next call can retry), and syncTodosToCloud (the catch keeps the todo sync pending and schedules a retry, so the auto-refresh poll cannot reconcile away unsynced edits) all have real recovery behavior beyond the catch body itself. The check only inspects the catch block in isolation and can't see the surrounding return/conditional/finally that provides the actual handling."
 classification = "by_design"
 
 [[exceptions]]
