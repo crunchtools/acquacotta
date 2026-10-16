@@ -1,0 +1,6 @@
+# Trivy findings accepted on purpose (used by the scan job in
+# container-build.yml). One CVE ID per line, each preceded by a comment giving
+# the reason, who accepted it, and a review-by date:
+#
+# # Not reachable: we never call X. Accepted by Josui (CTO), review 2026-12-31
+# CVE-2026-00000

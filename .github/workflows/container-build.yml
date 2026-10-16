@@ -6,6 +6,8 @@ on:
       - main
     tags:
       - 'v*'
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 env:
@@ -14,7 +16,37 @@ env:
   GHCR_IMAGE: ghcr.io/crunchtools/acquacotta
 
 jobs:
+  # The gate. Requirements live in the base image, so a PR that bumps them is
+  # only scanned truly if the base is rebuilt from the PR too; the app build
+  # then picks up that local base by tag instead of the published one.
+  scan:
+    name: Container vulnerability scan
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build base and app images from this PR
+        run: |
+          docker build -f Containerfile.base -t quay.io/crunchtools/acquacotta-base:latest .
+          docker build -f Containerfile -t acquacotta:scan .
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: acquacotta:scan
+          scanners: vuln
+          severity: "CRITICAL,HIGH"
+          ignore-unfixed: true
+          trivyignores: .trivyignore
+          format: "table"
+          exit-code: "1"
+
   build-and-push-quay:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read
