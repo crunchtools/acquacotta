@@ -6280,10 +6280,20 @@
         async function loadDiscussions() {
             const discussions = await Storage.getDiscussions();
 
-            // People bar — distinct persons, with an Unassigned bucket only if needed
-            const people = [...new Set(discussions.map(d => (d.person || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+            // People bar — only people who still have an OPEN discussion (one that needs to
+            // happen). People whose discussions are all done drop off the bar.
+            const openForBar = discussions.filter(d => d.status === 'open');
+            const people = [...new Set(openForBar.map(d => (d.person || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
             _discussionPeople = people;  // index-referenced by the bar buttons to avoid quoting names into onclick
-            const hasUnassigned = discussions.some(d => !(d.person || '').trim());
+            const hasUnassigned = openForBar.some(d => !(d.person || '').trim());
+            // If the active filter points at someone with nothing open left, fall back to All.
+            if (discussionSelectedPerson === '__none__') {
+                if (!hasUnassigned) discussionSelectedPerson = 'all';
+            } else if (discussionSelectedPerson !== 'all' && !people.includes(discussionSelectedPerson)) {
+                discussionSelectedPerson = 'all';
+            }
+            // The edit-modal autocomplete still offers every known person, done or not.
+            const allPeople = [...new Set(discussions.map(d => (d.person || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
             const bar = document.getElementById('discussion-people-bar');
             let barHtml = `<button class="${discussionSelectedPerson === 'all' ? 'active' : ''}" onclick="selectDiscussionPerson('all')">All</button>`;
             barHtml += people.map((p, i) => `<button class="${discussionSelectedPerson === p ? 'active' : ''}" onclick="selectDiscussionPersonByIndex(${i})">${escDisc(p)}</button>`).join('');
@@ -6293,7 +6303,7 @@
             bar.innerHTML = barHtml;
 
             // Keep the person datalist current for the edit modal
-            document.getElementById('discussion-people-list').innerHTML = people.map(p => `<option value="${escDisc(p)}">`).join('');
+            document.getElementById('discussion-people-list').innerHTML = allPeople.map(p => `<option value="${escDisc(p)}">`).join('');
 
             const sortSelect = document.getElementById('discussion-sort');
             if (sortSelect) sortSelect.value = discussionSortOrder;
