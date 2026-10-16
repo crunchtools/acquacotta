@@ -17,6 +17,11 @@ All notable changes to this project are documented here. The format follows
   per-user, enabled by default (spec 008).
 
 ### Fixed
+- Edit modals no longer clip off the top of the screen on mobile. The modal now
+  scrolls internally with a sticky Save/Cancel footer, instead of overflowing a
+  fixed, centered overlay with no way to reach the top field. The Discussions form
+  also leads with Person and Topic, tucks the enrichment fields behind a "More
+  details" expander, and only shows Outcome when editing an existing discussion.
 - The production image now includes `discussions_plugin.py`. The Containerfile
   copies an explicit file list and the new module was missing, so v2.17.0 booted
   into `ModuleNotFoundError` and gunicorn failed to start. A build-time import
