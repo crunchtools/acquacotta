@@ -302,6 +302,7 @@
         }
         .todo-completed-header:hover { color: var(--text-primary); }
         .todo-notes-preview { font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 400px; }
+        .discussion-person { font-weight: 600; color: var(--accent); margin-right: 0.4rem; }
 
         /* Weekly Overview */
         .weekly-overview {
@@ -571,6 +572,7 @@
             <button data-view="reports" role="tab" aria-selected="false" aria-controls="reports-view" id="tab-reports" tabindex="-1" title="View charts and statistics of your completed pomodoros">Reports</button>
             <button data-view="history" role="tab" aria-selected="false" aria-controls="history-view" id="tab-history" tabindex="-1" title="Browse and edit your pomodoro history">History</button>
             <button data-view="todos" role="tab" aria-selected="false" aria-controls="todos-view" id="tab-todos" tabindex="-1" title="Manage your to-do lists and tasks">To-do</button>
+            <button data-view="discussions" role="tab" aria-selected="false" aria-controls="discussions-view" id="tab-discussions" tabindex="-1" title="Track conversations to have with people, by person">Discussions</button>
             <button data-view="settings" role="tab" aria-selected="false" aria-controls="settings-view" id="tab-settings" tabindex="-1" title="Configure timer presets, breaks, and display options">Settings</button>
         </nav>
 
@@ -810,6 +812,80 @@
                 </div>
                 <div class="modal-actions">
                     <button class="secondary" onclick="closeListManager()">Done</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Discussions View -->
+        <div id="discussions-view" class="view" role="tabpanel" aria-labelledby="tab-discussions">
+            <div class="todo-header">
+                <h2>Discussions</h2>
+            </div>
+            <div class="todo-lists-bar" id="discussion-people-bar"></div>
+            <div class="todo-toolbar">
+                <button class="primary" onclick="openDiscussionForCreate()" style="padding: 0.5rem 1rem; font-size: 0.875rem;">+ Add</button>
+                <select id="discussion-sort" onchange="setDiscussionSort(this.value)" style="margin-left: auto;">
+                    <option value="manual">Sort: Manual</option>
+                    <option value="priority">Sort: Priority</option>
+                    <option value="person">Sort: Person</option>
+                    <option value="due_date">Sort: Due Date</option>
+                    <option value="created">Sort: Newest</option>
+                </select>
+            </div>
+            <div id="discussion-list-container"></div>
+            <div class="todo-completed-header" id="discussion-discussed-toggle" onclick="toggleDiscussedSection()" style="display:none;">
+                <span id="discussion-discussed-arrow">&#9654;</span>
+                <span>Discussed (<span id="discussion-discussed-count">0</span>)</span>
+            </div>
+            <div id="discussion-discussed-container" style="display:none;"></div>
+        </div>
+
+        <!-- Discussion Edit Modal -->
+        <div class="modal-overlay" id="discussion-edit-modal">
+            <div class="modal">
+                <h2 id="discussion-modal-title">Edit Discussion</h2>
+                <input type="hidden" id="discussion-edit-id">
+                <div class="form-group">
+                    <label for="discussion-edit-person">Person</label>
+                    <input type="text" id="discussion-edit-person" list="discussion-people-list" placeholder="Who is this with?">
+                    <datalist id="discussion-people-list"></datalist>
+                </div>
+                <div class="form-group">
+                    <label for="discussion-edit-topic">Topic</label>
+                    <input type="text" id="discussion-edit-topic" placeholder="What do you want to discuss?">
+                </div>
+                <div class="form-group">
+                    <label for="discussion-edit-context">Context</label>
+                    <textarea id="discussion-edit-context" rows="3" style="resize: vertical;" placeholder="Background for the conversation"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="discussion-edit-points">Talking points (one per line)</label>
+                    <textarea id="discussion-edit-points" rows="3" style="resize: vertical;" placeholder="Points, asks, or questions to raise"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="discussion-edit-priority">Priority</label>
+                    <select id="discussion-edit-priority">
+                        <option value="none">None</option>
+                        <option value="high">High</option>
+                        <option value="medium">Medium</option>
+                        <option value="low">Low</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="discussion-edit-due">Target Date</label>
+                    <input type="date" id="discussion-edit-due">
+                </div>
+                <div class="form-group">
+                    <label for="discussion-edit-source">Source (optional)</label>
+                    <input type="text" id="discussion-edit-source" placeholder="Slack/email thread URL">
+                </div>
+                <div class="form-group" id="discussion-edit-outcome-group">
+                    <label for="discussion-edit-outcome">Outcome</label>
+                    <textarea id="discussion-edit-outcome" rows="2" style="resize: vertical;" placeholder="What was decided or what came out of it"></textarea>
+                </div>
+                <div class="modal-actions">
+                    <button class="secondary" onclick="closeDiscussionEditModal()">Cancel</button>
+                    <button class="primary" onclick="saveDiscussionEdit()">Save</button>
                 </div>
             </div>
         </div>
@@ -1059,6 +1135,12 @@
                     <button class="secondary" onclick="exportTodoCSV()" style="padding: 0.5rem 1rem; font-size: 0.875rem;">Export CSV</button>
                     <button class="secondary" onclick="document.getElementById('settings-todo-csv-upload').click()" style="padding: 0.5rem 1rem; font-size: 0.875rem;">Import CSV</button>
                     <input type="file" id="settings-todo-csv-upload" accept=".csv" style="display: none;" onchange="importTodoCSV(this)">
+                </div>
+            </div>
+            <div class="card" id="discussions-settings-card" style="display: none;">
+                <h3>Discussions</h3>
+                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                    <button class="secondary" onclick="exportDiscussionCSV()" style="padding: 0.5rem 1rem; font-size: 0.875rem;">Export CSV</button>
                 </div>
             </div>
             <div class="card">
@@ -2203,6 +2285,7 @@
                 if (btn.dataset.view === 'history') loadHistory();
                 if (btn.dataset.view === 'reports') loadReport();
                 if (btn.dataset.view === 'todos') loadTodos();
+                if (btn.dataset.view === 'discussions') { loadDiscussions(); refreshDiscussionsIfChanged(); }
             });
         });
 
@@ -2210,7 +2293,7 @@
         function switchToViewFromURL() {
             const params = new URLSearchParams(window.location.search);
             const view = params.get('view');
-            if (view && ['timer', 'reports', 'history', 'todos', 'settings'].includes(view)) {
+            if (view && ['timer', 'reports', 'history', 'todos', 'discussions', 'settings'].includes(view)) {
                 document.querySelectorAll('nav button').forEach(b => {
                     b.classList.remove('active');
                     b.setAttribute('aria-selected', 'false');
@@ -6149,10 +6232,360 @@
             }
         }
 
+        // ── Discussions ────────────────────────────────────────────
+        // A discussion is a conversation to have with someone. Organized by person
+        // (the bar that's a list bar for To-dos), it carries talking points to raise
+        // and, once it happens, an outcome. Mirrors the To-do vertical above.
+
+        let discussionSelectedPerson = 'all';
+        let discussionSortOrder = 'manual';
+        let discussionSortOrders = {};
+        let discussedVisible = false;
+        let _discussionPeople = [];  // distinct persons, referenced by index from the bar
+
+        const UNASSIGNED_PERSON = '\u2014';  // em dash label for discussions with no person
+
+        function escDisc(s) { return escapeHtml(s); }
+
+        // Only http(s) sources become clickable links; anything else (e.g. a
+        // javascript: URL) is rejected so it can't execute when rendered.
+        function discussionSafeUrl(u) {
+            if (!u) return null;
+            try {
+                const parsed = new URL(u, window.location.origin);
+                return (parsed.protocol === 'http:' || parsed.protocol === 'https:') ? u : null;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        async function loadDiscussions() {
+            const discussions = await Storage.getDiscussions();
+
+            // People bar — distinct persons, with an Unassigned bucket only if needed
+            const people = [...new Set(discussions.map(d => (d.person || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+            _discussionPeople = people;  // index-referenced by the bar buttons to avoid quoting names into onclick
+            const hasUnassigned = discussions.some(d => !(d.person || '').trim());
+            const bar = document.getElementById('discussion-people-bar');
+            let barHtml = `<button class="${discussionSelectedPerson === 'all' ? 'active' : ''}" onclick="selectDiscussionPerson('all')">All</button>`;
+            barHtml += people.map((p, i) => `<button class="${discussionSelectedPerson === p ? 'active' : ''}" onclick="selectDiscussionPersonByIndex(${i})">${escDisc(p)}</button>`).join('');
+            if (hasUnassigned) {
+                barHtml += `<button class="${discussionSelectedPerson === '__none__' ? 'active' : ''}" onclick="selectDiscussionPerson('__none__')">${UNASSIGNED_PERSON}</button>`;
+            }
+            bar.innerHTML = barHtml;
+
+            // Keep the person datalist current for the edit modal
+            document.getElementById('discussion-people-list').innerHTML = people.map(p => `<option value="${escDisc(p)}">`).join('');
+
+            const sortSelect = document.getElementById('discussion-sort');
+            if (sortSelect) sortSelect.value = discussionSortOrder;
+
+            // Filter by selected person
+            let filtered = discussions;
+            if (discussionSelectedPerson === '__none__') {
+                filtered = discussions.filter(d => !(d.person || '').trim());
+            } else if (discussionSelectedPerson !== 'all') {
+                filtered = discussions.filter(d => (d.person || '').trim() === discussionSelectedPerson);
+            }
+            const open = filtered.filter(d => d.status === 'open');
+            const discussed = filtered.filter(d => d.status === 'discussed');
+
+            if (discussionSortOrder === 'priority') {
+                const rank = { high: 0, medium: 1, low: 2, none: 3 };
+                open.sort((a, b) => (rank[a.priority] ?? 3) - (rank[b.priority] ?? 3));
+            } else if (discussionSortOrder === 'person') {
+                open.sort((a, b) => (a.person || '').localeCompare(b.person || ''));
+            } else if (discussionSortOrder === 'due_date') {
+                open.sort((a, b) => {
+                    if (!a.due_date && !b.due_date) return 0;
+                    if (!a.due_date) return 1;
+                    if (!b.due_date) return -1;
+                    return a.due_date.localeCompare(b.due_date);
+                });
+            } else if (discussionSortOrder === 'created') {
+                open.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+            }
+
+            const container = document.getElementById('discussion-list-container');
+            if (open.length === 0 && discussed.length === 0) {
+                container.innerHTML = '<div class="empty">No discussions yet. Tap + Add to track a conversation to have.</div>';
+            } else {
+                container.innerHTML = open.map(d => renderDiscussionItem(d)).join('');
+            }
+
+            if (discussionSortOrder === 'manual') {
+                container.querySelectorAll('.todo-item[draggable]').forEach(item => {
+                    item.addEventListener('dragstart', handleDiscussionDragStart);
+                    item.addEventListener('dragend', handleDiscussionDragEnd);
+                    item.addEventListener('dragover', handleDiscussionDragOver);
+                    item.addEventListener('dragleave', handleDiscussionDragLeave);
+                    item.addEventListener('drop', handleDiscussionDrop);
+                });
+            }
+
+            const toggle = document.getElementById('discussion-discussed-toggle');
+            const discContainer = document.getElementById('discussion-discussed-container');
+            if (discussed.length > 0) {
+                toggle.style.display = 'flex';
+                document.getElementById('discussion-discussed-count').textContent = discussed.length;
+                document.getElementById('discussion-discussed-arrow').innerHTML = discussedVisible ? '&#9660;' : '&#9654;';
+                if (discussedVisible) {
+                    discContainer.style.display = 'block';
+                    discContainer.innerHTML = discussed.map(d => renderDiscussionItem(d)).join('');
+                } else {
+                    discContainer.style.display = 'none';
+                }
+            } else {
+                toggle.style.display = 'none';
+                discContainer.style.display = 'none';
+            }
+        }
+
+        function renderDiscussionItem(d) {
+            const isDiscussed = d.status === 'discussed';
+            const today = new Date().toISOString().slice(0, 10);
+            const isOverdue = d.due_date && d.due_date < today && !isDiscussed;
+            const points = Array.isArray(d.talking_points) ? d.talking_points : [];
+
+            let metaParts = [];
+            if (d.priority && d.priority !== 'none') {
+                metaParts.push(`<span class="todo-priority ${escDisc(d.priority)}">${escDisc(d.priority)}</span>`);
+            }
+            if (d.due_date) {
+                metaParts.push(`<span class="todo-due ${isOverdue ? 'overdue' : ''}">${isOverdue ? 'Overdue: ' : 'Due: '}${escDisc(d.due_date)}</span>`);
+            }
+            if (points.length) {
+                metaParts.push(`<span>${points.length} point${points.length === 1 ? '' : 's'}</span>`);
+            }
+            const safeSource = discussionSafeUrl(d.source);
+            if (safeSource) {
+                metaParts.push(`<a href="${escDisc(safeSource)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">source</a>`);
+            }
+
+            const personLabel = (d.person || '').trim();
+            const titleHtml = personLabel
+                ? `<span class="discussion-person">${escDisc(personLabel)}</span>${escDisc(d.topic)}`
+                : escDisc(d.topic);
+            const preview = isDiscussed && d.outcome
+                ? `Outcome: ${escDisc(d.outcome)}`
+                : (points[0] ? escDisc(points[0]) : (d.context ? escDisc(d.context) : ''));
+
+            const draggable = !isDiscussed && discussionSortOrder === 'manual';
+            return `<div class="todo-item ${isDiscussed ? 'completed' : ''}" ${draggable ? `draggable="true" data-discussion-id="${d.id}"` : ''} onclick="editDiscussion('${d.id}')">
+                ${draggable ? '<span class="drag-handle" style="cursor: grab; margin-right: 0.25rem;" onclick="event.stopPropagation()">☰</span>' : ''}
+                <button class="todo-checkbox ${isDiscussed ? 'checked' : ''}" onclick="event.stopPropagation(); toggleDiscussion('${d.id}')" aria-label="${isDiscussed ? 'Reopen' : 'Mark discussed'}"></button>
+                <div class="todo-content">
+                    <div class="todo-title">${titleHtml}</div>
+                    ${preview ? `<div class="todo-notes-preview">${preview}</div>` : ''}
+                    ${metaParts.length ? `<div class="todo-meta">${metaParts.join('')}</div>` : ''}
+                </div>
+                <div class="todo-actions">
+                    <button onclick="event.stopPropagation(); deleteDiscussionConfirm('${d.id}')" title="Delete">&times;</button>
+                </div>
+            </div>`;
+        }
+
+        function selectDiscussionPerson(person) {
+            discussionSelectedPerson = person;
+            discussionSortOrder = discussionSortOrders[person] || 'manual';
+            loadDiscussions();
+        }
+
+        function selectDiscussionPersonByIndex(i) {
+            selectDiscussionPerson(_discussionPeople[i]);
+        }
+
+        function setDiscussionSort(value) {
+            discussionSortOrder = value;
+            discussionSortOrders[discussionSelectedPerson] = value;
+            Storage.saveSetting('discussion_sort_orders', discussionSortOrders);
+            loadDiscussions();
+        }
+
+        async function openDiscussionForCreate() {
+            document.getElementById('discussion-modal-title').textContent = 'Add Discussion';
+            document.getElementById('discussion-edit-id').value = '';
+            document.getElementById('discussion-edit-person').value =
+                (discussionSelectedPerson !== 'all' && discussionSelectedPerson !== '__none__') ? discussionSelectedPerson : '';
+            document.getElementById('discussion-edit-topic').value = '';
+            document.getElementById('discussion-edit-context').value = '';
+            document.getElementById('discussion-edit-points').value = '';
+            document.getElementById('discussion-edit-priority').value = 'none';
+            document.getElementById('discussion-edit-due').value = '';
+            document.getElementById('discussion-edit-source').value = '';
+            document.getElementById('discussion-edit-outcome').value = '';
+            document.getElementById('discussion-edit-modal').classList.add('active');
+        }
+
+        async function editDiscussion(id) {
+            const discussions = await Storage.getDiscussions();
+            const d = discussions.find(x => x.id === id);
+            if (!d) return;
+            document.getElementById('discussion-modal-title').textContent = 'Edit Discussion';
+            document.getElementById('discussion-edit-id').value = id;
+            document.getElementById('discussion-edit-person').value = d.person || '';
+            document.getElementById('discussion-edit-topic').value = d.topic || '';
+            document.getElementById('discussion-edit-context').value = d.context || '';
+            document.getElementById('discussion-edit-points').value = (d.talking_points || []).join('\n');
+            document.getElementById('discussion-edit-priority').value = d.priority || 'none';
+            document.getElementById('discussion-edit-due').value = d.due_date || '';
+            document.getElementById('discussion-edit-source').value = d.source || '';
+            document.getElementById('discussion-edit-outcome').value = d.outcome || '';
+            document.getElementById('discussion-edit-modal').classList.add('active');
+        }
+
+        function closeDiscussionEditModal() {
+            document.getElementById('discussion-edit-modal').classList.remove('active');
+        }
+
+        function parseTalkingPoints(text) {
+            return text.split('\n').map(s => s.trim()).filter(Boolean);
+        }
+
+        async function saveDiscussionEdit() {
+            const id = document.getElementById('discussion-edit-id').value;
+            const data = {
+                person: document.getElementById('discussion-edit-person').value.trim(),
+                topic: document.getElementById('discussion-edit-topic').value.trim(),
+                context: document.getElementById('discussion-edit-context').value.trim(),
+                talking_points: parseTalkingPoints(document.getElementById('discussion-edit-points').value),
+                priority: document.getElementById('discussion-edit-priority').value,
+                due_date: document.getElementById('discussion-edit-due').value || null,
+                source: document.getElementById('discussion-edit-source').value.trim(),
+                outcome: document.getElementById('discussion-edit-outcome').value.trim()
+            };
+            if (!data.topic) return;
+            if (id) {
+                await Storage.updateDiscussion(id, data);
+            } else {
+                await Storage.createDiscussion(data);
+            }
+            closeDiscussionEditModal();
+            loadDiscussions();
+        }
+
+        async function toggleDiscussion(id) {
+            const discussions = await Storage.getDiscussions();
+            const d = discussions.find(x => x.id === id);
+            if (!d) return;
+            if (d.status === 'open') {
+                const outcome = prompt('Mark discussed. What was the outcome? (optional)', d.outcome || '');
+                if (outcome === null) return;  // cancelled
+                await Storage.markDiscussed(id, outcome.trim());
+            } else {
+                await Storage.reopenDiscussion(id);
+            }
+            loadDiscussions();
+        }
+
+        async function deleteDiscussionConfirm(id) {
+            if (confirm('Delete this discussion?')) {
+                await Storage.deleteDiscussion(id);
+                loadDiscussions();
+            }
+        }
+
+        function toggleDiscussedSection() {
+            discussedVisible = !discussedVisible;
+            loadDiscussions();
+        }
+
+        let _discussionRefreshTimer = null;
+        async function refreshDiscussionsIfChanged() {
+            if (document.hidden) return;
+            if (!authStatus || !authStatus.logged_in) return;
+            // Only hit the network while the user is actually viewing Discussions —
+            // no background polling from other tabs. Switching to the tab triggers
+            // this directly (see the nav handler), so it's still fresh on open.
+            if (!document.getElementById('discussions-view').classList.contains('active')) return;
+            const changed = await Storage.refreshDiscussionsFromCloudIfChanged();
+            if (changed) await loadDiscussions();
+        }
+        function startDiscussionAutoRefresh() {
+            if (_discussionRefreshTimer) return;
+            _discussionRefreshTimer = setInterval(refreshDiscussionsIfChanged, 30000);
+        }
+
+        // ── Discussion drag-to-reorder (manual sort) ──────────────
+        let draggedDiscussionId = null;
+
+        function handleDiscussionDragStart(e) {
+            const item = e.target.closest('.todo-item');
+            if (!item) return;
+            draggedDiscussionId = item.dataset.discussionId;
+            item.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+        }
+
+        function handleDiscussionDragEnd(e) {
+            const item = e.target.closest('.todo-item');
+            if (item) item.classList.remove('dragging');
+            document.querySelectorAll('#discussion-list-container .todo-item').forEach(el => el.classList.remove('drag-over'));
+        }
+
+        function handleDiscussionDragOver(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            const item = e.target.closest('.todo-item');
+            if (item && item.dataset.discussionId !== draggedDiscussionId) {
+                item.classList.add('drag-over');
+            }
+        }
+
+        function handleDiscussionDragLeave(e) {
+            e.target.closest('.todo-item')?.classList.remove('drag-over');
+        }
+
+        async function handleDiscussionDrop(e) {
+            e.preventDefault();
+            const targetItem = e.target.closest('.todo-item');
+            if (!targetItem || targetItem.dataset.discussionId === draggedDiscussionId) return;
+
+            const container = document.getElementById('discussion-list-container');
+            const items = Array.from(container.querySelectorAll('.todo-item[data-discussion-id]'));
+            const fromIdx = items.findIndex(el => el.dataset.discussionId === draggedDiscussionId);
+            const toIdx = items.findIndex(el => el.dataset.discussionId === targetItem.dataset.discussionId);
+            if (fromIdx === -1 || toIdx === -1) return;
+
+            const ids = items.map(el => el.dataset.discussionId);
+            const [movedId] = ids.splice(fromIdx, 1);
+            ids.splice(toIdx, 0, movedId);
+
+            // One bulk IndexedDB write + a single debounced sync (not N serial writes).
+            await Storage.reorderDiscussions(ids);
+            loadDiscussions();
+        }
+
+        async function exportDiscussionCSV() {
+            const discussions = await Storage.getDiscussions();
+            const lines = ['person,topic,context,talking_points,priority,status,source,due_date,created_at,discussed_at,outcome'];
+            discussions.forEach(d => {
+                const q = s => {
+                    let v = (s || '').toString();
+                    // Neutralize spreadsheet formula injection: a cell starting with a
+                    // formula trigger (optionally after whitespace) gets a leading quote.
+                    if (/^[\s]*[=+\-@\t\r]/.test(v)) v = "'" + v;
+                    return v.replace(/"/g, '""');
+                };
+                const points = (d.talking_points || []).join(' | ');
+                lines.push(`"${q(d.person)}","${q(d.topic)}","${q(d.context)}","${q(points)}","${d.priority || 'none'}","${d.status}","${q(d.source)}","${d.due_date || ''}","${d.created_at || ''}","${d.discussed_at || ''}","${q(d.outcome)}"`);
+            });
+            const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'acquacotta_discussions.csv';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
         // ── Plugin-Aware Type Parsing ──────────────────────────────
 
         function exportPluginCSV(pluginId) {
             if (pluginId === 'todos') return exportTodoCSV();
+            if (pluginId === 'discussions') return exportDiscussionCSV();
         }
         function importPluginCSV(pluginId, input) {
             if (pluginId === 'todos') return importTodoCSV(input);
@@ -6194,17 +6627,29 @@
             if (authStatus.logged_in) {
                 await Storage.loadTodosFromCloud();
             }
-            // Restore per-list sort preferences (persisted in settings, synced to backend)
+            // Restore per-list/per-person sort preferences (persisted in settings, synced to backend)
             try {
                 const _settings = await Storage.getSettings();
                 todoSortOrders = _settings.todo_sort_orders || {};
                 todoSortOrder = todoSortOrders[todoSelectedListId] || 'manual';
+                discussionSortOrders = _settings.discussion_sort_orders || {};
+                discussionSortOrder = discussionSortOrders[discussionSelectedPerson] || 'manual';
             } catch (e) { /* fall back to defaults */ }
             await loadTodos();
-            // Start auto-refresh so out-of-band (MCP) todo changes appear without a manual reload
+            // Discussions render from the IndexedDB cache first (offline-first) — the
+            // cloud refresh below never blocks this initial paint.
+            await loadDiscussions();
+            // Start auto-refresh so out-of-band (MCP) changes appear without a manual reload
             if (authStatus.logged_in) {
                 await Storage.seedTodoSignature();
                 startTodoAutoRefresh();
+                // Offline-first: the cache already painted above; pull the cloud copy in
+                // the background and re-render when it lands, rather than awaiting it.
+                Storage.loadDiscussionsFromCloud().then(async () => {
+                    await loadDiscussions();
+                    await Storage.seedDiscussionSignature();
+                    startDiscussionAutoRefresh();
+                });
             }
         })();
     </script>

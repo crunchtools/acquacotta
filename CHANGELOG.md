@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Discussions** plugin: a first-class tab for conversations to have with
+  people, broken out of the Todos "Discussions" list. Each discussion records
+  the person, topic, context, talking points, priority, and — once it happens —
+  the outcome, and the list is organized and filtered by person. Ships with its
+  own `/api/discussions/sync` endpoint, IndexedDB store, and MCP tools
+  (`list_discussions`, `create_discussion`, `mark_discussed`,
+  `update_discussion`, `delete_discussion`, `reorder_discussion`). Optional and
+  per-user, enabled by default (spec 008).
+
 ### Fixed
 - Todo edits that fail to reach the cloud backend are no longer deleted by
   the next auto-refresh: the push checks the response, stays pending and

@@ -197,6 +197,26 @@ class TestPluginsAPI:
         json_plugin = next(p for p in data["plugins"] if p["id"] == "json-google-drive")
         assert json_plugin["active"] is True
 
+    def test_discussions_registered_as_extension_with_tab(self, client):
+        """Discussions is an optional extension plugin that owns a tab (spec 008)."""
+        response = client.get("/api/plugins")
+        data = json.loads(response.data)
+        discussions = next(p for p in data["plugins"] if p["id"] == "discussions")
+        assert discussions["plugin_type"] == "extension"
+        assert discussions["has_tab"] is True
+        assert discussions["tab_id"] == "discussions"
+        assert discussions["tab_label"] == "Discussions"
+
+
+class TestDiscussionsSyncEndpoints:
+    """The /api/discussions/sync endpoints require auth and round-trip the document."""
+
+    def test_get_requires_auth(self, client):
+        assert client.get("/api/discussions/sync").status_code == 401
+
+    def test_post_requires_auth(self, client):
+        assert client.post("/api/discussions/sync", json={"discussions": []}).status_code == 401
+
 
 class TestExtensionTogglePerUser:
     """Extension enablement is a per-user client preference; the toggle endpoint

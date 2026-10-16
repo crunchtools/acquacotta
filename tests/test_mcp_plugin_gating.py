@@ -77,3 +77,4 @@ def test_registry_returns_id_registrar_mandatory_triples():
     by_id = {pid: mandatory for pid, _registrar, mandatory in triples}
     assert by_id.get("pomodoro") is True  # mandatory
     assert by_id.get("todos") is False  # optional
+    assert by_id.get("discussions") is False  # optional

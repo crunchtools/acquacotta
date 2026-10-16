@@ -65,6 +65,7 @@ max-complexity = 10
 # firing on these same signatures). register_mcp_tools is a flat list of
 # @mcp.tool definitions.
 "todos_plugin.py" = ["PLR0915", "C901", "PLR0913", "PLR0917"]
+"discussions_plugin.py" = ["PLR0915", "C901", "PLR0913", "PLR0917"]
 "pomodoro_tools.py" = ["PLR0913", "PLR0917"]
 
 [tool.ruff.lint.isort]
