@@ -91,6 +91,18 @@ classification = "by_design"
 
 [[exceptions]]
 check = "over_abstraction"
+path = "discussions_plugin.py"
+justification = "_transport gives this plugin the same internal transport name the storage backends use, so the same read/write shape applies."
+classification = "by_design"
+
+[[exceptions]]
+check = "copy_paste_detection"
+path = "discussions_plugin.py"
+justification = "_validate_record (validates a stored/incoming record's fields) and query_discussions (validates a caller-supplied priority filter) both reject values against the same small priority/status enums, which reads as similar code. They guard different inputs for different callers; merging them would couple record validation to query filtering. The shared part is a one-line enum membership check."
+classification = "by_design"
+
+[[exceptions]]
+check = "over_abstraction"
 path = "json_storage_core.py"
 justification = "serialize_settings is the single place the on-disk JSON indent is decided. Inlining json.dumps(..., indent=2) at each writer is how the stored files drift apart in format."
 classification = "by_design"

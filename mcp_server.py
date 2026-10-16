@@ -22,6 +22,7 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
+import discussions_plugin
 import json_google_drive_storage
 import mcp_tokens
 import plugin_registry
@@ -47,15 +48,18 @@ plugin_registry.register(
 )
 plugin_registry.register("extension", "pomodoro", pomodoro_tools, pomodoro_tools.PLUGIN_METADATA)
 plugin_registry.register("extension", "todos", todos_plugin, todos_plugin.PLUGIN_METADATA)
+plugin_registry.register("extension", "discussions", discussions_plugin, discussions_plugin.PLUGIN_METADATA)
 plugin_registry.activate_storage("json-google-drive")
 
 mcp = FastMCP(
     "acquacotta",
     instructions=(
-        "Acquacotta productivity cockpit — per-user access to the caller's own todos and "
-        "pomodoro time-tracking data, stored in their Google Drive. Use list_todos/create_todo/"
-        "complete_todo/update_todo to manage tasks, and get_pomodoros/get_time_summary to read "
-        "tracked time. All calls act only on the authenticated user's data."
+        "Acquacotta productivity cockpit — per-user access to the caller's own todos, "
+        "discussions, and pomodoro time-tracking data, stored in their Google Drive. Use "
+        "list_todos/create_todo/complete_todo/update_todo to manage tasks, "
+        "list_discussions/create_discussion/mark_discussed to manage conversations to have "
+        "with people, and get_pomodoros/get_time_summary to read tracked time. All calls act "
+        "only on the authenticated user's data."
     ),
 )
 

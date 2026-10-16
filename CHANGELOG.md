@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Discussions** plugin: a first-class tab for conversations to have with
+  people, broken out of the Todos "Discussions" list. Each discussion records
+  the person, topic, context, talking points, priority, and — once it happens —
+  the outcome, and the list is organized and filtered by person. Ships with its
+  own `/api/discussions/sync` endpoint, IndexedDB store, and MCP tools
+  (`list_discussions`, `create_discussion`, `mark_discussed`,
+  `update_discussion`, `delete_discussion`, `reorder_discussion`). Optional and
+  per-user, enabled by default (spec 008).
+
 ### Fixed
 - Pull requests now build the base and app images and fail on fixable
   HIGH/CRITICAL vulnerabilities. Before, Trivy ran only after an image had

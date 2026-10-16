@@ -35,6 +35,7 @@ from googleapiclient.errors import HttpError
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from werkzeug.middleware.proxy_fix import ProxyFix
 
+import discussions_plugin
 import json_google_drive_storage
 import json_pcloud_storage
 import mcp_tokens
@@ -73,6 +74,11 @@ plugin_registry.register("extension", "settings", SimpleNamespace(), SETTINGS_PL
 # enablement on web and MCP.
 plugin_registry.register("extension", "todos", todos_plugin, todos_plugin.PLUGIN_METADATA)
 plugin_registry.activate_extension("todos")
+
+# Discussions — optional plugin, per-user enable/disable (spec 008), same lifecycle as
+# Todos. It was broken out of the Todos "Discussions" list into its own tab.
+plugin_registry.register("extension", "discussions", discussions_plugin, discussions_plugin.PLUGIN_METADATA)
+plugin_registry.activate_extension("discussions")
 
 # MCP access appears in the plugin list. It has no server-side module contract —
 # enable/disable and per-user state live in the /api/mcp/* routes + the user's Drive, so a
@@ -1344,6 +1350,75 @@ def api_save_todos():
         drive_service = build("drive", "v3", credentials=credentials)
         todos_payload = {"todos": payload.get("todos", []), "lists": payload.get("lists", [])}
         todos_plugin.write_todos(drive_service, folder_id, todos_payload)
+        return jsonify({"status": "ok"})
+    except HttpError as e:
+        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+
+
+@app.route("/api/discussions/sync", methods=["GET"])
+def api_get_discussions():
+    """Download the caller's discussions document from their Google Drive.
+
+    Auth: requires a logged-in session AND per-request Google credentials (the
+    server is stateless — see get_credentials_from_request). 401 if either is
+    missing.
+
+    Response (200): the full document, ``{"discussions": [<record>, ...]}``. Each
+    record carries id, person, topic, context, talking_points (list), status
+    ("open"|"discussed"), priority ("none"|"low"|"medium"|"high"), outcome,
+    source, due_date, sort_order, created_at, discussed_at. A user with no
+    configured Drive folder gets ``{"discussions": []}``. 500 on a Drive API error.
+    """
+    if not is_logged_in():
+        return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
+    try:
+        credentials = get_credentials()
+        if not credentials:
+            return jsonify({"error": "No credentials"}), HTTPStatus.UNAUTHORIZED
+        request_creds = get_credentials_from_request()
+        folder_id = request_creds.get("folder_id") if request_creds else None
+        if not folder_id:
+            return jsonify({"discussions": []})
+        drive_service = build("drive", "v3", credentials=credentials)
+        snapshot = discussions_plugin.read_discussions(drive_service, folder_id)
+        return jsonify(snapshot)
+    except HttpError as e:
+        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+
+
+@app.route("/api/discussions/sync", methods=["POST"])
+def api_save_discussions():
+    """Upload the caller's discussions document (full replace) to their Google Drive.
+
+    Auth: requires a logged-in session AND per-request Google credentials. 401 if
+    either is missing; 400 if no Drive folder is configured or the payload is
+    malformed.
+
+    Request body: ``{"discussions": [<record>, ...]}`` — the complete document
+    that replaces what's stored (same full-replace contract as /api/todos/sync).
+    The payload is validated (discussions must be a list of objects, each with an
+    id and valid priority/status/talking_points) before anything is written;
+    validate_sync_payload rejects a bad shape with 400.
+
+    Response: ``{"status": "ok"}`` on success, 500 on a Drive API error.
+    """
+    if not is_logged_in():
+        return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
+    try:
+        credentials = get_credentials()
+        if not credentials:
+            return jsonify({"error": "No credentials"}), HTTPStatus.UNAUTHORIZED
+        payload = get_request_data()
+        request_creds = get_credentials_from_request()
+        folder_id = request_creds.get("folder_id") if request_creds else None
+        if not folder_id:
+            return jsonify({"error": "No folder_id configured"}), HTTPStatus.BAD_REQUEST
+        try:
+            discussions_payload = discussions_plugin.validate_sync_payload(payload)
+        except ValueError as ve:
+            return jsonify({"error": str(ve)}), HTTPStatus.BAD_REQUEST
+        drive_service = build("drive", "v3", credentials=credentials)
+        discussions_plugin.write_discussions(drive_service, folder_id, discussions_payload)
         return jsonify({"status": "ok"})
     except HttpError as e:
         return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR

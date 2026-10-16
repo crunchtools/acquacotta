@@ -16,7 +16,10 @@
 
     // IndexedDB configuration
     const DB_NAME = 'acquacotta';
-    const DB_VERSION = 3;  // Bumped for todos stores
+    const DB_VERSION = 4;  // Bumped for discussions store
+
+    // Debounce window before a local change is pushed to the cloud backend.
+    const DISCUSSION_SYNC_DEBOUNCE_MS = 2000;
 
     // sessionStorage handoff key the OAuth callback writes a pending login to
     const PENDING_AUTH_KEY = 'acquacotta_pending_auth';
@@ -29,7 +32,8 @@
         SYNC_STATUS: 'sync_status',
         AUTH: 'auth',
         TODOS: 'todos',
-        TODO_LISTS: 'todo_lists'
+        TODO_LISTS: 'todo_lists',
+        DISCUSSIONS: 'discussions'
     };
 
     // Default settings (mirrors backend defaults)
@@ -165,6 +169,13 @@
                 if (!database.objectStoreNames.contains(STORES.TODO_LISTS)) {
                     database.createObjectStore(STORES.TODO_LISTS, { keyPath: 'id' });
                 }
+
+                // Discussions store (conversations to have, organized by person)
+                if (!database.objectStoreNames.contains(STORES.DISCUSSIONS)) {
+                    const discussionsStore = database.createObjectStore(STORES.DISCUSSIONS, { keyPath: 'id' });
+                    discussionsStore.createIndex('person', 'person', { unique: false });
+                    discussionsStore.createIndex('status', 'status', { unique: false });
+                }
             };
         });
     }
@@ -264,6 +275,25 @@
      */
     function deleteFromStore(storeName, key) {
         return dbTransaction(storeName, 'readwrite', (store) => store.delete(key));
+    }
+
+    /**
+     * Delete many keys from one store in a single transaction.
+     */
+    function bulkDelete(storeName, keys) {
+        if (!keys || keys.length === 0) return Promise.resolve();
+        return new Promise((resolve, reject) => {
+            if (!db) {
+                reject(new Error('Database not initialized'));
+                return;
+            }
+            const transaction = db.transaction([storeName], 'readwrite');
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error);
+            transaction.onabort = () => reject(transaction.error || new Error('bulkDelete aborted'));
+            const store = transaction.objectStore(storeName);
+            for (const key of keys) store.delete(key);
+        });
     }
 
     /**
@@ -904,6 +934,8 @@
                 // Trigger sync when coming back online
                 if (authStatus && authStatus.logged_in) {
                     this.syncToSheets();
+                    // Flush any discussion edits made while offline (they're pending).
+                    if (this._discussionSyncPending) this.syncDiscussionsToCloud();
                 }
             });
 
@@ -1933,6 +1965,200 @@
                 return true;
             } catch (e) {
                 console.error('Todo load from cloud failed:', e);
+                return false;
+            }
+        },
+
+        // Discussions CRUD (conversations to have — a single-document store, no lists)
+
+        getDiscussions: async function() {
+            const discussions = await getAllFromStore(STORES.DISCUSSIONS);
+            return discussions.sort((a, b) => {
+                if (a.status !== b.status) return a.status === 'open' ? -1 : 1;
+                return (a.sort_order ?? 999999) - (b.sort_order ?? 999999);
+            });
+        },
+
+        createDiscussion: async function(data) {
+            const existing = await getAllFromStore(STORES.DISCUSSIONS);
+            const maxOrder = existing.reduce((m, d) => Math.max(m, d.sort_order ?? 0), 0);
+            const discussion = {
+                id: generateUUID(),
+                person: data.person || '',
+                topic: data.topic || '',
+                context: data.context || '',
+                talking_points: Array.isArray(data.talking_points) ? data.talking_points : [],
+                status: 'open',
+                priority: data.priority || 'none',
+                outcome: data.outcome || '',
+                source: data.source || '',
+                due_date: data.due_date || null,
+                sort_order: maxOrder + 1,
+                created_at: new Date().toISOString(),
+                discussed_at: null
+            };
+            await putInStore(STORES.DISCUSSIONS, discussion);
+            this._debounceDiscussionSync();
+            return discussion;
+        },
+
+        updateDiscussion: async function(id, data) {
+            const existing = await getFromStore(STORES.DISCUSSIONS, id);
+            if (!existing) return null;
+            const updated = { ...existing, ...data };
+            await putInStore(STORES.DISCUSSIONS, updated);
+            this._debounceDiscussionSync();
+            return updated;
+        },
+
+        markDiscussed: async function(id, outcome) {
+            const existing = await getFromStore(STORES.DISCUSSIONS, id);
+            if (!existing) return null;
+            existing.status = 'discussed';
+            existing.discussed_at = new Date().toISOString();
+            if (outcome !== undefined && outcome !== null) existing.outcome = outcome;
+            await putInStore(STORES.DISCUSSIONS, existing);
+            this._debounceDiscussionSync();
+            return existing;
+        },
+
+        reopenDiscussion: async function(id) {
+            const existing = await getFromStore(STORES.DISCUSSIONS, id);
+            if (!existing) return null;
+            existing.status = 'open';
+            existing.discussed_at = null;
+            await putInStore(STORES.DISCUSSIONS, existing);
+            this._debounceDiscussionSync();
+            return existing;
+        },
+
+        deleteDiscussion: async function(id) {
+            await deleteFromStore(STORES.DISCUSSIONS, id);
+            this._debounceDiscussionSync();
+            return { status: 'ok' };
+        },
+
+        // Reorder many discussions in one bulk write (one transaction, one sync),
+        // so dragging in a long list doesn't fan out into N serial transactions.
+        reorderDiscussions: async function(orderedIds) {
+            const all = await getAllFromStore(STORES.DISCUSSIONS);
+            const byId = {};
+            all.forEach(d => { byId[d.id] = d; });
+            const updated = [];
+            orderedIds.forEach((id, i) => {
+                if (byId[id]) { byId[id].sort_order = i; updated.push(byId[id]); }
+            });
+            if (updated.length) {
+                await bulkPut({ [STORES.DISCUSSIONS]: updated });
+                this._debounceDiscussionSync();
+            }
+            return { status: 'ok' };
+        },
+
+        // Discussions Sync (debounced push of local changes to the cloud backend)
+
+        _discussionSyncTimer: null,
+        _discussionSyncFailures: 0,
+
+        _debounceDiscussionSync: function() {
+            if (this._discussionSyncTimer) clearTimeout(this._discussionSyncTimer);
+            if (!authStatus || !authStatus.logged_in) return;
+            // Mark pending even while offline so a later cloud refresh/load won't
+            // clobber the unsynced edit; the 'online' handler flushes it on reconnect.
+            this._discussionSyncPending = true;
+            if (!isOnline) return;
+            this._discussionSyncTimer = setTimeout(() => this.syncDiscussionsToCloud(), DISCUSSION_SYNC_DEBOUNCE_MS);
+        },
+
+        syncDiscussionsToCloud: async function() {
+            this._discussionSyncTimer = null;
+            if (!authStatus || !authStatus.logged_in || !isOnline) return;
+            try {
+                const discussions = await getAllFromStore(STORES.DISCUSSIONS);
+                const res = await authenticatedFetch('/api/discussions/sync', {
+                    method: 'POST',
+                    body: JSON.stringify({ discussions })
+                });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                this._lastDiscussionSignature = this._discussionSignature(discussions);
+                if (!this._discussionSyncTimer) this._discussionSyncPending = false;
+                this._discussionSyncFailures = 0;
+            } catch (e) {
+                this._discussionSyncFailures = (this._discussionSyncFailures || 0) + 1;
+                const delay = global.AcquacottaUtils.syncRetryDelay(this._discussionSyncFailures);
+                console.error(`Discussion sync to cloud failed, retrying in ${Math.round(delay / 1000)}s:`, e);
+                if (!this._discussionSyncTimer) {
+                    this._discussionSyncTimer = setTimeout(() => this.syncDiscussionsToCloud(), delay);
+                }
+            }
+        },
+
+        // Stable fingerprint of the discussion document, used to detect out-of-band
+        // (e.g. MCP-made) changes without re-rendering on every poll.
+        _discussionSignature: function(discussions) {
+            const rows = discussions
+                .map(d => [d.id, d.status, d.person, d.topic, d.context, (d.talking_points || []).join('|'), d.priority, d.outcome, d.source, d.due_date, d.sort_order])
+                .sort((a, b) => (a[0] < b[0] ? -1 : 1));
+            return JSON.stringify(rows);
+        },
+
+        seedDiscussionSignature: async function() {
+            const discussions = await getAllFromStore(STORES.DISCUSSIONS);
+            this._lastDiscussionSignature = this._discussionSignature(discussions);
+        },
+
+        refreshDiscussionsFromCloudIfChanged: async function() {
+            if (!authStatus || !authStatus.logged_in || !isOnline) return false;
+            if (this._discussionSyncPending) return false;  // don't stomp an unsynced local edit
+            try {
+                const res = await authenticatedFetch('/api/discussions/sync');
+                if (!res.ok) return false;
+                // A local edit may have started while the request was in flight; if so,
+                // its debounced push owns the truth — don't overwrite it with this
+                // (now stale) snapshot. Re-check after awaiting the response.
+                if (this._discussionSyncPending) return false;
+                const payload = await res.json();
+                const remote = payload.discussions || [];
+                const sig = this._discussionSignature(remote);
+                if (sig === this._lastDiscussionSignature) return false;
+
+                const local = await getAllFromStore(STORES.DISCUSSIONS);
+                // Final guard: a local edit may have landed during the reads above.
+                if (this._discussionSyncPending) return false;
+                const remoteIds = new Set(remote.map(d => d.id));
+                const toDelete = local.filter(d => !remoteIds.has(d.id)).map(d => d.id);
+                await bulkDelete(STORES.DISCUSSIONS, toDelete);  // one transaction, not N
+                await bulkPut({ [STORES.DISCUSSIONS]: remote });
+                this._lastDiscussionSignature = sig;
+                return true;
+            } catch (e) {
+                console.error('Discussion refresh check failed:', e);
+                return false;
+            }
+        },
+
+        loadDiscussionsFromCloud: async function() {
+            if (!authStatus || !authStatus.logged_in || !isOnline) return false;
+            if (this._discussionSyncPending) return false;  // don't clobber an unsynced local edit
+            try {
+                const res = await authenticatedFetch('/api/discussions/sync');
+                if (!res.ok) return false;
+                if (this._discussionSyncPending) return false;  // re-check after the await
+                const payload = await res.json();
+                const remote = payload.discussions || [];
+                // Full replace: drop local records the cloud no longer has (deleted on
+                // another device / via MCP) so a stale copy can't be resurrected on the
+                // next push, then write the remote set — one bulk delete + one bulk put.
+                const local = await getAllFromStore(STORES.DISCUSSIONS);
+                // Final guard: a local edit may have landed during the reads above.
+                if (this._discussionSyncPending) return false;
+                const remoteIds = new Set(remote.map(d => d.id));
+                const toDelete = local.filter(d => !remoteIds.has(d.id)).map(d => d.id);
+                await bulkDelete(STORES.DISCUSSIONS, toDelete);
+                await bulkPut({ [STORES.DISCUSSIONS]: remote });
+                return true;
+            } catch (e) {
+                console.error('Discussion load from cloud failed:', e);
                 return false;
             }
         },
