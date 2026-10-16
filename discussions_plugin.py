@@ -41,7 +41,12 @@ PLUGIN_METADATA = {
 DISCUSSIONS_FILE = "data.json"
 PLUGIN_FOLDER = "plugins/discussions"
 
-_EMPTY_DATA = {"discussions": []}
+
+def _empty_doc():
+    """A fresh empty document. Never share one instance: callers mutate the inner
+    ``discussions`` list in place, so a shared dict would leak records across calls
+    (and, on the server, across users)."""
+    return {"discussions": []}
 
 
 def _transport(drive_service, folder_id):
@@ -93,17 +98,17 @@ def read_discussions(drive_service, folder_id):
     disc_transport = GoogleDriveTransport(drive_service, disc_folder_id)
     content = disc_transport.download_file(DISCUSSIONS_FILE)
     if content is None:
-        return dict(_EMPTY_DATA)
+        return _empty_doc()
     try:
         discussions_data = json.loads(content)
         if not isinstance(discussions_data, dict):
-            return dict(_EMPTY_DATA)
+            return _empty_doc()
         # The Drive file is user-editable out of band; drop any record that isn't
         # safe to render (see _safe_records) before returning it to the API/UI.
         discussions_data["discussions"] = _safe_records(discussions_data.get("discussions", []))
         return discussions_data
     except (json.JSONDecodeError, TypeError):
-        return dict(_EMPTY_DATA)
+        return _empty_doc()
 
 
 def write_discussions(drive_service, folder_id, discussions_data):
@@ -444,10 +449,20 @@ def set_discussion_order(drive_service, folder_id, discussion_id, sort_order):
 
 
 def register_mcp_tools(mcp, require_ctx):
-    """Register discussions MCP tools on a FastMCP instance.
+    """Register this plugin's MCP tools on a FastMCP instance.
 
-    `require_ctx()` is supplied by the MCP server and returns the authenticated
-    per-request context ``{"service", "folder_id", "email"}``.
+    Called once at startup by the MCP server (via the plugin registry). Defines and
+    registers the discussion tools (list/create/mark_discussed/update/delete/reorder)
+    as side effects on ``mcp``; returns nothing.
+
+    Args:
+        mcp: the FastMCP instance to register the ``@mcp.tool()`` functions on.
+        require_ctx: a zero-arg callable the server supplies that authenticates the
+            current request and returns the per-request context
+            ``{"service", "folder_id", "email"}`` (raising on an invalid token).
+
+    Returns:
+        None.
     """
     from fastmcp.exceptions import ToolError
 

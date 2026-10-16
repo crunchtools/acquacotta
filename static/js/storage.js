@@ -18,6 +18,9 @@
     const DB_NAME = 'acquacotta';
     const DB_VERSION = 4;  // Bumped for discussions store
 
+    // Debounce window before a local change is pushed to the cloud backend.
+    const DISCUSSION_SYNC_DEBOUNCE_MS = 2000;
+
     // sessionStorage handoff key the OAuth callback writes a pending login to
     const PENDING_AUTH_KEY = 'acquacotta_pending_auth';
 
@@ -2064,7 +2067,7 @@
             // clobber the unsynced edit; the 'online' handler flushes it on reconnect.
             this._discussionSyncPending = true;
             if (!isOnline) return;
-            this._discussionSyncTimer = setTimeout(() => this.syncDiscussionsToCloud(), 2000);
+            this._discussionSyncTimer = setTimeout(() => this.syncDiscussionsToCloud(), DISCUSSION_SYNC_DEBOUNCE_MS);
         },
 
         syncDiscussionsToCloud: async function() {
@@ -2120,6 +2123,8 @@
                 if (sig === this._lastDiscussionSignature) return false;
 
                 const local = await getAllFromStore(STORES.DISCUSSIONS);
+                // Final guard: a local edit may have landed during the reads above.
+                if (this._discussionSyncPending) return false;
                 const remoteIds = new Set(remote.map(d => d.id));
                 const toDelete = local.filter(d => !remoteIds.has(d.id)).map(d => d.id);
                 await bulkDelete(STORES.DISCUSSIONS, toDelete);  // one transaction, not N
@@ -2145,6 +2150,8 @@
                 // another device / via MCP) so a stale copy can't be resurrected on the
                 // next push, then write the remote set — one bulk delete + one bulk put.
                 const local = await getAllFromStore(STORES.DISCUSSIONS);
+                // Final guard: a local edit may have landed during the reads above.
+                if (this._discussionSyncPending) return false;
                 const remoteIds = new Set(remote.map(d => d.id));
                 const toDelete = local.filter(d => !remoteIds.has(d.id)).map(d => d.id);
                 await bulkDelete(STORES.DISCUSSIONS, toDelete);

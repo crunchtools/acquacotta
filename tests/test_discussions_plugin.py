@@ -227,6 +227,17 @@ class TestValidateSyncPayload:
             discussions_plugin.validate_sync_payload({"discussions": [{"id": self._UUID, "topic": []}]})
 
 
+class TestEmptyDoc:
+    def test_returns_independent_instances(self):
+        # Each empty doc must be its own object with its own list — a shared instance
+        # would leak records across calls (and across users on the server).
+        a = discussions_plugin._empty_doc()
+        b = discussions_plugin._empty_doc()
+        a["discussions"].append({"id": "x"})
+        assert b["discussions"] == []
+        assert a is not b
+
+
 class TestSafeRecords:
     _UUID = "11111111-2222-3333-4444-555555555555"
 
