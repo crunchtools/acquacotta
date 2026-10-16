@@ -15,10 +15,6 @@ classification = "by_design"
 check = "random_scripts"
 path = "smoke_test.sh"
 justification = "Post-deploy smoke test invoked by the deploy process — a documented operational entry point"
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# single_use_helpers - Extracted to reduce cyclomatic complexity
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 classification = "by_design"
 
 [[exceptions]]
@@ -61,10 +57,6 @@ classification = "gourmand_bug"
 check = "deferred_work"
 path = "static/js/storage.js"
 justification = "storage.js implements the Todos feature — 'Todo' in section headers, variable names, and store references are domain terms, not deferred work markers"
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# conditional_wrapper - Legitimate guard clauses
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 classification = "gourmand_bug"
 
 [[exceptions]]
