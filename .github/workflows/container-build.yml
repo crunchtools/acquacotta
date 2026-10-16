@@ -26,8 +26,11 @@ jobs:
     permissions:
       contents: read
     steps:
+      # No token left in .git/config: the workspace is the build context.
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Build base and app images from this PR
         run: |
@@ -35,7 +38,7 @@ jobs:
           docker build -f Containerfile -t acquacotta:scan .
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: acquacotta:scan
           scanners: vuln
@@ -113,7 +116,7 @@ jobs:
 
       - name: Run Trivy vulnerability scanner
         continue-on-error: true
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           format: "table"
