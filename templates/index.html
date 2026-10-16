@@ -176,9 +176,24 @@
             background: rgba(0,0,0,0.7); align-items: center; justify-content: center; z-index: 100;
         }
         .modal-overlay.active { display: flex; }
-        .modal { background: var(--bg-secondary); border-radius: 8px; padding: 1.5rem; width: 100%; max-width: 400px; margin: 1rem; }
+        .modal { background: var(--bg-secondary); border-radius: 8px; padding: 1.5rem; width: 100%; max-width: 400px; margin: 1rem; max-height: calc(100dvh - 2rem); overflow-y: auto; }
         .modal h2 { margin-bottom: 1.5rem; }
-        .modal-actions { display: flex; gap: 0.75rem; justify-content: flex-end; margin-top: 1.5rem; }
+        .modal-actions {
+            display: flex; gap: 0.75rem; justify-content: flex-end;
+            position: sticky; bottom: -1.5rem;
+            margin: 1.5rem -1.5rem -1.5rem; padding: 0.75rem 1.5rem 1.5rem;
+            background: var(--bg-secondary); border-top: 1px solid var(--bg-tertiary);
+        }
+        /* Progressive-disclosure "More details" block inside a modal form */
+        .modal-more { margin-bottom: 1rem; border-top: 1px solid var(--bg-tertiary); }
+        .modal-more > summary {
+            cursor: pointer; list-style: none; user-select: none;
+            color: var(--text-secondary); font-size: 0.875rem; padding: 0.75rem 0 0.25rem;
+        }
+        .modal-more > summary::-webkit-details-marker { display: none; }
+        .modal-more > summary::before { content: '\25B8  '; }
+        .modal-more[open] > summary::before { content: '\25BE  '; }
+        .modal-more[open] > summary { margin-bottom: 1rem; }
 
         /* History */
         .pomodoro-item {
@@ -854,31 +869,34 @@
                     <label for="discussion-edit-topic">Topic</label>
                     <input type="text" id="discussion-edit-topic" placeholder="What do you want to discuss?">
                 </div>
-                <div class="form-group">
-                    <label for="discussion-edit-context">Context</label>
-                    <textarea id="discussion-edit-context" rows="3" style="resize: vertical;" placeholder="Background for the conversation"></textarea>
-                </div>
-                <div class="form-group">
-                    <label for="discussion-edit-points">Talking points (one per line)</label>
-                    <textarea id="discussion-edit-points" rows="3" style="resize: vertical;" placeholder="Points, asks, or questions to raise"></textarea>
-                </div>
-                <div class="form-group">
-                    <label for="discussion-edit-priority">Priority</label>
-                    <select id="discussion-edit-priority">
-                        <option value="none">None</option>
-                        <option value="high">High</option>
-                        <option value="medium">Medium</option>
-                        <option value="low">Low</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="discussion-edit-due">Target Date</label>
-                    <input type="date" id="discussion-edit-due">
-                </div>
-                <div class="form-group">
-                    <label for="discussion-edit-source">Source (optional)</label>
-                    <input type="text" id="discussion-edit-source" placeholder="Slack/email thread URL">
-                </div>
+                <details class="modal-more" id="discussion-edit-more">
+                    <summary>More details</summary>
+                    <div class="form-group">
+                        <label for="discussion-edit-context">Context</label>
+                        <textarea id="discussion-edit-context" rows="3" style="resize: vertical;" placeholder="Background for the conversation"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="discussion-edit-points">Talking points (one per line)</label>
+                        <textarea id="discussion-edit-points" rows="3" style="resize: vertical;" placeholder="Points, asks, or questions to raise"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="discussion-edit-priority">Priority</label>
+                        <select id="discussion-edit-priority">
+                            <option value="none">None</option>
+                            <option value="high">High</option>
+                            <option value="medium">Medium</option>
+                            <option value="low">Low</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="discussion-edit-due">Target Date</label>
+                        <input type="date" id="discussion-edit-due">
+                    </div>
+                    <div class="form-group">
+                        <label for="discussion-edit-source">Source (optional)</label>
+                        <input type="text" id="discussion-edit-source" placeholder="Slack/email thread URL">
+                    </div>
+                </details>
                 <div class="form-group" id="discussion-edit-outcome-group">
                     <label for="discussion-edit-outcome">Outcome</label>
                     <textarea id="discussion-edit-outcome" rows="2" style="resize: vertical;" placeholder="What was decided or what came out of it"></textarea>
@@ -6414,6 +6432,9 @@
             document.getElementById('discussion-edit-due').value = '';
             document.getElementById('discussion-edit-source').value = '';
             document.getElementById('discussion-edit-outcome').value = '';
+            // Create: essentials only. Details collapsed; outcome hidden until the talk happens.
+            document.getElementById('discussion-edit-more').open = false;
+            document.getElementById('discussion-edit-outcome-group').style.display = 'none';
             document.getElementById('discussion-edit-modal').classList.add('active');
         }
 
@@ -6431,6 +6452,11 @@
             document.getElementById('discussion-edit-due').value = d.due_date || '';
             document.getElementById('discussion-edit-source').value = d.source || '';
             document.getElementById('discussion-edit-outcome').value = d.outcome || '';
+            // Edit: expand details if any are set so nothing hides; show outcome for revisiting.
+            const hasDetails = !!(d.context || (d.talking_points || []).length ||
+                (d.priority && d.priority !== 'none') || d.due_date || d.source);
+            document.getElementById('discussion-edit-more').open = hasDetails;
+            document.getElementById('discussion-edit-outcome-group').style.display = '';
             document.getElementById('discussion-edit-modal').classList.add('active');
         }
 
