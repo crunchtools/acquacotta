@@ -17,6 +17,12 @@ All notable changes to this project are documented here. The format follows
   per-user, enabled by default (spec 008).
 
 ### Fixed
+- Pull requests now build the base and app images and fail on fixable
+  HIGH/CRITICAL vulnerabilities. Before, Trivy ran only after an image had
+  been pushed, with exit code 0, so it could never stop anything. Accepted
+  findings go in `.trivyignore` with a reason.
+- Two Gourmand exceptions had their `classification` stranded below a stale
+  section header; the headers are gone.
 - Todo edits that fail to reach the cloud backend are no longer deleted by
   the next auto-refresh: the push checks the response, stays pending and
   retries.
