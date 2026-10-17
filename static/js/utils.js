@@ -228,6 +228,24 @@
         return Math.round(base * (0.8 + 0.4 * r));
     }
 
+    /**
+     * Where a horizontal swipe on the mobile week view should land. Swipes
+     * shorter than 50px or not clearly horizontal are ignored; swiping past
+     * either end of the week rolls into the adjacent week.
+     *
+     * @param {number} index - Currently selected day (0-6)
+     * @param {number} dx - Horizontal travel in px (negative = swipe left)
+     * @param {number} dy - Vertical travel in px
+     * @returns {object|null} - { index, weekDelta } or null if not a swipe
+     */
+    function weekSwipeTarget(index, dx, dy) {
+        if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5) return null;
+        const next = index + (dx < 0 ? 1 : -1);
+        if (next > 6) return { index: 0, weekDelta: 1 };
+        if (next < 0) return { index: 6, weekDelta: -1 };
+        return { index: next, weekDelta: 0 };
+    }
+
     // Export functions
     var utils = {
         detectDateChange: detectDateChange,
@@ -241,7 +259,8 @@
         formatMinutesAsDuration: formatMinutesAsDuration,
         getTodayString: getTodayString,
         isToday: isToday,
-        syncRetryDelay: syncRetryDelay
+        syncRetryDelay: syncRetryDelay,
+        weekSwipeTarget: weekSwipeTarget
     };
 
     // Browser global

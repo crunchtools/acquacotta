@@ -360,6 +360,32 @@ describe('syncRetryDelay', function() {
     });
 });
 
+describe('weekSwipeTarget', function() {
+    it('should move to the next day on a left swipe', function() {
+        expect(JSON.stringify(utils.weekSwipeTarget(2, -80, 5))).toBe('{"index":3,"weekDelta":0}');
+    });
+
+    it('should move to the previous day on a right swipe', function() {
+        expect(JSON.stringify(utils.weekSwipeTarget(2, 80, 5))).toBe('{"index":1,"weekDelta":0}');
+    });
+
+    it('should roll forward into next week from the last day', function() {
+        expect(JSON.stringify(utils.weekSwipeTarget(6, -80, 0))).toBe('{"index":0,"weekDelta":1}');
+    });
+
+    it('should roll back into last week from the first day', function() {
+        expect(JSON.stringify(utils.weekSwipeTarget(0, 80, 0))).toBe('{"index":6,"weekDelta":-1}');
+    });
+
+    it('should ignore short swipes', function() {
+        expect(utils.weekSwipeTarget(3, -40, 0)).toBe(null);
+    });
+
+    it('should ignore mostly vertical swipes so scrolling still works', function() {
+        expect(utils.weekSwipeTarget(3, -80, 70)).toBe(null);
+    });
+});
+
 // Test runner: executes every registered suite and renders pass/fail output.
 
 function runAllTests() {
