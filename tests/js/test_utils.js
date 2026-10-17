@@ -386,6 +386,33 @@ describe('weekSwipeTarget', function() {
     });
 });
 
+describe('resolveTabOrder', function() {
+    var tabs = ['timer', 'reports', 'history', 'todos', 'rt', 'settings'];
+
+    it('should use the default order when nothing is saved', function() {
+        expect(utils.resolveTabOrder(undefined, tabs).join()).toBe(tabs.join());
+    });
+
+    it('should honor a complete saved order', function() {
+        var saved = ['rt', 'todos', 'timer', 'reports', 'history', 'settings'];
+        expect(utils.resolveTabOrder(saved, tabs).join()).toBe(saved.join());
+    });
+
+    it('should drop unknown and repeated ids', function() {
+        var saved = ['rt', 'gone', 'rt', 'timer', 'reports', 'history', 'todos', 'settings'];
+        expect(utils.resolveTabOrder(saved, tabs).join()).toBe('rt,timer,reports,history,todos,settings');
+    });
+
+    it('should slot a new tab in after its default predecessor', function() {
+        var saved = ['settings', 'todos', 'timer', 'reports', 'history'];
+        expect(utils.resolveTabOrder(saved, tabs).join()).toBe('settings,todos,rt,timer,reports,history');
+    });
+
+    it('should put a new first tab at the front', function() {
+        expect(utils.resolveTabOrder(['reports', 'history'], ['timer', 'reports', 'history']).join()).toBe('timer,reports,history');
+    });
+});
+
 // Test runner: executes every registered suite and renders pass/fail output.
 
 function runAllTests() {

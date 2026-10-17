@@ -246,6 +246,26 @@
         return { index: next, weekDelta: 0 };
     }
 
+    /**
+     * Resolve the user's saved tab order against the tabs that actually exist.
+     * Unknown or repeated ids are dropped; a tab missing from the saved order
+     * (e.g. a newly added plugin) is slotted in after its default predecessor.
+     *
+     * @param {Array|undefined} saved - The user's tab_order setting
+     * @param {Array} available - Tab ids in default order
+     * @returns {Array} - A complete ordering of the available tabs
+     */
+    function resolveTabOrder(saved, available) {
+        if (!Array.isArray(saved)) return available.slice();
+        const order = saved.filter((id, i) => available.indexOf(id) !== -1 && saved.indexOf(id) === i);
+        available.forEach((id, i) => {
+            if (order.indexOf(id) !== -1) return;
+            const before = available.slice(0, i).reverse().find(prev => order.indexOf(prev) !== -1);
+            order.splice(before === undefined ? 0 : order.indexOf(before) + 1, 0, id);
+        });
+        return order;
+    }
+
     // Export functions
     var utils = {
         detectDateChange: detectDateChange,
@@ -260,7 +280,8 @@
         getTodayString: getTodayString,
         isToday: isToday,
         syncRetryDelay: syncRetryDelay,
-        weekSwipeTarget: weekSwipeTarget
+        weekSwipeTarget: weekSwipeTarget,
+        resolveTabOrder: resolveTabOrder
     };
 
     // Browser global

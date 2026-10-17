@@ -28,6 +28,7 @@ import mcp_tokens
 import plugin_registry
 import pomodoro_tools
 import rt_plugin
+import settings_plugin
 import sheets_storage
 import todos_plugin
 
@@ -48,6 +49,7 @@ plugin_registry.register(
     "storage", "json-google-drive", json_google_drive_storage, json_google_drive_storage.PLUGIN_METADATA
 )
 plugin_registry.register("extension", "pomodoro", pomodoro_tools, pomodoro_tools.PLUGIN_METADATA)
+plugin_registry.register("extension", "settings", settings_plugin, settings_plugin.PLUGIN_METADATA)
 plugin_registry.register("extension", "todos", todos_plugin, todos_plugin.PLUGIN_METADATA)
 plugin_registry.register("extension", "discussions", discussions_plugin, discussions_plugin.PLUGIN_METADATA)
 plugin_registry.register("extension", "rt", rt_plugin, rt_plugin.PLUGIN_METADATA)
@@ -61,8 +63,9 @@ mcp = FastMCP(
         "list_todos/create_todo/complete_todo/update_todo to manage tasks, "
         "list_discussions/create_discussion/mark_discussed to manage conversations to have "
         "with people, list_tickets/get_ticket to read the caller's Request Tracker tickets "
-        "(and reply/comment/set status on them), and get_pomodoros/get_time_summary to read "
-        "tracked time. All calls act only on the authenticated user's data."
+        "(and reply/comment/set status on them), get_pomodoros/get_time_summary to read "
+        "tracked time, and get_settings/update_settings (plus get_rt_config/set_rt_config) to "
+        "change the caller's preferences. All calls act only on the authenticated user's data."
     ),
 )
 

@@ -42,6 +42,7 @@ import mcp_tokens
 import plugin_registry
 import pomodoro_tools
 import rt_plugin
+import settings_plugin
 import sheets_storage
 import storage_api
 import todos_plugin
@@ -56,19 +57,9 @@ plugin_registry.register(
 plugin_registry.register("storage", "json-pcloud", json_pcloud_storage, json_pcloud_storage.PLUGIN_METADATA)
 
 # Mandatory feature plugins — always registered, always enabled, never toggleable.
-# Pomodoro carries MCP tools; Settings is UI-only (metadata registration is enough,
-# like the MCP plugin below).
+# Both carry MCP tools (pomodoro data; the user's settings).
 plugin_registry.register("extension", "pomodoro", pomodoro_tools, pomodoro_tools.PLUGIN_METADATA)
-SETTINGS_PLUGIN_METADATA = {
-    "id": "settings",
-    "name": "Settings",
-    "description": "App preferences and timer configuration",
-    "version": "1.0.0",
-    "type": "extension",
-    "author": "Crunchtools",
-    "mandatory": True,
-}
-plugin_registry.register("extension", "settings", SimpleNamespace(), SETTINGS_PLUGIN_METADATA)
+plugin_registry.register("extension", "settings", settings_plugin, settings_plugin.PLUGIN_METADATA)
 
 # Todos — optional plugin, per-user enable/disable (spec 008). activate_extension sets
 # the registry default to on; the per-user choice (plugin_state_todos) governs actual
@@ -1437,8 +1428,6 @@ def api_save_discussions():
 # Only the connection config lives in the user's own Drive (plugins/rt/config.json),
 # read per request and used in memory. Google creds + folder_id arrive the usual
 # stateless way (X-Credentials header on GET, _credentials in the body on POST).
-_RT_SECRET_FIELDS = ("basic_pass", "rest_token")
-_RT_PLAIN_FIELDS = ("base_url", "public_url", "basic_user", "query")
 # Which request-body field carries the value for each write action.
 _RT_ACTION_BODY_KEY = {"reply": "content", "comment": "content", "status": "status"}
 
@@ -1455,18 +1444,6 @@ def _rt_drive_context():
     if not folder_id:
         return None, None
     return build("drive", "v3", credentials=credentials), folder_id
-
-
-def _rt_public_config(config):
-    """Config safe to return to the browser: secret values masked, presence flagged.
-
-    The RT token and Basic-Auth password are never echoed back — the settings form
-    shows only whether each is set (``has_<field>``). An edit that leaves a secret
-    field blank preserves the stored value (see api_rt_save_config)."""
-    public = {field: config.get(field, "") for field in _RT_PLAIN_FIELDS}
-    for field in _RT_SECRET_FIELDS:
-        public[f"has_{field}"] = bool((config.get(field) or "").strip())
-    return public
 
 
 def _rt_error_response(exc):
@@ -1488,7 +1465,7 @@ def api_rt_get_config():
         config = rt_plugin.read_config(drive_service, folder_id)
     except HttpError as e:
         return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
-    return jsonify(_rt_public_config(config))
+    return jsonify(rt_plugin.public_config(config))
 
 
 @app.route("/api/rt/config", methods=["POST"])
@@ -1503,20 +1480,15 @@ def api_rt_save_config():
     if not drive_service:
         return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
     payload = get_request_data() or {}
+    if not isinstance(payload, dict):
+        return jsonify({"error": "RT config must be a JSON object"}), HTTPStatus.BAD_REQUEST
     try:
-        merged = dict(rt_plugin.read_config(drive_service, folder_id))
-        for field in _RT_PLAIN_FIELDS:
-            if payload.get(field) is not None:
-                merged[field] = payload[field]
-        for field in _RT_SECRET_FIELDS:
-            if payload.get(field):
-                merged[field] = payload[field]
-        clean = rt_plugin.write_config(drive_service, folder_id, merged)
+        clean = rt_plugin.update_config(drive_service, folder_id, payload)
     except ValueError as ve:
         return jsonify({"error": str(ve)}), HTTPStatus.BAD_REQUEST
     except HttpError as e:
         return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
-    return jsonify(_rt_public_config(clean))
+    return jsonify(rt_plugin.public_config(clean))
 
 
 @app.route("/api/rt/test", methods=["POST"])

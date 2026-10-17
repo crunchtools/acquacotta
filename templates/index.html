@@ -257,6 +257,23 @@
             cursor: pointer; padding: 0.25rem 0.5rem; font-size: 1rem;
         }
         .type-item button:hover { color: var(--accent); }
+        .type-item button:disabled { opacity: 0.35; cursor: not-allowed; }
+
+        /* Plugin rows reuse .type-item's look but hold real buttons and forms */
+        .type-item.plugin-row { cursor: default; user-select: auto; align-items: flex-start; }
+        .plugin-row button.secondary, .plugin-row button.primary {
+            padding: 0.375rem 0.75rem; font-size: 0.8rem; border-radius: 6px; cursor: pointer;
+        }
+        .plugin-row button.secondary {
+            background: var(--bg-tertiary); color: var(--text-primary);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+        }
+        .plugin-row button.secondary:hover { background: var(--accent); color: white; }
+        .plugin-row button.primary { background: var(--accent); color: white; border: 1px solid var(--accent); }
+        .plugin-row button.primary:hover { background: var(--accent-hover); }
+        .plugin-row button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .plugin-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin-top: 0.5rem; }
+        .plugin-settings-panel { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--bg-tertiary); }
 
         /* Todos */
         .todo-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
@@ -593,7 +610,7 @@
             clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
         }
     </style>
-    <script src="{{ url_for('static', filename='js/utils.js') }}?v=5"></script>
+    <script src="{{ url_for('static', filename='js/utils.js') }}?v=6"></script>
     <script src="{{ url_for('static', filename='js/storage.js') }}?v=10"></script>
 </head>
 <body>
@@ -950,6 +967,7 @@
         <div id="rt-view" class="view" role="tabpanel" aria-labelledby="tab-rt">
             <div class="todo-header">
                 <h2>Tickets</h2>
+                <button class="secondary" onclick="openPluginSettings('rt')" title="RT connection settings" style="padding: 0.5rem 0.75rem; font-size: 0.875rem;">&#9881; Settings</button>
             </div>
             <div class="todo-lists-bar" id="rt-queue-bar"></div>
             <div class="todo-toolbar">
@@ -1232,61 +1250,60 @@
                 </div>
                 <button class="secondary" onclick="sortTypesAlphabetically()" style="width: 100%;">Sort A-Z</button>
             </div>
-            <div class="card" id="todos-settings-card" style="display: none;">
-                <h3>To-do</h3>
-                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                    <button class="secondary" onclick="showListManager()" style="padding: 0.5rem 1rem; font-size: 0.875rem;" title="Create, rename, or delete lists">Manage Lists</button>
-                    <button class="secondary" onclick="exportTodoCSV()" style="padding: 0.5rem 1rem; font-size: 0.875rem;">Export CSV</button>
-                    <button class="secondary" onclick="document.getElementById('settings-todo-csv-upload').click()" style="padding: 0.5rem 1rem; font-size: 0.875rem;">Import CSV</button>
-                    <input type="file" id="settings-todo-csv-upload" accept=".csv" style="display: none;" onchange="importTodoCSV(this)">
+            <!-- Plugin settings panels. loadPlugins() mounts each into its plugin's row
+                 in the Plugins card; they wait here (hidden) whenever that row isn't rendered. -->
+            <div id="plugin-panels" hidden>
+                <div class="plugin-settings-panel" id="todos-settings-panel">
+                    <div class="plugin-actions" style="margin-top: 0;">
+                        <button class="secondary" onclick="showListManager()" title="Create, rename, or delete lists">Manage Lists</button>
+                    </div>
                 </div>
-            </div>
-            <div class="card" id="discussions-settings-card" style="display: none;">
-                <h3>Discussions</h3>
-                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                    <button class="secondary" onclick="exportDiscussionCSV()" style="padding: 0.5rem 1rem; font-size: 0.875rem;">Export CSV</button>
-                </div>
-            </div>
-            <div class="card" id="rt-settings-card" style="display: none;">
-                <h3>RT Tickets</h3>
-                <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1rem;">
-                    Connect your Request Tracker instance. The URL and credentials are stored only in your own Google Drive and used by the server to reach RT on your behalf — never saved on the server.
-                </p>
-                <div class="form-group">
-                    <label for="rt-cfg-base-url">RT base URL</label>
-                    <input type="text" id="rt-cfg-base-url" placeholder="https://rt.example.com (or an internal address the server can reach)">
-                </div>
-                <div class="form-group">
-                    <label for="rt-cfg-public-url">Public URL for ticket links (optional)</label>
-                    <input type="text" id="rt-cfg-public-url" placeholder="https://rt.example.com">
-                </div>
-                <div class="form-group">
-                    <label for="rt-cfg-query">Ticket search (TicketSQL)</label>
-                    <input type="text" id="rt-cfg-query" placeholder="Owner = '__CurrentUser__' AND Status != 'resolved'">
-                </div>
-                <details class="modal-more">
-                    <summary>Authentication</summary>
-                    <p style="color: var(--text-secondary); font-size: 0.75rem; margin: 0.5rem 0;">
-                        Use Basic Auth when RT (or a proxy in front of it) requires an HTTP login; otherwise use an RT REST token. Leave a secret blank to keep the stored value.
+                <div class="plugin-settings-panel" id="rt-settings-panel">
+                    <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1rem;">
+                        Connect your Request Tracker instance. The URL and credentials are stored only in your own Google Drive and used by the server to reach RT on your behalf — never saved on the server.
                     </p>
                     <div class="form-group">
-                        <label for="rt-cfg-basic-user">Basic Auth user</label>
-                        <input type="text" id="rt-cfg-basic-user" autocomplete="off">
+                        <label for="rt-cfg-base-url">RT base URL</label>
+                        <input type="text" id="rt-cfg-base-url" placeholder="https://rt.example.com (or an internal address the server can reach)">
                     </div>
                     <div class="form-group">
-                        <label for="rt-cfg-basic-pass">Basic Auth password</label>
-                        <input type="password" id="rt-cfg-basic-pass" autocomplete="new-password" placeholder="(unchanged)">
+                        <label for="rt-cfg-public-url">Public URL for ticket links (optional)</label>
+                        <input type="text" id="rt-cfg-public-url" placeholder="https://rt.example.com">
                     </div>
                     <div class="form-group">
-                        <label for="rt-cfg-token">RT REST token</label>
-                        <input type="password" id="rt-cfg-token" autocomplete="new-password" placeholder="(unchanged)">
+                        <label for="rt-cfg-query">Ticket search (TicketSQL)</label>
+                        <input type="text" id="rt-cfg-query" placeholder="Owner = '__CurrentUser__' AND Status != 'resolved'">
                     </div>
-                </details>
-                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
-                    <button class="primary" onclick="rtSaveConfig()" style="padding: 0.5rem 1rem; font-size: 0.875rem;">Save</button>
-                    <button class="secondary" onclick="rtTestConnection()" style="padding: 0.5rem 1rem; font-size: 0.875rem;">Test connection</button>
-                    <span id="rt-cfg-status" style="font-size: 0.875rem; color: var(--text-secondary);"></span>
+                    <details class="modal-more">
+                        <summary>Authentication</summary>
+                        <p style="color: var(--text-secondary); font-size: 0.75rem; margin: 0.5rem 0;">
+                            Use Basic Auth when RT (or a proxy in front of it) requires an HTTP login; otherwise use an RT REST token. Leave a secret blank to keep the stored value.
+                        </p>
+                        <div class="form-group">
+                            <label for="rt-cfg-basic-user">Basic Auth user</label>
+                            <input type="text" id="rt-cfg-basic-user" autocomplete="off">
+                        </div>
+                        <div class="form-group">
+                            <label for="rt-cfg-basic-pass">Basic Auth password</label>
+                            <input type="password" id="rt-cfg-basic-pass" autocomplete="new-password" placeholder="(unchanged)">
+                        </div>
+                        <div class="form-group">
+                            <label for="rt-cfg-token">RT REST token</label>
+                            <input type="password" id="rt-cfg-token" autocomplete="new-password" placeholder="(unchanged)">
+                        </div>
+                    </details>
+                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+                        <button class="primary" onclick="rtSaveConfig()">Save</button>
+                        <button class="secondary" onclick="rtTestConnection()">Test connection</button>
+                        <span id="rt-cfg-status" style="font-size: 0.875rem; color: var(--text-secondary);"></span>
+                    </div>
                 </div>
+            </div>
+            <div class="card">
+                <h3>Tab Order</h3>
+                <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1rem;">Drag, or use the arrows, to order the tabs across the top.</p>
+                <div id="tab-order-list" style="margin-bottom: 1rem;"></div>
+                <button class="secondary" onclick="resetTabOrder()" style="width: 100%;">Reset to default</button>
             </div>
             <div class="card">
                 <h3>Plugins</h3>
@@ -2500,6 +2517,91 @@
                 if (btn.dataset.view === 'settings') rtLoadConfigForm();
             });
         });
+
+        // Tab order — the user's choice (settings.tab_order), applied by moving the
+        // existing nav buttons so their listeners stay attached.
+        const DEFAULT_TAB_ORDER = Array.from(document.querySelectorAll('nav[role="tablist"] [role="tab"]')).map(b => b.dataset.view);
+
+        function currentTabOrder() {
+            return AcquacottaUtils.resolveTabOrder(settings.tab_order, DEFAULT_TAB_ORDER);
+        }
+
+        function applyTabOrder() {
+            const nav = document.querySelector('nav[role="tablist"]');
+            currentTabOrder().forEach(view => {
+                const btn = document.getElementById(`tab-${view}`);
+                if (btn) nav.appendChild(btn);
+            });
+        }
+
+        function renderTabOrderList() {
+            const container = document.getElementById('tab-order-list');
+            if (!container) return;
+            const order = currentTabOrder();
+            container.innerHTML = order.map((view, i) => {
+                const tab = document.getElementById(`tab-${view}`);
+                const label = escapeHtml(tab ? tab.textContent.trim() : view);
+                const hidden = tab && tab.style.display === 'none'
+                    ? '<span style="color: var(--text-secondary); font-size: 0.75rem; margin-left: 0.5rem;">(hidden)</span>' : '';
+                return `<div class="type-item tab-order-item" draggable="true" data-index="${i}">
+                    <div style="display: flex; align-items: center;">
+                        <span class="drag-handle">☰</span><span>${label}</span>${hidden}
+                    </div>
+                    <div>
+                        <button onclick="moveTab(${i}, -1)" ${i === 0 ? 'disabled' : ''} title="Move earlier" aria-label="Move ${label} earlier">&#9650;</button>
+                        <button onclick="moveTab(${i}, 1)" ${i === order.length - 1 ? 'disabled' : ''} title="Move later" aria-label="Move ${label} later">&#9660;</button>
+                    </div>
+                </div>`;
+            }).join('');
+            container.querySelectorAll('.tab-order-item').forEach(item => {
+                item.addEventListener('dragstart', e => {
+                    tabDragIndex = parseInt(item.dataset.index);
+                    item.classList.add('dragging');
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', item.dataset.index);  // Firefox won't start a drag without data
+                });
+                item.addEventListener('dragend', () => {
+                    container.querySelectorAll('.tab-order-item').forEach(el => el.classList.remove('dragging', 'drag-over'));
+                });
+                item.addEventListener('dragover', e => {
+                    e.preventDefault();
+                    if (parseInt(item.dataset.index) !== tabDragIndex) item.classList.add('drag-over');
+                });
+                item.addEventListener('dragleave', () => item.classList.remove('drag-over'));
+                item.addEventListener('drop', e => {
+                    e.preventDefault();
+                    const target = parseInt(item.dataset.index);
+                    if (tabDragIndex === null || target === tabDragIndex) return;
+                    // The dropped tab takes the target row's index in the final order.
+                    const next = currentTabOrder();
+                    const [moved] = next.splice(tabDragIndex, 1);
+                    next.splice(target, 0, moved);
+                    tabDragIndex = null;
+                    setTabOrder(next);
+                });
+            });
+        }
+
+        let tabDragIndex = null;
+
+        function setTabOrder(order) {
+            settings.tab_order = order;
+            applyTabOrder();
+            renderTabOrderList();
+            autoSaveSettings();
+        }
+
+        function moveTab(index, delta) {
+            const order = currentTabOrder();
+            const target = index + delta;
+            if (target < 0 || target >= order.length) return;
+            [order[index], order[target]] = [order[target], order[index]];
+            setTabOrder(order);
+        }
+
+        function resetTabOrder() {
+            setTabOrder(DEFAULT_TAB_ORDER.slice());
+        }
 
         // Handle view URL parameter (e.g., after OAuth redirect)
         function switchToViewFromURL() {
@@ -4051,6 +4153,10 @@
             populateTypeDropdowns();
             renderTypesList();
 
+            // Top-level tab order
+            applyTabOrder();
+            renderTabOrderList();
+
             // Update break info display
             updateBreakInfo();
             updateBreakButtonStyles();
@@ -4086,13 +4192,13 @@
                     <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.25rem;">Endpoint</div>
                     <input type="text" readonly onclick="this.select()" value="${endpoint}"
                            style="width: 100%; font-family: monospace; font-size: 0.75rem; margin-bottom: 0.5rem;">
-                    <button class="secondary" onclick="regenerateMcp()" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">Regenerate token</button>`;
+                    <button class="secondary" onclick="regenerateMcp()">Regenerate token</button>`;
                 if (mcpMintedToken) {
                     actions += `<div style="margin-top: 0.5rem; padding: 0.5rem; background: var(--bg-tertiary); border-radius: 6px;">
                         <div style="font-size: 0.75rem; font-weight: 500; margin-bottom: 0.25rem;">Token — copy now, it won't be shown again</div>
                         <textarea readonly rows="3" onclick="this.select()"
                                   style="width: 100%; font-family: monospace; font-size: 0.75rem; word-break: break-all;">${mcpMintedToken}</textarea>
-                        <button class="secondary" onclick="copyMcpToken(this)" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; margin-top: 0.25rem;">Copy</button>
+                        <button class="secondary" onclick="copyMcpToken(this)" style="margin-top: 0.25rem;">Copy</button>
                     </div>`;
                 }
                 actions += `</div>`;
@@ -4102,8 +4208,8 @@
                 mcpMessage = '';  // show once, then clear so it doesn't linger on later re-renders
             }
 
-            return `<div class="type-item" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
-                <div style="flex: 1;">
+            return `<div class="type-item plugin-row" style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                <div style="flex: 1; min-width: 0;">
                     <div style="font-weight: 500;">${plugin.name}</div>
                     <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem;">${plugin.description}</div>
                     <div style="display: flex; gap: 0.5rem; align-items: center; margin-top: 0.375rem;">
@@ -4161,6 +4267,54 @@
             );
         }
 
+        // Plugin settings panels live in #plugin-panels until loadPlugins mounts each into
+        // its plugin's row. They're parked before every re-render so the innerHTML swap
+        // never destroys them — ids, form values and handlers survive.
+        const openPluginPanels = new Set();
+
+        function parkPluginPanels() {
+            const holder = document.getElementById('plugin-panels');
+            document.querySelectorAll('.plugin-settings-panel').forEach(panel => holder.appendChild(panel));
+        }
+
+        function mountPluginPanels() {
+            document.querySelectorAll('.plugin-settings-slot').forEach(slot => {
+                const pluginId = slot.dataset.pluginId;
+                const panel = document.getElementById(`${pluginId}-settings-panel`);
+                if (!panel) return;
+                slot.appendChild(panel);
+                panel.hidden = !openPluginPanels.has(pluginId);
+            });
+        }
+
+        function togglePluginSettings(pluginId, forceOpen) {
+            const panel = document.getElementById(`${pluginId}-settings-panel`);
+            if (!panel) return;
+            const open = forceOpen === undefined ? panel.hidden : forceOpen;
+            panel.hidden = !open;
+            if (open) openPluginPanels.add(pluginId); else openPluginPanels.delete(pluginId);
+            const btn = document.getElementById(`plugin-settings-btn-${pluginId}`);
+            if (btn) btn.setAttribute('aria-expanded', String(open));
+        }
+
+        // Jump from a plugin's own tab to its settings, expanded and in view.
+        async function openPluginSettings(pluginId) {
+            document.getElementById('tab-settings').click();
+            openPluginPanels.add(pluginId);
+            const panel = document.getElementById(`${pluginId}-settings-panel`);
+            if (!panel || !panel.closest('.plugin-settings-slot')) await loadPlugins();
+            togglePluginSettings(pluginId, true);
+            const row = document.getElementById(`${pluginId}-settings-panel`)?.closest('.plugin-row');
+            if (row) row.scrollIntoView({ block: 'start' });
+            if (pluginId === 'rt') {
+                const cfg = await rtLoadConfigForm();
+                if (cfg && !cfg.basic_user && !cfg.has_basic_pass && !cfg.has_rest_token) {
+                    document.querySelector('#rt-settings-panel details').open = true;
+                }
+                document.getElementById('rt-cfg-base-url').focus({ preventScroll: true });
+            }
+        }
+
         async function loadPlugins() {
             const container = document.getElementById('plugins-list');
             const loading = document.getElementById('plugins-loading');
@@ -4193,14 +4347,17 @@
                         } catch (e) { /* offline */ }
                     }
 
-                    let actions = '';
+                    const buttons = [];
+                    const notes = [];
+                    if (isActive && document.getElementById(`${plugin.id}-settings-panel`)) {
+                        const open = openPluginPanels.has(plugin.id);
+                        buttons.push(`<button class="secondary" id="plugin-settings-btn-${plugin.id}" onclick="togglePluginSettings('${plugin.id}')" aria-expanded="${open}" aria-controls="${plugin.id}-settings-panel">&#9881; Settings</button>`);
+                    }
                     if (isActive && plugin.has_import_export) {
                         const uploadId = `plugin-csv-upload-${plugin.id}`;
-                        actions = `<div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
-                            <button class="secondary" onclick="exportPluginCSV('${plugin.id}')" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">Export CSV</button>
-                            <button class="secondary" onclick="document.getElementById('${uploadId}').click()" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">Import CSV</button>
-                            <input type="file" id="${uploadId}" accept=".csv" style="display: none;" onchange="importPluginCSV('${plugin.id}', this)">
-                        </div>`;
+                        buttons.push(`<button class="secondary" onclick="exportPluginCSV('${plugin.id}')">Export CSV</button>`);
+                        buttons.push(`<button class="secondary" onclick="document.getElementById('${uploadId}').click()">Import CSV</button>
+                            <input type="file" id="${uploadId}" accept=".csv" style="display: none;" onchange="importPluginCSV('${plugin.id}', this)">`);
                     }
 
                     // pCloud is storage, not identity: the account is linked separately
@@ -4213,21 +4370,20 @@
                             : linked
                                 ? `Linked &middot; ${authStatus.pcloud_folder_path || '/Acquacotta'}`
                                 : 'Authorize pCloud to store your data in /Acquacotta';
-                        actions += `<div style="margin-top: 0.5rem;">
-                            <button class="secondary" onclick="loginPCloud()" ${authStatus.logged_in ? '' : 'disabled'} style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">${label}</button>
-                            <span style="font-size: 0.7rem; color: var(--text-secondary); margin-left: 0.25rem;">${hint}</span>
-                        </div>`;
+                        buttons.push(`<button class="secondary" onclick="loginPCloud()" ${authStatus.logged_in ? '' : 'disabled'}>${label}</button>`);
+                        notes.push(`<span style="font-size: 0.7rem; color: var(--text-secondary);">${hint}</span>`);
                     }
 
                     if (plugin.id === 'json-google-drive' && data.active_storage === 'sheets') {
-                        actions += `<div style="margin-top: 0.5rem;">
-                            <button class="secondary" onclick="showMigrateToJsonModal()" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">Migrate from Sheets</button>
-                            <span style="font-size: 0.7rem; color: var(--text-secondary); margin-left: 0.25rem;">Copy data &amp; switch backend</span>
-                        </div>`;
+                        buttons.push(`<button class="secondary" onclick="showMigrateToJsonModal()">Migrate from Sheets</button>`);
+                        notes.push(`<span style="font-size: 0.7rem; color: var(--text-secondary);">Copy data &amp; switch backend</span>`);
                     }
 
-                    return `<div class="type-item" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
-                        <div style="flex: 1;">
+                    const actions = buttons.length ? `<div class="plugin-actions">${buttons.join('')}${notes.join('')}</div>` : '';
+                    const panelSlot = isActive ? `<div class="plugin-settings-slot" data-plugin-id="${plugin.id}"></div>` : '';
+
+                    return `<div class="type-item plugin-row" style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                        <div style="flex: 1; min-width: 0;">
                             <div style="font-weight: 500;">${plugin.name}</div>
                             <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem;">${plugin.description}</div>
                             <div style="display: flex; gap: 0.5rem; align-items: center; margin-top: 0.375rem;">
@@ -4236,6 +4392,7 @@
                                 ${countBadge}
                             </div>
                             ${actions}
+                            ${panelSlot}
                         </div>
                         <label style="display: flex; align-items: center; ${plugin.mandatory ? '' : 'cursor: pointer;'} gap: 0.5rem; margin-left: 1rem;" ${plugin.mandatory ? 'title="This plugin is required and cannot be disabled"' : ''}>
                             <span style="font-size: 0.75rem; color: ${plugin.mandatory ? 'var(--text-secondary)' : (isActive ? 'var(--success)' : 'var(--text-secondary)')};">${plugin.mandatory ? 'Required' : (isActive ? 'On' : 'Off')}</span>
@@ -4245,7 +4402,10 @@
                         </label>
                     </div>`;
                 });
-                container.innerHTML = (await Promise.all(cardPromises)).join('');
+                const cards = await Promise.all(cardPromises);
+                parkPluginPanels();
+                container.innerHTML = cards.join('');
+                mountPluginPanels();
 
                 updateSyncCardVisibility(data.active_storage);
                 updateExtensionTabs(data.plugins);
@@ -4324,7 +4484,6 @@
             for (const plugin of extensions) {
                 const active = pluginEffectiveActive(plugin);
                 const tab = document.getElementById(`tab-${plugin.tab_id}`);
-                const settingsCard = document.getElementById(`${plugin.tab_id}-settings-card`);
                 if (tab) {
                     tab.style.display = active ? '' : 'none';
                     if (!active) {
@@ -4334,10 +4493,8 @@
                         }
                     }
                 }
-                if (settingsCard) {
-                    settingsCard.style.display = active ? '' : 'none';
-                }
             }
+            renderTabOrderList();
         }
 
         function updateSyncCardVisibility(activeStorage) {
@@ -5789,9 +5946,12 @@
 
         // Arrow key navigation within tablist (roving tabindex managed by click handlers above)
         (function() {
-            const tabs = Array.from(document.querySelectorAll('nav[role="tablist"] [role="tab"]'));
-            tabs.forEach(tab => {
+            // Looked up per keypress: the user can reorder tabs and plugins hide theirs.
+            const visibleTabs = () => Array.from(document.querySelectorAll('nav[role="tablist"] [role="tab"]'))
+                .filter(t => t.style.display !== 'none');
+            document.querySelectorAll('nav[role="tablist"] [role="tab"]').forEach(tab => {
                 tab.addEventListener('keydown', (e) => {
+                    const tabs = visibleTabs();
                     const current = tabs.indexOf(e.currentTarget);
                     if (current === -1) return;
                     let next = -1;
@@ -6529,7 +6689,15 @@
             if (msg) msg.textContent = 'Loading tickets from RT…';
             const result = await Storage.loadTicketsFromCloud();
             if (!result.configured) {
-                if (msg) msg.textContent = 'RT isn’t configured yet — open Settings → RT Tickets to connect.';
+                if (msg) {
+                    msg.textContent = 'RT isn’t connected yet. ';
+                    const connect = document.createElement('button');
+                    connect.className = 'primary';
+                    connect.textContent = 'Connect RT';
+                    connect.style.cssText = 'padding: 0.375rem 0.75rem; font-size: 0.875rem; margin-left: 0.25rem;';
+                    connect.addEventListener('click', () => openPluginSettings('rt'));
+                    msg.appendChild(connect);
+                }
                 rtTickets = [];
                 renderTickets();
                 return;
@@ -6632,6 +6800,7 @@
                 document.getElementById('rt-cfg-basic-user').value = cfg.basic_user || '';
                 document.getElementById('rt-cfg-basic-pass').placeholder = cfg.has_basic_pass ? '(unchanged)' : '';
                 document.getElementById('rt-cfg-token').placeholder = cfg.has_rest_token ? '(unchanged)' : '';
+                return cfg;
             } catch (e) {
                 // Not logged in or no storage yet — leave the form as-is, but surface
                 // a real failure so a Drive/API error isn't invisible.
