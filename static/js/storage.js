@@ -16,7 +16,7 @@
 
     // IndexedDB configuration
     const DB_NAME = 'acquacotta';
-    const DB_VERSION = 4;  // Bumped for discussions store
+    const DB_VERSION = 5;  // Bumped for RT tickets store
 
     // Debounce window before a local change is pushed to the cloud backend.
     const DISCUSSION_SYNC_DEBOUNCE_MS = 2000;
@@ -33,7 +33,9 @@
         AUTH: 'auth',
         TODOS: 'todos',
         TODO_LISTS: 'todo_lists',
-        DISCUSSIONS: 'discussions'
+        DISCUSSIONS: 'discussions',
+        TICKETS: 'tickets',
+        TICKET_HISTORY: 'ticket_history'
     };
 
     // Default settings (mirrors backend defaults)
@@ -175,6 +177,21 @@
                     const discussionsStore = database.createObjectStore(STORES.DISCUSSIONS, { keyPath: 'id' });
                     discussionsStore.createIndex('person', 'person', { unique: false });
                     discussionsStore.createIndex('status', 'status', { unique: false });
+                }
+
+                // RT tickets store — a read-through cache of the user's Request
+                // Tracker tickets (RT is the source of truth; this is for offline
+                // reads only). Grouped by queue in the UI.
+                if (!database.objectStoreNames.contains(STORES.TICKETS)) {
+                    const ticketsStore = database.createObjectStore(STORES.TICKETS, { keyPath: 'id' });
+                    ticketsStore.createIndex('queue', 'queue', { unique: false });
+                    ticketsStore.createIndex('status', 'status', { unique: false });
+                }
+
+                // RT ticket history — cached per ticket id so the thread serves
+                // offline (constitution: the IndexedDB cache serves all reads).
+                if (!database.objectStoreNames.contains(STORES.TICKET_HISTORY)) {
+                    database.createObjectStore(STORES.TICKET_HISTORY, { keyPath: 'id' });
                 }
             };
         });
@@ -422,6 +439,17 @@
 
     function authenticatedFetchRaw(url, options = {}) {
         return fetch(url, options);
+    }
+
+    // Pull the server's JSON {error} message off a failed response, falling back to
+    // the HTTP status. Only parses JSON when the server says it's JSON (our API
+    // always does), so there's no error to swallow on a non-JSON body.
+    async function apiErrorMessage(res) {
+        if ((res.headers.get('content-type') || '').includes('application/json')) {
+            const body = await res.json();
+            if (body && body.error) return body.error;
+        }
+        return `HTTP ${res.status}`;
     }
 
     /**
@@ -2161,6 +2189,94 @@
                 console.error('Discussion load from cloud failed:', e);
                 return false;
             }
+        },
+
+        // RT Tickets — read-through cache. RT is the source of truth: we pull tickets
+        // live from RT (through the server proxy) and cache them for offline reads;
+        // we never push ticket data back to the cloud. Writes (reply/comment/status)
+        // go straight to RT and are followed by a reload.
+
+        getTickets: async function() {
+            return await getAllFromStore(STORES.TICKETS);
+        },
+
+        getTicket: async function(id) {
+            return await getFromStore(STORES.TICKETS, id);
+        },
+
+        loadTicketsFromCloud: async function() {
+            if (!authStatus || !authStatus.logged_in || !isOnline) return { ok: false, configured: true };
+            try {
+                const res = await authenticatedFetch('/api/rt/sync');
+                if (!res.ok) {
+                    return { ok: false, configured: true, error: await apiErrorMessage(res) };
+                }
+                const payload = await res.json();
+                if (!payload.configured) return { ok: true, configured: false };
+                const remote = payload.tickets || [];
+                // Full replace: drop cached tickets RT no longer returns (closed, or
+                // dropped out of the query), then write the current set.
+                const local = await getAllFromStore(STORES.TICKETS);
+                const remoteIds = new Set(remote.map(t => t.id));
+                const toDelete = local.filter(t => !remoteIds.has(t.id)).map(t => t.id);
+                await bulkDelete(STORES.TICKETS, toDelete);
+                await bulkPut({ [STORES.TICKETS]: remote });
+                return { ok: true, configured: true };
+            } catch (loadErr) {
+                console.error('RT ticket load failed:', loadErr);
+                return { ok: false, configured: true, error: loadErr.message };
+            }
+        },
+
+        // History is cached per ticket so the thread serves offline. Online, fetch
+        // fresh and update the cache; offline or on failure, fall back to the cache.
+        getTicketHistory: async function(id) {
+            const key = String(id);
+            const cached = await getFromStore(STORES.TICKET_HISTORY, key);
+            if (!isOnline) return cached ? cached.history : [];
+            try {
+                const res = await authenticatedFetch(`/api/rt/ticket/${encodeURIComponent(key)}/history`);
+                if (!res.ok) {
+                    if (cached) return cached.history;
+                    throw new Error(await apiErrorMessage(res));
+                }
+                const history = (await res.json()).history || [];
+                await putInStore(STORES.TICKET_HISTORY, { id: key, history, cached_at: Date.now() });
+                return history;
+            } catch (fetchErr) {
+                if (cached) return cached.history;
+                throw fetchErr;
+            }
+        },
+
+        getRTConfig: async function() {
+            const res = await authenticatedFetch('/api/rt/config');
+            if (!res.ok) throw new Error(await apiErrorMessage(res));
+            return await res.json();
+        },
+
+        saveRTConfig: async function(config) {
+            const res = await authenticatedFetch('/api/rt/config', {
+                method: 'POST',
+                body: JSON.stringify(config)
+            });
+            if (!res.ok) throw new Error(await apiErrorMessage(res));
+            return await res.json();
+        },
+
+        testRTConnection: async function() {
+            const res = await authenticatedFetch('/api/rt/test', { method: 'POST', body: JSON.stringify({}) });
+            if (!res.ok) throw new Error(await apiErrorMessage(res));
+            return await res.json();
+        },
+
+        rtTicketAction: async function(id, action, payload) {
+            const res = await authenticatedFetch(`/api/rt/ticket/${encodeURIComponent(id)}/${action}`, {
+                method: 'POST',
+                body: JSON.stringify(payload || {})
+            });
+            if (!res.ok) throw new Error(await apiErrorMessage(res));
+            return await res.json();
         },
 
         getLinkedTodoTime: async function(todoId) {

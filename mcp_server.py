@@ -27,6 +27,7 @@ import json_google_drive_storage
 import mcp_tokens
 import plugin_registry
 import pomodoro_tools
+import rt_plugin
 import sheets_storage
 import todos_plugin
 
@@ -49,6 +50,7 @@ plugin_registry.register(
 plugin_registry.register("extension", "pomodoro", pomodoro_tools, pomodoro_tools.PLUGIN_METADATA)
 plugin_registry.register("extension", "todos", todos_plugin, todos_plugin.PLUGIN_METADATA)
 plugin_registry.register("extension", "discussions", discussions_plugin, discussions_plugin.PLUGIN_METADATA)
+plugin_registry.register("extension", "rt", rt_plugin, rt_plugin.PLUGIN_METADATA)
 plugin_registry.activate_storage("json-google-drive")
 
 mcp = FastMCP(
@@ -58,8 +60,9 @@ mcp = FastMCP(
         "discussions, and pomodoro time-tracking data, stored in their Google Drive. Use "
         "list_todos/create_todo/complete_todo/update_todo to manage tasks, "
         "list_discussions/create_discussion/mark_discussed to manage conversations to have "
-        "with people, and get_pomodoros/get_time_summary to read tracked time. All calls act "
-        "only on the authenticated user's data."
+        "with people, list_tickets/get_ticket to read the caller's Request Tracker tickets "
+        "(and reply/comment/set status on them), and get_pomodoros/get_time_summary to read "
+        "tracked time. All calls act only on the authenticated user's data."
     ),
 )
 

@@ -218,6 +218,41 @@ class TestDiscussionsSyncEndpoints:
         assert client.post("/api/discussions/sync", json={"discussions": []}).status_code == 401
 
 
+class TestRTRegistered:
+    """RT Tickets is an optional extension plugin that owns a tab (spec 008)."""
+
+    def test_rt_registered_as_extension_with_tab(self, client):
+        data = json.loads(client.get("/api/plugins").data)
+        rt = next(p for p in data["plugins"] if p["id"] == "rt")
+        assert rt["plugin_type"] == "extension"
+        assert rt["has_tab"] is True
+        assert rt["tab_id"] == "rt"
+        assert rt["tab_label"] == "Tickets"
+        assert rt["mandatory"] is False
+
+
+class TestRTEndpoints:
+    """The /api/rt/* endpoints require auth; none should be reachable anonymously."""
+
+    def test_config_get_requires_auth(self, client):
+        assert client.get("/api/rt/config").status_code == 401
+
+    def test_config_post_requires_auth(self, client):
+        assert client.post("/api/rt/config", json={"base_url": "http://x"}).status_code == 401
+
+    def test_sync_requires_auth(self, client):
+        assert client.get("/api/rt/sync").status_code == 401
+
+    def test_test_requires_auth(self, client):
+        assert client.post("/api/rt/test", json={}).status_code == 401
+
+    def test_history_requires_auth(self, client):
+        assert client.get("/api/rt/ticket/5/history").status_code == 401
+
+    def test_reply_requires_auth(self, client):
+        assert client.post("/api/rt/ticket/5/reply", json={"content": "hi"}).status_code == 401
+
+
 class TestExtensionTogglePerUser:
     """Extension enablement is a per-user client preference; the toggle endpoint
     validates the plugin but never flips shared global registry state (spec 008)."""

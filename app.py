@@ -41,6 +41,7 @@ import json_pcloud_storage
 import mcp_tokens
 import plugin_registry
 import pomodoro_tools
+import rt_plugin
 import sheets_storage
 import storage_api
 import todos_plugin
@@ -79,6 +80,13 @@ plugin_registry.activate_extension("todos")
 # Todos. It was broken out of the Todos "Discussions" list into its own tab.
 plugin_registry.register("extension", "discussions", discussions_plugin, discussions_plugin.PLUGIN_METADATA)
 plugin_registry.activate_extension("discussions")
+
+# RT Tickets — optional plugin, per-user enable/disable (spec 008). Unlike the
+# Drive-owned plugins above, it mirrors an external Request Tracker: the server
+# proxies RT REST 2.0 per request using the user's connection config (stored in
+# their own Drive), and nothing from RT is persisted server-side.
+plugin_registry.register("extension", "rt", rt_plugin, rt_plugin.PLUGIN_METADATA)
+plugin_registry.activate_extension("rt")
 
 # MCP access appears in the plugin list. It has no server-side module contract —
 # enable/disable and per-user state live in the /api/mcp/* routes + the user's Drive, so a
@@ -1422,6 +1430,170 @@ def api_save_discussions():
         return jsonify({"status": "ok"})
     except HttpError as e:
         return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+
+
+# RT Tickets — proxy to the user's Request Tracker. RT is the source of truth; the
+# server holds nothing. Reads fetch live from RT REST 2.0; writes post back to RT.
+# Only the connection config lives in the user's own Drive (plugins/rt/config.json),
+# read per request and used in memory. Google creds + folder_id arrive the usual
+# stateless way (X-Credentials header on GET, _credentials in the body on POST).
+_RT_SECRET_FIELDS = ("basic_pass", "rest_token")
+_RT_PLAIN_FIELDS = ("base_url", "public_url", "basic_user", "query")
+# Which request-body field carries the value for each write action.
+_RT_ACTION_BODY_KEY = {"reply": "content", "comment": "content", "status": "status"}
+
+
+def _rt_drive_context():
+    """(drive_service, folder_id) for the logged-in user, or (None, None)."""
+    if not is_logged_in():
+        return None, None
+    credentials = get_credentials()
+    if not credentials:
+        return None, None
+    request_creds = get_credentials_from_request()
+    folder_id = request_creds.get("folder_id") if request_creds else None
+    if not folder_id:
+        return None, None
+    return build("drive", "v3", credentials=credentials), folder_id
+
+
+def _rt_public_config(config):
+    """Config safe to return to the browser: secret values masked, presence flagged.
+
+    The RT token and Basic-Auth password are never echoed back — the settings form
+    shows only whether each is set (``has_<field>``). An edit that leaves a secret
+    field blank preserves the stored value (see api_rt_save_config)."""
+    public = {field: config.get(field, "") for field in _RT_PLAIN_FIELDS}
+    for field in _RT_SECRET_FIELDS:
+        public[f"has_{field}"] = bool((config.get(field) or "").strip())
+    return public
+
+
+def _rt_error_response(exc):
+    """Map a plugin exception to a JSON error response, or None if not ours."""
+    if isinstance(exc, ValueError):
+        return jsonify({"error": str(exc)}), HTTPStatus.BAD_REQUEST
+    if isinstance(exc, rt_plugin.RTError):
+        return jsonify({"error": str(exc)}), HTTPStatus.BAD_GATEWAY
+    return None
+
+
+@app.route("/api/rt/config", methods=["GET"])
+def api_rt_get_config():
+    """Return the caller's RT connection config (secrets masked)."""
+    drive_service, folder_id = _rt_drive_context()
+    if not drive_service:
+        return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
+    try:
+        config = rt_plugin.read_config(drive_service, folder_id)
+    except HttpError as e:
+        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+    return jsonify(_rt_public_config(config))
+
+
+@app.route("/api/rt/config", methods=["POST"])
+def api_rt_save_config():
+    """Save the caller's RT connection config to their Drive.
+
+    Plain fields are overwritten by whatever the form submits; a secret field is
+    only overwritten when a non-empty value is provided, so editing other fields
+    doesn't wipe a previously stored token/password (they are masked on read).
+    """
+    drive_service, folder_id = _rt_drive_context()
+    if not drive_service:
+        return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
+    payload = get_request_data() or {}
+    try:
+        merged = dict(rt_plugin.read_config(drive_service, folder_id))
+        for field in _RT_PLAIN_FIELDS:
+            if payload.get(field) is not None:
+                merged[field] = payload[field]
+        for field in _RT_SECRET_FIELDS:
+            if payload.get(field):
+                merged[field] = payload[field]
+        clean = rt_plugin.write_config(drive_service, folder_id, merged)
+    except ValueError as ve:
+        return jsonify({"error": str(ve)}), HTTPStatus.BAD_REQUEST
+    except HttpError as e:
+        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+    return jsonify(_rt_public_config(clean))
+
+
+@app.route("/api/rt/test", methods=["POST"])
+def api_rt_test():
+    """Test the stored RT connection; returns RT's version on success."""
+    drive_service, folder_id = _rt_drive_context()
+    if not drive_service:
+        return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
+    try:
+        config = rt_plugin.read_config(drive_service, folder_id)
+        result = rt_plugin.test_connection(config)
+    except (ValueError, rt_plugin.RTError) as exc:
+        return _rt_error_response(exc)
+    except HttpError as e:
+        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+    return jsonify(result)
+
+
+@app.route("/api/rt/sync", methods=["GET"])
+def api_rt_sync():
+    """Fetch the caller's RT tickets live (read-through). Cached client-side."""
+    drive_service, folder_id = _rt_drive_context()
+    if not drive_service:
+        return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
+    try:
+        config = rt_plugin.read_config(drive_service, folder_id)
+        if not rt_plugin.config_is_connectable(config):
+            return jsonify({"tickets": [], "configured": False})
+        tickets = rt_plugin.fetch_tickets(config)
+    except (ValueError, rt_plugin.RTError) as exc:
+        return _rt_error_response(exc)
+    except HttpError as e:
+        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+    return jsonify({"tickets": tickets, "configured": True})
+
+
+@app.route("/api/rt/ticket/<ticket_id>/history", methods=["GET"])
+def api_rt_ticket_history(ticket_id):
+    """Fetch one ticket's recent history thread live from RT."""
+    drive_service, folder_id = _rt_drive_context()
+    if not drive_service:
+        return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
+    try:
+        config = rt_plugin.read_config(drive_service, folder_id)
+        history = rt_plugin.fetch_ticket_history(config, ticket_id)
+    except (ValueError, rt_plugin.RTError) as exc:
+        return _rt_error_response(exc)
+    except HttpError as e:
+        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+    return jsonify({"history": history})
+
+
+@app.route("/api/rt/ticket/<ticket_id>/<action>", methods=["POST"])
+def api_rt_ticket_action(ticket_id, action):
+    """Write-through action on a ticket: reply, comment, or change status.
+
+    ``action`` must be one of reply/comment/status; anything else is 404. The body
+    must be a JSON object carrying the value (``content`` for reply/comment,
+    ``status`` for status) alongside the usual ``_credentials``.
+    """
+    body_key = _RT_ACTION_BODY_KEY.get(action)
+    if body_key is None:
+        return jsonify({"error": f"Unknown ticket action: {action}"}), HTTPStatus.NOT_FOUND
+    drive_service, folder_id = _rt_drive_context()
+    if not drive_service:
+        return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
+    payload = get_request_data()
+    if not isinstance(payload, dict):
+        return jsonify({"error": "Request body must be a JSON object"}), HTTPStatus.BAD_REQUEST
+    try:
+        config = rt_plugin.read_config(drive_service, folder_id)
+        rt_plugin.act_on_ticket(config, ticket_id, action, payload.get(body_key, ""))
+    except (ValueError, rt_plugin.RTError) as exc:
+        return _rt_error_response(exc)
+    except HttpError as e:
+        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+    return jsonify({"status": "ok"})
 
 
 # MCP Access — enable/disable the hosted MCP endpoint and mint per-user tokens.

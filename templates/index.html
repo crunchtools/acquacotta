@@ -625,6 +625,7 @@
             <button data-view="history" role="tab" aria-selected="false" aria-controls="history-view" id="tab-history" tabindex="-1" title="Browse and edit your pomodoro history">History</button>
             <button data-view="todos" role="tab" aria-selected="false" aria-controls="todos-view" id="tab-todos" tabindex="-1" title="Manage your to-do lists and tasks">To-do</button>
             <button data-view="discussions" role="tab" aria-selected="false" aria-controls="discussions-view" id="tab-discussions" tabindex="-1" title="Track conversations to have with people, by person">Discussions</button>
+            <button data-view="rt" role="tab" aria-selected="false" aria-controls="rt-view" id="tab-rt" tabindex="-1" title="Your Request Tracker tickets, grouped by queue">Tickets</button>
             <button data-view="settings" role="tab" aria-selected="false" aria-controls="settings-view" id="tab-settings" tabindex="-1" title="Configure timer presets, breaks, and display options">Settings</button>
         </nav>
 
@@ -945,6 +946,54 @@
             </div>
         </div>
 
+        <!-- RT Tickets View -->
+        <div id="rt-view" class="view" role="tabpanel" aria-labelledby="tab-rt">
+            <div class="todo-header">
+                <h2>Tickets</h2>
+            </div>
+            <div class="todo-lists-bar" id="rt-queue-bar"></div>
+            <div class="todo-toolbar">
+                <button class="secondary" onclick="refreshTickets()" style="padding: 0.5rem 1rem; font-size: 0.875rem;" title="Reload tickets from RT">&#8635; Refresh</button>
+                <select id="rt-status-filter" onchange="setTicketStatusFilter(this.value)" style="margin-left: auto;">
+                    <option value="open">Status: Open</option>
+                    <option value="all">Status: All</option>
+                </select>
+            </div>
+            <div id="rt-status-msg" style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 0.5rem;"></div>
+            <div id="rt-list-container"></div>
+        </div>
+
+        <!-- RT Ticket Detail Modal -->
+        <div class="modal-overlay" id="rt-detail-modal">
+            <div class="modal">
+                <h2 id="rt-detail-title">Ticket</h2>
+                <div id="rt-detail-meta" class="todo-meta" style="margin-bottom: 0.75rem; flex-wrap: wrap;"></div>
+                <div id="rt-detail-history" style="max-height: 40vh; overflow-y: auto; margin-bottom: 1rem;"></div>
+                <div class="form-group">
+                    <label for="rt-action-type">Add to ticket</label>
+                    <select id="rt-action-type">
+                        <option value="comment">Comment (internal, not sent to requestors)</option>
+                        <option value="reply">Reply (correspondence, sent to requestors)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <textarea id="rt-action-content" rows="3" style="resize: vertical;" placeholder="Write a comment or reply…"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="rt-status-input">Change status</label>
+                    <div style="display:flex; gap:0.5rem;">
+                        <input type="text" id="rt-status-input" placeholder="e.g. open, stalled, resolved" style="flex:1;">
+                        <button class="secondary" onclick="applyTicketStatus()">Set status</button>
+                    </div>
+                </div>
+                <div id="rt-detail-status" style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.5rem;"></div>
+                <div class="modal-actions">
+                    <button class="secondary" onclick="closeTicketDetail()">Close</button>
+                    <button class="primary" onclick="submitTicketAction()">Send</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Settings View -->
         <div id="settings-view" class="view" role="tabpanel" aria-labelledby="tab-settings">
             <h2>Settings</h2>
@@ -1196,6 +1245,47 @@
                 <h3>Discussions</h3>
                 <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
                     <button class="secondary" onclick="exportDiscussionCSV()" style="padding: 0.5rem 1rem; font-size: 0.875rem;">Export CSV</button>
+                </div>
+            </div>
+            <div class="card" id="rt-settings-card" style="display: none;">
+                <h3>RT Tickets</h3>
+                <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1rem;">
+                    Connect your Request Tracker instance. The URL and credentials are stored only in your own Google Drive and used by the server to reach RT on your behalf — never saved on the server.
+                </p>
+                <div class="form-group">
+                    <label for="rt-cfg-base-url">RT base URL</label>
+                    <input type="text" id="rt-cfg-base-url" placeholder="https://rt.example.com (or an internal address the server can reach)">
+                </div>
+                <div class="form-group">
+                    <label for="rt-cfg-public-url">Public URL for ticket links (optional)</label>
+                    <input type="text" id="rt-cfg-public-url" placeholder="https://rt.example.com">
+                </div>
+                <div class="form-group">
+                    <label for="rt-cfg-query">Ticket search (TicketSQL)</label>
+                    <input type="text" id="rt-cfg-query" placeholder="Owner = '__CurrentUser__' AND Status != 'resolved'">
+                </div>
+                <details class="modal-more">
+                    <summary>Authentication</summary>
+                    <p style="color: var(--text-secondary); font-size: 0.75rem; margin: 0.5rem 0;">
+                        Use Basic Auth when RT (or a proxy in front of it) requires an HTTP login; otherwise use an RT REST token. Leave a secret blank to keep the stored value.
+                    </p>
+                    <div class="form-group">
+                        <label for="rt-cfg-basic-user">Basic Auth user</label>
+                        <input type="text" id="rt-cfg-basic-user" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="rt-cfg-basic-pass">Basic Auth password</label>
+                        <input type="password" id="rt-cfg-basic-pass" autocomplete="new-password" placeholder="(unchanged)">
+                    </div>
+                    <div class="form-group">
+                        <label for="rt-cfg-token">RT REST token</label>
+                        <input type="password" id="rt-cfg-token" autocomplete="new-password" placeholder="(unchanged)">
+                    </div>
+                </details>
+                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+                    <button class="primary" onclick="rtSaveConfig()" style="padding: 0.5rem 1rem; font-size: 0.875rem;">Save</button>
+                    <button class="secondary" onclick="rtTestConnection()" style="padding: 0.5rem 1rem; font-size: 0.875rem;">Test connection</button>
+                    <span id="rt-cfg-status" style="font-size: 0.875rem; color: var(--text-secondary);"></span>
                 </div>
             </div>
             <div class="card">
@@ -2406,6 +2496,8 @@
                 if (btn.dataset.view === 'reports') loadReport();
                 if (btn.dataset.view === 'todos') loadTodos();
                 if (btn.dataset.view === 'discussions') { loadDiscussions(); refreshDiscussionsIfChanged(); }
+                if (btn.dataset.view === 'rt') { loadTickets(); refreshTickets(); }
+                if (btn.dataset.view === 'settings') rtLoadConfigForm();
             });
         });
 
@@ -2413,7 +2505,7 @@
         function switchToViewFromURL() {
             const params = new URLSearchParams(window.location.search);
             const view = params.get('view');
-            if (view && ['timer', 'reports', 'history', 'todos', 'discussions', 'settings'].includes(view)) {
+            if (view && ['timer', 'reports', 'history', 'todos', 'discussions', 'rt', 'settings'].includes(view)) {
                 document.querySelectorAll('nav button').forEach(b => {
                     b.classList.remove('active');
                     b.setAttribute('aria-selected', 'false');
@@ -6366,6 +6458,221 @@
         const UNASSIGNED_PERSON = '\u2014';  // em dash label for discussions with no person
 
         function escDisc(s) { return escapeHtml(s); }
+
+        // ===== RT Tickets =====
+        // Read-through view of the user's Request Tracker tickets. RT is the source of
+        // truth; loadTickets renders the IndexedDB cache, refreshTickets pulls live.
+        // All RT-sourced text is rendered through escapeHtml (untrusted content).
+        let rtTickets = [];
+        let rtQueues = [];
+        let rtSelectedQueue = 'all';
+        let rtStatusFilter = 'open';
+        let rtCurrentTicketId = null;
+
+        function rtStatusIsOpen(status) {
+            const s = (status || '').toLowerCase();
+            return s !== 'resolved' && s !== 'rejected' && s !== 'deleted';
+        }
+
+        async function loadTickets() {
+            rtTickets = await Storage.getTickets();
+            renderTickets();
+        }
+
+        function renderTickets() {
+            const visibleForBar = rtStatusFilter === 'open' ? rtTickets.filter(t => rtStatusIsOpen(t.status)) : rtTickets;
+            rtQueues = [...new Set(visibleForBar.map(t => (t.queue || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+            if (rtSelectedQueue !== 'all' && !rtQueues.includes(rtSelectedQueue)) rtSelectedQueue = 'all';
+
+            const bar = document.getElementById('rt-queue-bar');
+            let barHtml = `<button class="${rtSelectedQueue === 'all' ? 'active' : ''}" onclick="selectTicketQueue('all')">All</button>`;
+            barHtml += rtQueues.map((q, i) => `<button class="${rtSelectedQueue === q ? 'active' : ''}" onclick="selectTicketQueueByIndex(${i})">${escapeHtml(q)}</button>`).join('');
+            bar.innerHTML = barHtml;
+
+            const statusSel = document.getElementById('rt-status-filter');
+            if (statusSel) statusSel.value = rtStatusFilter;
+
+            let filtered = rtTickets;
+            if (rtStatusFilter === 'open') filtered = filtered.filter(t => rtStatusIsOpen(t.status));
+            if (rtSelectedQueue !== 'all') filtered = filtered.filter(t => (t.queue || '').trim() === rtSelectedQueue);
+            filtered = filtered.slice().sort((a, b) => (b.last_updated || '').localeCompare(a.last_updated || ''));
+
+            const container = document.getElementById('rt-list-container');
+            if (!filtered.length) {
+                container.innerHTML = '<div class="empty">No tickets to show. Connect RT in Settings, or adjust the filters.</div>';
+                return;
+            }
+            container.innerHTML = filtered.map(renderTicketItem).join('');
+        }
+
+        function renderTicketItem(t) {
+            const meta = [];
+            if (t.queue) meta.push(`<span>${escapeHtml(t.queue)}</span>`);
+            if (t.status) meta.push(`<span class="todo-priority ${rtStatusIsOpen(t.status) ? '' : 'low'}">${escapeHtml(t.status)}</span>`);
+            if (t.owner) meta.push(`<span>${escapeHtml(t.owner)}</span>`);
+            if (t.last_updated) meta.push(`<span>${escapeHtml((t.last_updated || '').slice(0, 10))}</span>`);
+            const link = discussionSafeUrl(t.url);
+            return `<div class="todo-item" onclick="openTicketDetail('${escapeHtml(t.id)}')">
+                <div class="todo-content">
+                    <div class="todo-title"><span class="discussion-person">#${escapeHtml(t.id)}</span>${escapeHtml(t.subject || '(no subject)')}</div>
+                    <div class="todo-meta">${meta.join('')}${link ? ` <a href="${escapeHtml(link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">open in RT</a>` : ''}</div>
+                </div>
+            </div>`;
+        }
+
+        function selectTicketQueue(q) { rtSelectedQueue = q; renderTickets(); }
+        function selectTicketQueueByIndex(i) { rtSelectedQueue = rtQueues[i] || 'all'; renderTickets(); }
+        function setTicketStatusFilter(v) { rtStatusFilter = v; renderTickets(); }
+
+        async function refreshTickets() {
+            const msg = document.getElementById('rt-status-msg');
+            if (msg) msg.textContent = 'Loading tickets from RT…';
+            const result = await Storage.loadTicketsFromCloud();
+            if (!result.configured) {
+                if (msg) msg.textContent = 'RT isn’t configured yet — open Settings → RT Tickets to connect.';
+                rtTickets = [];
+                renderTickets();
+                return;
+            }
+            if (!result.ok) {
+                if (msg) msg.textContent = 'Could not reach RT: ' + (result.error || 'unknown error') + ' (showing cached tickets).';
+            } else if (msg) {
+                msg.textContent = '';
+            }
+            await loadTickets();
+        }
+
+        async function openTicketDetail(id) {
+            rtCurrentTicketId = id;
+            const t = rtTickets.find(x => x.id === id) || await Storage.getTicket(id);
+            document.getElementById('rt-detail-title').textContent = t ? `#${t.id}: ${t.subject || ''}` : `Ticket #${id}`;
+            const meta = document.getElementById('rt-detail-meta');
+            if (t) {
+                const parts = [];
+                if (t.status) parts.push(`<span class="todo-priority ${rtStatusIsOpen(t.status) ? '' : 'low'}">${escapeHtml(t.status)}</span>`);
+                if (t.queue) parts.push(`<span>${escapeHtml(t.queue)}</span>`);
+                if (t.owner) parts.push(`<span>Owner: ${escapeHtml(t.owner)}</span>`);
+                if (t.requestors) parts.push(`<span>Requestors: ${escapeHtml(t.requestors)}</span>`);
+                if (t.due) parts.push(`<span>Due: ${escapeHtml(t.due)}</span>`);
+                const link = discussionSafeUrl(t.url);
+                if (link) parts.push(`<a href="${escapeHtml(link)}" target="_blank" rel="noopener">open in RT</a>`);
+                meta.innerHTML = parts.join('');
+                document.getElementById('rt-status-input').value = t.status || '';
+            } else {
+                meta.innerHTML = '';
+                document.getElementById('rt-status-input').value = '';
+            }
+            document.getElementById('rt-action-content').value = '';
+            document.getElementById('rt-detail-status').textContent = '';
+            const histEl = document.getElementById('rt-detail-history');
+            histEl.innerHTML = '<div class="empty">Loading history…</div>';
+            document.getElementById('rt-detail-modal').classList.add('active');
+            try {
+                const history = await Storage.getTicketHistory(id);
+                histEl.innerHTML = history.length ? history.map(renderTxn).join('') : '<div class="empty">No history.</div>';
+            } catch (e) {
+                histEl.innerHTML = `<div class="empty">Could not load history: ${escapeHtml(e.message || '')}</div>`;
+            }
+        }
+
+        function renderTxn(tx) {
+            const head = [tx.creator, (tx.created || '').replace('T', ' ').slice(0, 16), tx.type]
+                .filter(Boolean).map(escapeHtml).join(' • ');
+            const body = tx.content
+                ? `<div style="white-space: pre-wrap; margin-top: 0.25rem;">${escapeHtml(tx.content)}</div>`
+                : (tx.description ? `<div style="color: var(--text-secondary); margin-top: 0.25rem;">${escapeHtml(tx.description)}</div>` : '');
+            return `<div style="padding: 0.5rem 0; border-bottom: 1px solid var(--border-color);"><div style="font-size: 0.8rem; color: var(--text-secondary);">${head}</div>${body}</div>`;
+        }
+
+        function closeTicketDetail() {
+            document.getElementById('rt-detail-modal').classList.remove('active');
+            rtCurrentTicketId = null;
+        }
+
+        async function submitTicketAction() {
+            if (!rtCurrentTicketId) return;
+            const action = document.getElementById('rt-action-type').value;  // comment | reply
+            const content = document.getElementById('rt-action-content').value.trim();
+            const statusEl = document.getElementById('rt-detail-status');
+            if (!content) { statusEl.textContent = 'Write something first.'; return; }
+            statusEl.textContent = 'Sending…';
+            try {
+                await Storage.rtTicketAction(rtCurrentTicketId, action, { content });
+                document.getElementById('rt-action-content').value = '';
+                statusEl.textContent = (action === 'reply' ? 'Reply' : 'Comment') + ' added.';
+                const history = await Storage.getTicketHistory(rtCurrentTicketId);
+                document.getElementById('rt-detail-history').innerHTML = history.map(renderTxn).join('');
+            } catch (e) {
+                statusEl.textContent = 'Failed: ' + (e.message || 'error');
+            }
+        }
+
+        async function applyTicketStatus() {
+            if (!rtCurrentTicketId) return;
+            const status = document.getElementById('rt-status-input').value.trim();
+            const statusEl = document.getElementById('rt-detail-status');
+            if (!status) { statusEl.textContent = 'Enter a status.'; return; }
+            statusEl.textContent = 'Updating status…';
+            try {
+                await Storage.rtTicketAction(rtCurrentTicketId, 'status', { status });
+                statusEl.textContent = 'Status set to ' + status + '.';
+                await refreshTickets();  // a status change can drop it from the open view
+            } catch (e) {
+                statusEl.textContent = 'Failed: ' + (e.message || 'error');
+            }
+        }
+
+        async function rtLoadConfigForm() {
+            if (!authStatus || !authStatus.logged_in) return;
+            try {
+                const cfg = await Storage.getRTConfig();
+                document.getElementById('rt-cfg-base-url').value = cfg.base_url || '';
+                document.getElementById('rt-cfg-public-url').value = cfg.public_url || '';
+                document.getElementById('rt-cfg-query').value = cfg.query || '';
+                document.getElementById('rt-cfg-basic-user').value = cfg.basic_user || '';
+                document.getElementById('rt-cfg-basic-pass').placeholder = cfg.has_basic_pass ? '(unchanged)' : '';
+                document.getElementById('rt-cfg-token').placeholder = cfg.has_rest_token ? '(unchanged)' : '';
+            } catch (e) {
+                // Not logged in or no storage yet — leave the form as-is, but surface
+                // a real failure so a Drive/API error isn't invisible.
+                console.error('RT config load failed:', e);
+            }
+        }
+
+        async function rtSaveConfig() {
+            const statusEl = document.getElementById('rt-cfg-status');
+            const payload = {
+                base_url: document.getElementById('rt-cfg-base-url').value.trim(),
+                public_url: document.getElementById('rt-cfg-public-url').value.trim(),
+                query: document.getElementById('rt-cfg-query').value,
+                basic_user: document.getElementById('rt-cfg-basic-user').value.trim(),
+            };
+            const pass = document.getElementById('rt-cfg-basic-pass').value;
+            const token = document.getElementById('rt-cfg-token').value;
+            if (pass) payload.basic_pass = pass;
+            if (token) payload.rest_token = token;
+            statusEl.textContent = 'Saving…';
+            try {
+                await Storage.saveRTConfig(payload);
+                document.getElementById('rt-cfg-basic-pass').value = '';
+                document.getElementById('rt-cfg-token').value = '';
+                statusEl.textContent = 'Saved.';
+                await rtLoadConfigForm();
+            } catch (e) {
+                statusEl.textContent = 'Save failed: ' + (e.message || 'error');
+            }
+        }
+
+        async function rtTestConnection() {
+            const statusEl = document.getElementById('rt-cfg-status');
+            statusEl.textContent = 'Testing the saved connection…';
+            try {
+                const r = await Storage.testRTConnection();
+                statusEl.textContent = 'Connected to RT ' + (r.version || '') + '.';
+            } catch (e) {
+                statusEl.textContent = 'Failed: ' + (e.message || 'error');
+            }
+        }
 
         // Only http(s) sources become clickable links; anything else (e.g. a
         // javascript: URL) is rejected so it can't execute when rendered.

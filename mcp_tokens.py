@@ -33,14 +33,15 @@ class TokenError(Exception):
     """Raised when a token is missing, malformed, tampered with, or revoked."""
 
 
-def _seal_key():
-    """Return the Fernet key that protects sealed refresh tokens.
+def seal_key():
+    """Return the Fernet key that protects sealed tokens and other at-rest secrets.
 
-    In production ``MCP_TOKEN_SEAL_KEY`` MUST be set explicitly (a high-entropy,
-    independently rotatable key). Deriving it from ``FLASK_SECRET_KEY`` is a
-    convenience allowed ONLY in development (``FLASK_ENV=development``); outside
-    development we fail closed rather than couple token security to the Flask
-    secret.
+    Public so features that encrypt user secrets with the same server key (e.g. the
+    RT plugin's connection config) share one key source. In production
+    ``MCP_TOKEN_SEAL_KEY`` MUST be set explicitly (a high-entropy, independently
+    rotatable key). Deriving it from ``FLASK_SECRET_KEY`` is a convenience allowed
+    ONLY in development (``FLASK_ENV=development``); outside development we fail
+    closed rather than couple token security to the Flask secret.
     """
     explicit = os.environ.get("MCP_TOKEN_SEAL_KEY")
     if explicit:
@@ -69,7 +70,7 @@ def seal(email, refresh_token, folder_id, issued_at=None):
         "folder_id": folder_id,
         "issued_at": int(issued_at if issued_at is not None else time.time()),
     }
-    blob = Fernet(_seal_key()).encrypt(json.dumps(payload).encode())
+    blob = Fernet(seal_key()).encrypt(json.dumps(payload).encode())
     return TOKEN_PREFIX + blob.decode()
 
 
@@ -84,7 +85,7 @@ def unseal(token):
         raise TokenError("Malformed token")
     blob = token[len(TOKEN_PREFIX) :].encode()
     try:
-        raw = Fernet(_seal_key()).decrypt(blob)
+        raw = Fernet(seal_key()).decrypt(blob)
     except InvalidToken as exc:
         raise TokenError("Invalid or tampered token") from exc
     try:

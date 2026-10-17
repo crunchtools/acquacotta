@@ -66,6 +66,7 @@ max-complexity = 10
 # @mcp.tool definitions.
 "todos_plugin.py" = ["PLR0915", "C901", "PLR0913", "PLR0917"]
 "discussions_plugin.py" = ["PLR0915", "C901", "PLR0913", "PLR0917"]
+"rt_plugin.py" = ["PLR0915", "C901", "PLR0913", "PLR0917"]
 "pomodoro_tools.py" = ["PLR0913", "PLR0917"]
 
 [tool.ruff.lint.isort]
