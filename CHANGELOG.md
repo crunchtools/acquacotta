@@ -53,6 +53,12 @@ All notable changes to this project are documented here. The format follows
   on mobile instead of only on hover, which touch screens can't do.
 
 ### Fixed
+- RT ticket history now shows message bodies, including each ticket's
+  opening message. RT 6 links a transaction's attachments by URL only, with no
+  id, so every body was being skipped.
+- The Tickets tab no longer stays on "Loading tickets from RT…" when the
+  request stalls. After 45 seconds it shows an error and falls back to the
+  cached tickets.
 - An RT URL saved without a scheme (`rt.example.com`) now gets `https://`
   added automatically. Before, every RT call failed with "base_url must be an
   http(s) URL".
