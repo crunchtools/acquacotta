@@ -266,6 +266,34 @@
         return order;
     }
 
+    /**
+     * Build the RT settings save payload from the form, or explain what's missing.
+     * A blank secret input keeps the saved one (secrets are never read back).
+     * Choosing the token clears basic_user, because a saved username wins over it.
+     *
+     * @param {object} form - { method: 'basic'|'token', baseUrl, publicUrl, query, user, pass, token }
+     * @param {object} saved - Last server config: { has_basic_pass, has_rest_token }
+     * @returns {object} - { payload } or { error }
+     */
+    function buildRTConfigPayload(form, saved) {
+        const known = saved || {};
+        if (form.method === 'basic' && (!form.user || !(form.pass || known.has_basic_pass))) {
+            return { error: 'Enter your RT username and password.' };
+        }
+        if (form.method === 'token' && !(form.token || known.has_rest_token)) {
+            return { error: 'Paste an RT REST token.' };
+        }
+        const payload = {
+            base_url: form.baseUrl,
+            public_url: form.publicUrl,
+            query: form.query,
+            basic_user: form.method === 'basic' ? form.user : '',
+        };
+        if (form.method === 'basic' && form.pass) payload.basic_pass = form.pass;
+        if (form.method === 'token' && form.token) payload.rest_token = form.token;
+        return { payload: payload };
+    }
+
     // Export functions
     var utils = {
         detectDateChange: detectDateChange,
@@ -281,7 +309,8 @@
         isToday: isToday,
         syncRetryDelay: syncRetryDelay,
         weekSwipeTarget: weekSwipeTarget,
-        resolveTabOrder: resolveTabOrder
+        resolveTabOrder: resolveTabOrder,
+        buildRTConfigPayload: buildRTConfigPayload
     };
 
     // Browser global

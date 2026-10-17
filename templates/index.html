@@ -610,7 +610,7 @@
             clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
         }
     </style>
-    <script src="{{ url_for('static', filename='js/utils.js') }}?v=6"></script>
+    <script src="{{ url_for('static', filename='js/utils.js') }}?v=7"></script>
     <script src="{{ url_for('static', filename='js/storage.js') }}?v=11"></script>
 </head>
 <body>
@@ -6851,28 +6851,19 @@
 
         async function rtSaveConfig() {
             const statusEl = document.getElementById('rt-cfg-status');
-            const method = rtAuthMethod();
-            const user = document.getElementById('rt-cfg-basic-user').value.trim();
-            const pass = document.getElementById('rt-cfg-basic-pass').value;
-            const token = document.getElementById('rt-cfg-token').value;
-            const saved = rtSavedConfig || {};
-            if (method === 'basic' && (!user || !(pass || saved.has_basic_pass))) {
-                statusEl.textContent = 'Enter your RT username and password.';
-                return;
-            }
-            if (method === 'token' && !(token || saved.has_rest_token)) {
-                statusEl.textContent = 'Paste an RT REST token.';
-                return;
-            }
-            const payload = {
-                base_url: document.getElementById('rt-cfg-base-url').value.trim(),
-                public_url: document.getElementById('rt-cfg-public-url').value.trim(),
+            const { payload, error } = AcquacottaUtils.buildRTConfigPayload({
+                method: rtAuthMethod(),
+                baseUrl: document.getElementById('rt-cfg-base-url').value.trim(),
+                publicUrl: document.getElementById('rt-cfg-public-url').value.trim(),
                 query: document.getElementById('rt-cfg-query').value,
-                // A saved username always wins over a token, so choosing the token clears it.
-                basic_user: method === 'basic' ? user : '',
-            };
-            if (method === 'basic' && pass) payload.basic_pass = pass;
-            if (method === 'token' && token) payload.rest_token = token;
+                user: document.getElementById('rt-cfg-basic-user').value.trim(),
+                pass: document.getElementById('rt-cfg-basic-pass').value,
+                token: document.getElementById('rt-cfg-token').value,
+            }, rtSavedConfig);
+            if (error) {
+                statusEl.textContent = error;
+                return;
+            }
             statusEl.textContent = 'Saving…';
             try {
                 await Storage.saveRTConfig(payload);

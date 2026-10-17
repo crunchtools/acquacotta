@@ -413,6 +413,54 @@ describe('resolveTabOrder', function() {
     });
 });
 
+describe('buildRTConfigPayload', function() {
+    var base = { baseUrl: 'https://rt', publicUrl: 'https://rt', query: 'q' };
+    function form(extra) {
+        var f = {};
+        for (var k in base) f[k] = base[k];
+        for (var j in extra) f[j] = extra[j];
+        return f;
+    }
+
+    it('should send user and a newly typed password', function() {
+        var r = utils.buildRTConfigPayload(form({ method: 'basic', user: 'scott', pass: 'pw', token: '' }), {});
+        expect(r.payload.basic_user).toBe('scott');
+        expect(r.payload.basic_pass).toBe('pw');
+        expect(r.payload.rest_token).toBe(undefined);
+    });
+
+    it('should keep a saved password when the input is blank', function() {
+        var r = utils.buildRTConfigPayload(form({ method: 'basic', user: 'scott', pass: '', token: '' }), { has_basic_pass: true });
+        expect(r.error).toBe(undefined);
+        expect('basic_pass' in r.payload).toBe(false);
+    });
+
+    it('should refuse basic auth with no password typed or saved', function() {
+        expect(utils.buildRTConfigPayload(form({ method: 'basic', user: 'scott', pass: '' }), {}).error).toBe('Enter your RT username and password.');
+    });
+
+    it('should refuse basic auth with no username', function() {
+        expect(utils.buildRTConfigPayload(form({ method: 'basic', user: '', pass: 'pw' }), {}).error).toBe('Enter your RT username and password.');
+    });
+
+    it('should clear the username and send a typed token for token auth', function() {
+        var r = utils.buildRTConfigPayload(form({ method: 'token', user: 'scott', pass: 'pw', token: 'tok' }), { has_basic_pass: true });
+        expect(r.payload.basic_user).toBe('');
+        expect(r.payload.rest_token).toBe('tok');
+        expect('basic_pass' in r.payload).toBe(false);
+    });
+
+    it('should keep a saved token when the input is blank', function() {
+        var r = utils.buildRTConfigPayload(form({ method: 'token', user: '', token: '' }), { has_rest_token: true });
+        expect(r.payload.basic_user).toBe('');
+        expect('rest_token' in r.payload).toBe(false);
+    });
+
+    it('should refuse token auth with no token typed or saved', function() {
+        expect(utils.buildRTConfigPayload(form({ method: 'token', token: '' }), {}).error).toBe('Paste an RT REST token.');
+    });
+});
+
 // Test runner: executes every registered suite and renders pass/fail output.
 
 function runAllTests() {
