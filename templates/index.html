@@ -1274,24 +1274,31 @@
                         <label for="rt-cfg-query">Ticket search (TicketSQL)</label>
                         <input type="text" id="rt-cfg-query" placeholder="Owner = '__CurrentUser__' AND Status != 'resolved'">
                     </div>
-                    <details class="modal-more">
-                        <summary>Authentication</summary>
-                        <p style="color: var(--text-secondary); font-size: 0.75rem; margin: 0.5rem 0;">
-                            Use Basic Auth when RT (or a proxy in front of it) requires an HTTP login; otherwise use an RT REST token. Leave a secret blank to keep the stored value.
-                        </p>
+                    <div class="form-group">
+                        <label>Sign in to RT with</label>
+                        <div style="display: flex; gap: 1.25rem; flex-wrap: wrap; margin-top: 0.25rem;">
+                            <label style="cursor: pointer;"><input type="radio" name="rt-auth-method" value="basic" onchange="rtShowAuthFields()"> Username &amp; password</label>
+                            <label style="cursor: pointer;"><input type="radio" name="rt-auth-method" value="token" onchange="rtShowAuthFields()"> REST token</label>
+                        </div>
+                    </div>
+                    <div id="rt-auth-basic">
                         <div class="form-group">
-                            <label for="rt-cfg-basic-user">Basic Auth user</label>
+                            <label for="rt-cfg-basic-user">RT username</label>
                             <input type="text" id="rt-cfg-basic-user" autocomplete="off">
                         </div>
                         <div class="form-group">
-                            <label for="rt-cfg-basic-pass">Basic Auth password</label>
-                            <input type="password" id="rt-cfg-basic-pass" autocomplete="new-password" placeholder="(unchanged)">
+                            <label for="rt-cfg-basic-pass">Password <span id="rt-pass-state" style="color: var(--text-secondary); font-size: 0.75rem;"></span></label>
+                            <input type="password" id="rt-cfg-basic-pass" autocomplete="new-password">
                         </div>
+                    </div>
+                    <div id="rt-auth-token" hidden>
                         <div class="form-group">
-                            <label for="rt-cfg-token">RT REST token</label>
-                            <input type="password" id="rt-cfg-token" autocomplete="new-password" placeholder="(unchanged)">
+                            <label for="rt-cfg-token">RT REST token <span id="rt-token-state" style="color: var(--text-secondary); font-size: 0.75rem;"></span></label>
+                            <input type="password" id="rt-cfg-token" autocomplete="new-password">
+                            <p style="color: var(--text-secondary); font-size: 0.75rem; margin-top: 0.25rem;">Create one in RT under Logged in as &rarr; Settings &rarr; Auth Tokens.</p>
                         </div>
-                    </details>
+                    </div>
+                    <p id="rt-auth-summary" style="color: var(--text-secondary); font-size: 0.8rem; margin-bottom: 0.75rem;"></p>
                     <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
                         <button class="primary" onclick="rtSaveConfig()">Save</button>
                         <button class="secondary" onclick="rtTestConnection()">Test connection</button>
@@ -4295,6 +4302,7 @@
             if (open) openPluginPanels.add(pluginId); else openPluginPanels.delete(pluginId);
             const btn = document.getElementById(`plugin-settings-btn-${pluginId}`);
             if (btn) btn.setAttribute('aria-expanded', String(open));
+            if (open && pluginId === 'rt') rtLoadConfigForm();
         }
 
         // Jump from a plugin's own tab to its settings, expanded and in view.
@@ -4307,10 +4315,7 @@
             const row = document.getElementById(`${pluginId}-settings-panel`)?.closest('.plugin-row');
             if (row) row.scrollIntoView({ block: 'start' });
             if (pluginId === 'rt') {
-                const cfg = await rtLoadConfigForm();
-                if (cfg && !cfg.basic_user && !cfg.has_basic_pass && !cfg.has_rest_token) {
-                    document.querySelector('#rt-settings-panel details').open = true;
-                }
+                await rtLoadConfigForm();
                 document.getElementById('rt-cfg-base-url').focus({ preventScroll: true });
             }
         }
@@ -6790,16 +6795,52 @@
             }
         }
 
+        // The last config read from the server (secrets masked to has_* flags).
+        let rtSavedConfig = null;
+        const RT_SECRET_SAVED = '••••••••';
+
+        function rtAuthMethod() {
+            return document.querySelector('input[name="rt-auth-method"]:checked')?.value || 'basic';
+        }
+
+        function rtShowAuthFields() {
+            const method = rtAuthMethod();
+            document.getElementById('rt-auth-basic').hidden = method !== 'basic';
+            document.getElementById('rt-auth-token').hidden = method !== 'token';
+        }
+
+        function rtDescribeAuth(cfg) {
+            if (!cfg) return '';
+            if (cfg.basic_user) {
+                return `In use: username & password, signed in as ${cfg.basic_user}` +
+                    (cfg.has_basic_pass ? ' (password saved).' : ' — no password saved yet.');
+            }
+            if (cfg.has_rest_token) return 'In use: REST token (saved).';
+            return 'No RT credentials saved yet.';
+        }
+
         async function rtLoadConfigForm() {
             if (!authStatus || !authStatus.logged_in) return;
             try {
                 const cfg = await Storage.getRTConfig();
+                rtSavedConfig = cfg;
                 document.getElementById('rt-cfg-base-url').value = cfg.base_url || '';
                 document.getElementById('rt-cfg-public-url').value = cfg.public_url || '';
                 document.getElementById('rt-cfg-query').value = cfg.query || '';
                 document.getElementById('rt-cfg-basic-user').value = cfg.basic_user || '';
-                document.getElementById('rt-cfg-basic-pass').placeholder = cfg.has_basic_pass ? '(unchanged)' : '';
-                document.getElementById('rt-cfg-token').placeholder = cfg.has_rest_token ? '(unchanged)' : '';
+                // Secrets never come back from the server; show that one is saved.
+                const pass = document.getElementById('rt-cfg-basic-pass');
+                const token = document.getElementById('rt-cfg-token');
+                pass.value = '';
+                token.value = '';
+                pass.placeholder = cfg.has_basic_pass ? `${RT_SECRET_SAVED}  (type to replace)` : '';
+                token.placeholder = cfg.has_rest_token ? `${RT_SECRET_SAVED}  (type to replace)` : '';
+                document.getElementById('rt-pass-state').textContent = cfg.has_basic_pass ? '— saved' : '— not set';
+                document.getElementById('rt-token-state').textContent = cfg.has_rest_token ? '— saved' : '— not set';
+                const method = cfg.basic_user || !cfg.has_rest_token ? 'basic' : 'token';
+                document.querySelector(`input[name="rt-auth-method"][value="${method}"]`).checked = true;
+                rtShowAuthFields();
+                document.getElementById('rt-auth-summary').textContent = rtDescribeAuth(cfg);
                 return cfg;
             } catch (e) {
                 // Not logged in or no storage yet — leave the form as-is, but surface
@@ -6810,21 +6851,31 @@
 
         async function rtSaveConfig() {
             const statusEl = document.getElementById('rt-cfg-status');
+            const method = rtAuthMethod();
+            const user = document.getElementById('rt-cfg-basic-user').value.trim();
+            const pass = document.getElementById('rt-cfg-basic-pass').value;
+            const token = document.getElementById('rt-cfg-token').value;
+            const saved = rtSavedConfig || {};
+            if (method === 'basic' && (!user || !(pass || saved.has_basic_pass))) {
+                statusEl.textContent = 'Enter your RT username and password.';
+                return;
+            }
+            if (method === 'token' && !(token || saved.has_rest_token)) {
+                statusEl.textContent = 'Paste an RT REST token.';
+                return;
+            }
             const payload = {
                 base_url: document.getElementById('rt-cfg-base-url').value.trim(),
                 public_url: document.getElementById('rt-cfg-public-url').value.trim(),
                 query: document.getElementById('rt-cfg-query').value,
-                basic_user: document.getElementById('rt-cfg-basic-user').value.trim(),
+                // A saved username always wins over a token, so choosing the token clears it.
+                basic_user: method === 'basic' ? user : '',
             };
-            const pass = document.getElementById('rt-cfg-basic-pass').value;
-            const token = document.getElementById('rt-cfg-token').value;
-            if (pass) payload.basic_pass = pass;
-            if (token) payload.rest_token = token;
+            if (method === 'basic' && pass) payload.basic_pass = pass;
+            if (method === 'token' && token) payload.rest_token = token;
             statusEl.textContent = 'Saving…';
             try {
                 await Storage.saveRTConfig(payload);
-                document.getElementById('rt-cfg-basic-pass').value = '';
-                document.getElementById('rt-cfg-token').value = '';
                 statusEl.textContent = 'Saved.';
                 await rtLoadConfigForm();
             } catch (e) {

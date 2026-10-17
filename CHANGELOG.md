@@ -53,6 +53,11 @@ All notable changes to this project are documented here. The format follows
   on mobile instead of only on hover, which touch screens can't do.
 
 ### Fixed
+- RT settings now show how you sign in. The Authentication section is no
+  longer collapsed. You choose "Username & password" or "REST token", a saved
+  secret shows as •••••••• marked "saved", and a summary line names the method
+  in use. The form reloads each time the panel opens. Choosing the token clears
+  the username, since a saved username would otherwise take precedence.
 - RT ticket history now shows message bodies, including each ticket's
   opening message. RT 6 links a transaction's attachments by URL only, with no
   id, so every body was being skipped.
