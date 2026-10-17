@@ -17,6 +17,10 @@ All notable changes to this project are documented here. The format follows
   per-user, enabled by default (spec 008).
 
 ### Fixed
+- The Discussions person filter now lists only people who still have an open
+  discussion. People whose discussions are all done drop off the bar, so it
+  reflects conversations that still need to happen; the edit-modal autocomplete
+  still offers every known person.
 - Edit modals no longer clip off the top of the screen on mobile. The modal now
   scrolls internally with a sticky Save/Cancel footer, instead of overflowing a
   fixed, centered overlay with no way to reach the top field. The Discussions form
