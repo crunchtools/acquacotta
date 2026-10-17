@@ -23,6 +23,8 @@ All notable changes to this project are documented here. The format follows
   on mobile instead of only on hover, which touch screens can't do.
 
 ### Fixed
+- The weekly pie chart's labels no longer clip off-screen on phones; at
+  768px and below it shows a legend with counts under the chart instead.
 - Completing a discussion now works on desktop. The checkbox called a native
   `prompt()` to capture the outcome; browsers suppress that dialog in several
   desktop cases, so it returned null and the click did nothing. One click now

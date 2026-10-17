@@ -530,6 +530,7 @@
             .period-nav button { padding: 0.5rem; }
 
             .week-chart-container { min-height: 150px; }
+            .timer-row .weekly-overview .week-chart-container { height: 380px; }
 
             /* Week strip + selected-day agenda (calendar-app pattern) */
             .week-grid { gap: 0.25rem; }
@@ -2281,16 +2282,20 @@
             // Calculate total for percentage calculations
             const total = typeData.reduce((a, b) => a + b, 0);
 
+            // Labels drawn around the pie clip at phone width, so use a legend there
+            const narrow = window.matchMedia('(max-width: 768px)').matches;
+
             weekTypeChart = new Chart(document.getElementById('week-type-chart'), {
                 type: 'pie',
                 data: {
-                    labels: typeLabels,
+                    labels: narrow ? typeLabels.map((l, i) => `${l}: ${typeData[i]}`) : typeLabels,
                     datasets: [{
                         data: typeData,
                         backgroundColor: typeColors,
                         borderWidth: 2,
                         borderColor: 'var(--bg-secondary)',
                         datalabels: {
+                            display: !narrow,
                             color: (ctx) => typeColors[ctx.dataIndex] || '#fff',
                             font: {
                                 weight: 'bold',
@@ -2309,16 +2314,22 @@
                     responsive: true,
                     maintainAspectRatio: false,
                     layout: {
-                        padding: 50
+                        padding: narrow ? 8 : 50
                     },
                     plugins: {
                         legend: {
-                            display: false
+                            display: narrow,
+                            position: 'bottom',
+                            labels: {
+                                color: getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim() || '#aaa',
+                                boxWidth: 12,
+                                padding: 10
+                            }
                         },
                         tooltip: {
                             callbacks: {
                                 label: (ctx) => {
-                                    const label = ctx.label || '';
+                                    const label = typeLabels[ctx.dataIndex] || '';
                                     const value = ctx.raw;
                                     const percentage = Math.round((value / total) * 100);
                                     return `${label}: ${value} (${percentage}%)`;
