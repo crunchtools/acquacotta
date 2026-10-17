@@ -23,6 +23,7 @@ COPY json_pcloud_storage.py .
 COPY todos_plugin.py .
 COPY discussions_plugin.py .
 COPY rt_plugin.py .
+COPY settings_plugin.py .
 COPY pomodoro_tools.py .
 COPY mcp_server.py .
 COPY mcp_tokens.py .

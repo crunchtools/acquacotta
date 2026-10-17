@@ -234,6 +234,46 @@ def validate_config(config):
     return clean
 
 
+_PLAIN_CONFIG_FIELDS = ("base_url", "public_url", "basic_user", "query")
+
+
+def public_config(config):
+    """Config safe to hand to a browser or an MCP client: secrets masked.
+
+    The RT token and Basic-Auth password are never echoed back — only whether each
+    is set (``has_<field>``)."""
+    public = {field: config.get(field, "") for field in _PLAIN_CONFIG_FIELDS}
+    for field in _SECRET_CONFIG_FIELDS:
+        public[f"has_{field}"] = bool((config.get(field) or "").strip())
+    return public
+
+
+def update_config(drive_service, folder_id, changes):
+    """Merge ``changes`` into the stored config, persist it, and return the clean result.
+
+    Shared by the web route and the MCP tool so they can't drift. A plain field is
+    overwritten whenever it is present (not None); a secret field only when a
+    non-empty value is given, so editing other fields never wipes a stored
+    token/password (they are masked on read).
+
+    Args:
+        drive_service: the user's Google Drive API client.
+        folder_id: the user's Acquacotta folder in that Drive.
+        changes: dict of config field -> new value; unknown fields are ignored.
+
+    Returns:
+        The validated config as saved (secrets in plaintext — mask with
+        ``public_config`` before returning it to any client).
+
+    Raises:
+        ValueError: if a field value isn't a string (from ``validate_config``).
+    """
+    merged = read_config(drive_service, folder_id)
+    merged.update({f: v for f, v in changes.items() if f in _PLAIN_CONFIG_FIELDS and v is not None})
+    merged.update({f: v for f, v in changes.items() if f in _SECRET_CONFIG_FIELDS and v})
+    return write_config(drive_service, folder_id, merged)
+
+
 def config_is_connectable(config):
     """True if the config has enough to attempt an RT call (a base URL + some auth)."""
     if not config.get("base_url", "").strip():
@@ -601,8 +641,64 @@ def register_mcp_tools(mcp, require_ctx):
     def _config(ctx):
         cfg = read_config(ctx["service"], ctx["folder_id"])
         if not config_is_connectable(cfg):
-            raise ToolError("RT is not configured — set the connection in Acquacotta's RT settings first")
+            raise ToolError("RT is not configured — set it with set_rt_config or in Acquacotta's RT settings")
         return cfg
+
+    @mcp.tool()
+    def get_rt_config() -> dict:
+        """Get the caller's RT connection settings.
+
+        Returns:
+            base_url, public_url, basic_user, query, plus has_basic_pass and
+            has_rest_token flags. Secret values are never returned.
+        """
+        ctx = require_ctx()
+        return public_config(read_config(ctx["service"], ctx["folder_id"]))
+
+    @mcp.tool()
+    def set_rt_config(
+        base_url: str | None = None,
+        public_url: str | None = None,
+        query: str | None = None,
+        basic_user: str | None = None,
+        basic_pass: str | None = None,
+        rest_token: str | None = None,
+    ) -> dict:
+        """Update the caller's RT connection settings. Omitted fields are left as-is.
+
+        Args:
+            base_url: RT root the server calls (e.g. "https://rt.example.com").
+            public_url: Browser-facing RT root used for ticket links.
+            query: TicketSQL for the Tickets tab and list_tickets.
+            basic_user: HTTP Basic user (preferred over a token when set).
+            basic_pass: HTTP Basic password. Write-only; empty keeps the stored one.
+            rest_token: RT REST 2.0 token. Write-only; empty keeps the stored one.
+
+        Returns:
+            The saved settings, secrets masked (see get_rt_config).
+        """
+        ctx = require_ctx()
+        changes = {
+            "base_url": base_url,
+            "public_url": public_url,
+            "query": query,
+            "basic_user": basic_user,
+            "basic_pass": basic_pass,
+            "rest_token": rest_token,
+        }
+        try:
+            return public_config(update_config(ctx["service"], ctx["folder_id"], changes))
+        except ValueError as exc:
+            raise ToolError(str(exc)) from exc
+
+    @mcp.tool()
+    def test_rt_connection() -> dict:
+        """Test the saved RT connection. Returns RT's version on success."""
+        ctx = require_ctx()
+        try:
+            return test_connection(_config(ctx))
+        except (ValueError, RTError) as exc:
+            raise ToolError(str(exc)) from exc
 
     @mcp.tool()
     def list_tickets(query: str | None = None) -> list:

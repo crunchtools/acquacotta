@@ -184,6 +184,66 @@ class TestConfigRoundtrip:
         assert cfg["basic_pass"] == "supersecret"
         assert cfg["rest_token"] == "tok123"
 
+    def test_update_preserves_unentered_secrets(self, drive):
+        rt_plugin.write_config(None, "folder", _cfg(base_url="http://rt", rest_token="tok123"))
+        clean = rt_plugin.update_config(None, "folder", {"base_url": "http://rt2", "rest_token": "", "query": None})
+        assert clean["base_url"] == "http://rt2"
+        assert clean["rest_token"] == "tok123"
+        assert rt_plugin.read_config(None, "folder")["rest_token"] == "tok123"
+
+    def test_public_config_masks_secrets(self, drive):
+        public = rt_plugin.public_config(_cfg(base_url="http://rt", basic_pass="pw", rest_token=""))
+        assert "basic_pass" not in public and "rest_token" not in public
+        assert public["has_basic_pass"] is True and public["has_rest_token"] is False
+
+
+class TestConfigMcpTools:
+    @pytest.fixture
+    def tools(self, monkeypatch):
+        store = {"cfg": _cfg(base_url="http://rt", rest_token="tok")}
+        monkeypatch.setattr(rt_plugin, "read_config", lambda s, f: dict(store["cfg"]))
+
+        def fake_write(_s, _f, cfg):
+            store["cfg"] = rt_plugin.validate_config(cfg)
+            return store["cfg"]
+
+        monkeypatch.setattr(rt_plugin, "write_config", fake_write)
+        captured = {}
+
+        class FakeMCP:
+            def tool(self):
+                def deco(fn):
+                    captured[fn.__name__] = fn
+                    return fn
+
+                return deco
+
+        rt_plugin.register_mcp_tools(FakeMCP(), lambda: {"service": None, "folder_id": "f"})
+        return captured, store
+
+    def test_get_never_returns_secrets(self, tools):
+        t, _ = tools
+        result = t["get_rt_config"]()
+        assert "tok" not in result.values()
+        assert result["has_rest_token"] is True
+
+    def test_set_merges_and_masks(self, tools):
+        t, store = tools
+        result = t["set_rt_config"](basic_user="scott", basic_pass="pw")
+        assert result["basic_user"] == "scott" and result["has_basic_pass"] is True
+        assert "pw" not in result.values()
+        assert store["cfg"]["rest_token"] == "tok"
+        assert store["cfg"]["base_url"] == "http://rt"
+
+    def test_connection_goes_through_destination_guard(self, tools, monkeypatch):
+        t, _ = tools
+        monkeypatch.delenv("RT_ALLOWED_HOSTS", raising=False)
+        t["set_rt_config"](base_url="http://127.0.0.1:8080")
+        from fastmcp.exceptions import ToolError
+
+        with pytest.raises(ToolError, match="non-public|http"):
+            t["test_rt_connection"]()
+
 
 # --------------------------------------------------------------------------- #
 # Session / auth selection

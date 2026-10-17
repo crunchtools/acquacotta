@@ -7,6 +7,25 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Settings over MCP.** New tools `get_settings` and `update_settings` read
+  and change your preferences: timer presets, breaks, sounds, display, clock,
+  working hours, daily goal, Pomodoro types and colors, tab order, and turning
+  optional plugins on or off. Every write is checked against an explicit
+  schema, and unknown keys are rejected. RT's connection is configurable
+  over MCP too, through `get_rt_config`, `set_rt_config` and
+  `test_rt_connection`. Passwords and tokens are write-only and are never
+  returned. Three settings are deliberately left out of MCP because they go
+  through browser OAuth or session flows: enabling or rotating MCP access
+  itself, switching the storage backend, and linking pCloud.
+- **Tab order.** A new Tab Order card in Settings lets you drag the top-level
+  tabs into any order, or move them with the arrow buttons. Reset to default
+  restores the original order. The order is saved with your settings, and
+  arrow-key navigation follows it.
+- **Plugin settings live on the plugin.** Each plugin that has settings now
+  shows a ⚙ Settings button on its row in the Plugins card, and the settings
+  open inline beneath it. These replace the separate To-do, Discussions and
+  RT Tickets cards. The Tickets tab has its own ⚙ button and, until RT is
+  connected, a Connect RT button. Both open the RT settings directly.
 - **RT Tickets** plugin: a first-class tab for your Request Tracker tickets,
   grouped by queue with a dynamic queue filter bar, and a detail view showing
   each ticket's native RT history thread. You can reply, comment, and change
@@ -34,6 +53,9 @@ All notable changes to this project are documented here. The format follows
   on mobile instead of only on hover, which touch screens can't do.
 
 ### Fixed
+- The buttons on plugin rows (Export CSV, Import CSV, Connect pCloud,
+  Regenerate token) now look like buttons. A later style rule for the
+  Pomodoro Types list was stripping them down to plain text.
 - The weekly pie chart's labels no longer clip off-screen on phones; at
   768px and below it shows a legend with counts under the chart instead.
 - Completing a discussion now works on desktop. The checkbox called a native
