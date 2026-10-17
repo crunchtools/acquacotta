@@ -108,6 +108,7 @@ class RTError(Exception):
 # Per-user connection config, stored in the user's own Google Drive.
 # --------------------------------------------------------------------------- #
 
+_ATTACHMENT_URL_RE = re.compile(r"/attachment/(\d+)/?$")
 _URL_SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
 _CONFIG_FIELDS = ("base_url", "public_url", "rest_token", "basic_user", "basic_pass", "query")
 
@@ -534,12 +535,21 @@ def _hyperlinked_attachments(item):
     ids = []
     hyperlinks = item.get("_hyperlinks") or []
     for link in hyperlinks:
-        if isinstance(link, dict) and link.get("ref") == "attachment" and link.get("id") is not None:
+        if not isinstance(link, dict) or link.get("ref") != "attachment":
+            continue
+        # RT 6 history links carry only a _url (".../attachment/1254"), no id.
+        if link.get("id") is not None:
             ids.append(str(link["id"]))
+        elif match := _ATTACHMENT_URL_RE.search(str(link.get("_url") or "")):
+            ids.append(match.group(1))
     for att in item.get("Attachments") or []:
         if isinstance(att, dict) and att.get("id") is not None:
             ids.append(str(att["id"]))
     return ids
+
+
+# Transactions that carry a message body: the opening message, replies, comments.
+_BODY_TYPES = ("Create", "Correspond", "Comment")
 
 
 def fetch_ticket_history(config, ticket_id):
@@ -563,10 +573,10 @@ def fetch_ticket_history(config, ticket_id):
         if len(items) >= _HISTORY_LIMIT:
             break
     records = [_transaction_base(item) for item in items]
-    # Fetch message bodies for the newest correspondence/comments, bounded in count
+    # Fetch message bodies for the newest messages, bounded in count
     # and fetched concurrently so a long thread doesn't serialize dozens of round
     # trips (each body is a separate RT request).
-    pending = [(i, items[i]) for i, rec in enumerate(records) if rec["type"] in ("Correspond", "Comment")]
+    pending = [(i, items[i]) for i, rec in enumerate(records) if rec["type"] in _BODY_TYPES]
     pending = pending[:_CONTENT_FETCH_LIMIT]
     if pending:
         with ThreadPoolExecutor(max_workers=_CONTENT_FETCH_WORKERS) as pool:

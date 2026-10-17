@@ -412,6 +412,9 @@
         return payload;
     }
 
+    // Ticket sync proxies RT live; gunicorn's own worker timeout is 30s.
+    const RT_SYNC_TIMEOUT_MS = 45000;
+
     async function authenticatedFetch(url, options = {}) {
         if (!storedCredentials) {
             throw new Error('Not logged in');
@@ -2207,7 +2210,9 @@
         loadTicketsFromCloud: async function() {
             if (!authStatus || !authStatus.logged_in || !isOnline) return { ok: false, configured: true };
             try {
-                const res = await authenticatedFetch('/api/rt/sync');
+                // A stalled request must not leave the tab on "Loading…" forever;
+                // on timeout we fall back to the cached tickets like any other error.
+                const res = await authenticatedFetch('/api/rt/sync', { signal: AbortSignal.timeout(RT_SYNC_TIMEOUT_MS) });
                 if (!res.ok) {
                     return { ok: false, configured: true, error: await apiErrorMessage(res) };
                 }
@@ -2224,7 +2229,8 @@
                 return { ok: true, configured: true };
             } catch (loadErr) {
                 console.error('RT ticket load failed:', loadErr);
-                return { ok: false, configured: true, error: loadErr.message };
+                const error = loadErr.name === 'TimeoutError' ? 'RT took too long to respond' : loadErr.message;
+                return { ok: false, configured: true, error };
             }
         },
 

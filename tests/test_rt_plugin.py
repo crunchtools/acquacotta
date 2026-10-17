@@ -401,7 +401,11 @@ class TestHistory:
                                 "Creator": {"Name": "scott"},
                                 "Created": "2026-10-10T00:00:00Z",
                                 "Description": "Correspondence added",
-                                "_hyperlinks": [{"ref": "attachment", "id": 500}],
+                                # RT 6's real shape: attachment links have a _url, no id.
+                                "_hyperlinks": [
+                                    {"ref": "self", "id": 100, "type": "transaction"},
+                                    {"ref": "attachment", "_url": "https://rt.example.com/REST/2.0/attachment/500"},
+                                ],
                             }
                         ],
                         "pages": 1,
@@ -416,6 +420,23 @@ class TestHistory:
         assert hist[0]["type"] == "Correspond"
         assert hist[0]["creator"] == "scott"
         assert hist[0]["content"] == "Hello there"
+
+    def test_create_transaction_gets_opening_body(self, fake_rt):
+        def handler(method, url, kw):
+            if "/history" in url:
+                item = {
+                    "id": 1,
+                    "Type": "Create",
+                    "Created": "x",
+                    "_hyperlinks": [{"ref": "attachment", "_url": "https://rt.example.com/REST/2.0/attachment/7"}],
+                }
+                return FakeResp(json_data={"items": [item], "pages": 1})
+            if "/attachment/7" in url:
+                return FakeResp(json_data={"Content": base64.b64encode(b"Opening message").decode()})
+            return FakeResp(json_data={})
+
+        fake_rt.handler = handler
+        assert rt_plugin.fetch_ticket_history(_cfg(), "42")[0]["content"] == "Opening message"
 
     def test_limits_transactions(self, fake_rt, monkeypatch):
         monkeypatch.setattr(rt_plugin, "_HISTORY_LIMIT", 2)
