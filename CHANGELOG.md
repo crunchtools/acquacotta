@@ -17,6 +17,11 @@ All notable changes to this project are documented here. The format follows
   per-user, enabled by default (spec 008).
 
 ### Fixed
+- Completing a discussion now works on desktop. The checkbox called a native
+  `prompt()` to capture the outcome; browsers suppress that dialog in several
+  desktop cases, so it returned null and the click did nothing. One click now
+  marks it discussed (preserving any existing outcome); the outcome is recorded
+  by editing the discussion.
 - The Discussions person filter now lists only people who still have an open
   discussion. People whose discussions are all done drop off the bar, so it
   reflects conversations that still need to happen; the edit-modal autocomplete

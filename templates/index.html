@@ -6505,9 +6505,11 @@
             const d = discussions.find(x => x.id === id);
             if (!d) return;
             if (d.status === 'open') {
-                const outcome = prompt('Mark discussed. What was the outcome? (optional)', d.outcome || '');
-                if (outcome === null) return;  // cancelled
-                await Storage.markDiscussed(id, outcome.trim());
+                // One click marks it discussed (like todos). A native prompt() here was
+                // unreliable on desktop — browsers suppress it, the handler got null and
+                // bailed, so the circle did nothing. The outcome is recorded by editing
+                // the discussion; the edit modal shows the Outcome field.
+                await Storage.markDiscussed(id, d.outcome || '');
             } else {
                 await Storage.reopenDiscussion(id);
             }
