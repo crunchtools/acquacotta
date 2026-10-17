@@ -229,6 +229,10 @@ def validate_config(config):
             if not isinstance(value, str):
                 raise ValueError(f"{field} must be a string")
             clean[field] = value.strip() if field != "query" else value
+    for field in ("base_url", "public_url"):
+        # People type "rt.example.com"; without a scheme it's not a URL at all.
+        if clean[field] and "://" not in clean[field]:
+            clean[field] = "https://" + clean[field]
     if not clean["query"].strip():
         clean["query"] = DEFAULT_QUERY
     return clean

@@ -127,6 +127,19 @@ class TestValidateConfig:
         assert "evil" not in clean
 
 
+class TestUrlScheme:
+    def test_bare_host_gets_https(self):
+        clean = rt_plugin.validate_config({"base_url": "rt.example.com/", "public_url": "rt.example.com"})
+        assert clean["base_url"] == "https://rt.example.com/"
+        assert clean["public_url"] == "https://rt.example.com"
+
+    def test_explicit_scheme_kept(self):
+        assert rt_plugin.validate_config({"base_url": "http://10.0.0.5:8080"})["base_url"] == "http://10.0.0.5:8080"
+
+    def test_empty_stays_empty(self):
+        assert rt_plugin.validate_config({"base_url": ""})["base_url"] == ""
+
+
 class TestConnectable:
     def test_needs_base_and_auth(self):
         assert rt_plugin.config_is_connectable(_cfg()) is True

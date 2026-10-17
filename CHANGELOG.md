@@ -53,6 +53,9 @@ All notable changes to this project are documented here. The format follows
   on mobile instead of only on hover, which touch screens can't do.
 
 ### Fixed
+- An RT URL saved without a scheme (`rt.example.com`) now gets `https://`
+  added automatically. Before, every RT call failed with "base_url must be an
+  http(s) URL".
 - The buttons on plugin rows (Export CSV, Import CSV, Connect pCloud,
   Regenerate token) now look like buttons. A later style rule for the
   Pomodoro Types list was stripping them down to plain text.
