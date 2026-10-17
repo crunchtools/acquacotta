@@ -16,7 +16,7 @@ All notable changes to this project are documented here. The format follows
   auth (HTTP Basic or an RT REST token), and the TicketSQL search are per-user
   config stored only in your own Google Drive, never on the server. Ships with
   its own `/api/rt/*` endpoints and MCP tools (`list_tickets`, `get_ticket`,
-  `reply_ticket_tool`, `comment_ticket_tool`, `set_ticket_status_tool`).
+  `reply_ticket`, `comment_ticket`, `set_ticket_status`).
   Optional and per-user, enabled by default (spec 011).
 - **Discussions** plugin: a first-class tab for conversations to have with
   people, broken out of the Todos "Discussions" list. Each discussion records

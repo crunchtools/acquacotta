@@ -127,7 +127,7 @@ def _encrypt_secret(value):
     """Encrypt a secret for at-rest storage in the user's Drive, or '' for empty."""
     if not value:
         return ""
-    return _ENC_PREFIX + Fernet(mcp_tokens._seal_key()).encrypt(value.encode()).decode()
+    return _ENC_PREFIX + Fernet(mcp_tokens.seal_key()).encrypt(value.encode()).decode()
 
 
 def _decrypt_secret(value):
@@ -136,7 +136,7 @@ def _decrypt_secret(value):
     if not value or not value.startswith(_ENC_PREFIX):
         return value or ""
     try:
-        return Fernet(mcp_tokens._seal_key()).decrypt(value[len(_ENC_PREFIX) :].encode()).decode()
+        return Fernet(mcp_tokens.seal_key()).decrypt(value[len(_ENC_PREFIX) :].encode()).decode()
     except InvalidToken:
         return ""
 
@@ -504,8 +504,7 @@ def fetch_ticket_history(config, ticket_id):
     correspondence/comments, best-effort). Raises ValueError on a bad id/config,
     RTError on an RT/network problem.
     """
-    if not _TICKET_ID_RE.match(str(ticket_id)):
-        raise ValueError("ticket_id must be a positive integer")
+    _require_ticket_id(ticket_id)
     session = _session(config)
     params = {
         "fields": "Type,Creator,Created,Description,_hyperlinks",
@@ -564,8 +563,8 @@ def act_on_ticket(config, ticket_id, action, value):
     _require_ticket_id(ticket_id)
     if action not in _TICKET_ACTIONS:
         raise ValueError(f"unknown action: {action}")
-    if not value or not value.strip():
-        raise ValueError(("status" if action == "status" else "content") + " is required")
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(("status" if action == "status" else "content") + " must be a non-empty string")
     method, sub_path = _TICKET_ACTIONS[action]
     base = f"{_rest_base(config)}/ticket/{ticket_id}"
     if action == "status":
@@ -645,7 +644,7 @@ def register_mcp_tools(mcp, require_ctx):
         return {"ticket": tickets[0] if tickets else None, "history": history}
 
     @mcp.tool()
-    def reply_ticket_tool(ticket_id: str, content: str) -> dict:
+    def reply_ticket(ticket_id: str, content: str) -> dict:
         """Add public correspondence (a reply, sent to requestors) to a ticket."""
         ctx = require_ctx()
         try:
@@ -655,7 +654,7 @@ def register_mcp_tools(mcp, require_ctx):
         return {"status": "ok", "ticket_id": str(ticket_id), "action": "reply"}
 
     @mcp.tool()
-    def comment_ticket_tool(ticket_id: str, content: str) -> dict:
+    def comment_ticket(ticket_id: str, content: str) -> dict:
         """Add an internal comment (not sent to requestors) to a ticket."""
         ctx = require_ctx()
         try:
@@ -665,7 +664,7 @@ def register_mcp_tools(mcp, require_ctx):
         return {"status": "ok", "ticket_id": str(ticket_id), "action": "comment"}
 
     @mcp.tool()
-    def set_ticket_status_tool(ticket_id: str, status: str) -> dict:
+    def set_ticket_status(ticket_id: str, status: str) -> dict:
         """Change a ticket's status (e.g. 'open', 'stalled', 'resolved')."""
         ctx = require_ctx()
         try:
