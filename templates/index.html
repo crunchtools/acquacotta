@@ -354,6 +354,9 @@
         .week-day-header.today {
             color: var(--accent);
         }
+        .week-day-count {
+            display: none;
+        }
         .week-day-section {
             margin-bottom: 0.5rem;
         }
@@ -527,9 +530,42 @@
             .period-nav button { padding: 0.5rem; }
 
             .week-chart-container { min-height: 150px; }
-            .week-day { min-width: 30px; }
-            .week-day-header { font-size: 0.625rem; }
-            .week-day-hours { font-size: 0.5rem; }
+
+            /* Week strip + selected-day agenda (calendar-app pattern) */
+            .week-grid { gap: 0.25rem; }
+            .week-day { display: contents; }
+            .week-day-header {
+                grid-row: 1;
+                font-size: 0.75rem;
+                padding: 0.4rem 0;
+                margin: 0;
+                border: none;
+                border-radius: 8px;
+                background: var(--bg-primary);
+            }
+            .week-day-name, .week-day-num { display: block; }
+            .week-day-count { display: block; font-size: 0.625rem; font-weight: 400; min-height: 1em; opacity: 0.8; }
+            .week-day.selected .week-day-header { background: var(--accent); color: white; }
+            .week-day-body {
+                display: none;
+                grid-row: 2;
+                grid-column: 1 / -1;
+                background: var(--bg-primary);
+                border-radius: 6px;
+                padding: 0.75rem;
+                min-height: 120px;
+            }
+            .week-day.selected .week-day-body { display: block; }
+            .week-day-section-label { display: flex; align-items: center; font-size: 0.75rem; padding-right: 0; }
+            .week-section-add-btn {
+                display: flex; position: static; transform: none;
+                width: 24px; height: 24px; font-size: 14px; margin-left: 0.5rem;
+            }
+            .week-pomo { font-size: 0.875rem; padding: 0.4rem 0.6rem; margin-bottom: 0.3rem; align-items: center; }
+            .week-pomo-name { flex: 1 1 auto; text-overflow: ellipsis; }
+            .week-pomo:hover .week-pomo-name { overflow: hidden; }
+            .week-pomo-controls { display: flex; position: static; transform: none; margin-left: 0.5rem; gap: 6px; }
+            .week-pomo-btn { width: 30px; height: 30px; font-size: 16px; }
         }
 
         @media (max-width: 480px) {
@@ -556,7 +592,7 @@
             clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
         }
     </style>
-    <script src="{{ url_for('static', filename='js/utils.js') }}?v=4"></script>
+    <script src="{{ url_for('static', filename='js/utils.js') }}?v=5"></script>
     <script src="{{ url_for('static', filename='js/storage.js') }}?v=10"></script>
 </head>
 <body>
@@ -1415,6 +1451,7 @@
         let isBreak = false;
         let lastPomodoro = { type: null, name: null, notes: null };
         let weekOverviewOffset = 0; // 0 = this week, -1 = last week, etc.
+        let weekSelectedIndex = null; // Day shown on mobile; null = today (or first day)
         let selectedPreset = 4; // Which duration preset is selected (1-4)
         let pomodorosCompleted = 0; // Count for long break logic
         let lastKnownDate = null; // Track date for midnight refresh
@@ -1770,6 +1807,7 @@
 
         function goToCurrentWeek() {
             weekOverviewOffset = 0;
+            weekSelectedIndex = null;
             loadWeeklyOverview();
         }
 
@@ -1832,6 +1870,13 @@
             const today = new Date();
             const todayStr = today.toLocaleDateString('en-CA', { timeZone: tz });
 
+            // Default the mobile selection to today when it's in view, else the first day
+            if (weekSelectedIndex === null) {
+                const todayIndex = Math.round((new Date(todayStr + 'T00:00:00') - new Date(startOfWeek.toLocaleDateString('en-CA', { timeZone: tz }) + 'T00:00:00')) / 86400000);
+                weekSelectedIndex = todayIndex >= 0 && todayIndex < 7 ? todayIndex : 0;
+            }
+            const selectedIndex = weekSelectedIndex;
+
             let html = '';
             for (let i = 0; i < 7; i++) {
                 const dayDate = new Date(startOfWeek.getTime() + i * 24 * 60 * 60 * 1000);
@@ -1860,10 +1905,16 @@
                 const amLabel = effectivePeriodLabels === 'morning' ? 'Morning' : 'AM';
                 const pmLabel = effectivePeriodLabels === 'morning' ? 'Afternoon' : 'PM';
 
-                html += `<div class="week-day">
-                    <div class="week-day-header ${isToday ? 'today' : ''}">
-                        ${days[i]} ${dayNum}
+                const isSelected = i === selectedIndex;
+                const fullDate = dayDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: tz });
+                html += `<div class="week-day ${isSelected ? 'selected' : ''}">
+                    <div class="week-day-header ${isToday ? 'today' : ''}" role="button" tabindex="0"
+                         aria-pressed="${isSelected}" aria-label="${fullDate}, ${dayPomos.length} pomodoros"
+                         onclick="selectWeekDay(${i})" onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectWeekDay(${i}); }">
+                        <span class="week-day-name">${days[i]}</span> <span class="week-day-num">${dayNum}</span>
+                        <span class="week-day-count">${dayPomos.length || ''}</span>
                     </div>
+                    <div class="week-day-body">
                     <div class="week-day-section">
                         <div class="week-day-section-label" onclick="addPomoToNextSlot('${dayStr}', true)">
                             ${amLabel}
@@ -1878,10 +1929,41 @@
                         </div>
                         ${renderDayPomos(pmPomos, dayStr, false)}
                     </div>
+                    </div>
                 </div>`;
             }
             grid.innerHTML = html;
         }
+
+        // Mobile shows one day at a time under the week strip; desktop ignores the selection
+        function selectWeekDay(index) {
+            weekSelectedIndex = index;
+            document.querySelectorAll('#week-grid .week-day').forEach((el, i) => {
+                el.classList.toggle('selected', i === index);
+                el.querySelector('.week-day-header').setAttribute('aria-pressed', i === index);
+            });
+        }
+
+        // Swipe the day agenda left/right to move between days, rolling into adjacent weeks
+        (function initWeekSwipe() {
+            let startX = null, startY = null;
+            document.addEventListener('DOMContentLoaded', () => {
+                const grid = document.getElementById('week-grid');
+                grid.addEventListener('touchstart', e => {
+                    startX = e.touches[0].clientX;
+                    startY = e.touches[0].clientY;
+                }, { passive: true });
+                grid.addEventListener('touchend', e => {
+                    if (startX === null || !window.matchMedia('(max-width: 768px)').matches) return;
+                    const target = AcquacottaUtils.weekSwipeTarget(weekSelectedIndex ?? 0,
+                        e.changedTouches[0].clientX - startX, e.changedTouches[0].clientY - startY);
+                    startX = null;
+                    if (!target) return;
+                    if (target.weekDelta) { weekSelectedIndex = target.index; navigateWeek(target.weekDelta); }
+                    else selectWeekDay(target.index);
+                });
+            });
+        })();
 
         function renderDayPomos(pomos, dayStr, isAM) {
             if (pomos.length === 0) return '<div style="color: var(--text-secondary); font-size: 0.625rem;">—</div>';

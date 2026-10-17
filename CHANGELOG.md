@@ -15,6 +15,12 @@ All notable changes to this project are documented here. The format follows
   (`list_discussions`, `create_discussion`, `mark_discussed`,
   `update_discussion`, `delete_discussion`, `reorder_discussion`). Optional and
   per-user, enabled by default (spec 008).
+- Mobile week view: on screens 768px wide or narrower, the weekly overview
+  becomes a tappable 7-day strip (today in the accent color, the selected day
+  filled, with each day's pomodoro count) and the selected day's pomodoros
+  appear full-width below. Swipe left or right to change days; swiping past
+  either end moves to the adjacent week. The +/− controls are always visible
+  on mobile instead of only on hover, which touch screens can't do.
 
 ### Fixed
 - Completing a discussion now works on desktop. The checkbox called a native
