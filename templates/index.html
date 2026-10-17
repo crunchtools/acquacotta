@@ -1946,7 +1946,13 @@
         }
 
         // Redraw when rotation or resize crosses the mobile breakpoint; the chart picks labels vs legend at creation
-        window.matchMedia('(max-width: 768px)').addEventListener('change', () => loadWeeklyOverview());
+        (function () {
+            const mq = window.matchMedia('(max-width: 768px)');
+            const redraw = () => loadWeeklyOverview();
+            // Safari < 14 only has the deprecated addListener
+            if (mq.addEventListener) mq.addEventListener('change', redraw);
+            else mq.addListener(redraw);
+        })();
 
         // Swipe the day agenda left/right to move between days, rolling into adjacent weeks
         (function initWeekSwipe() {
