@@ -1945,6 +1945,9 @@
             });
         }
 
+        // Redraw when rotation or resize crosses the mobile breakpoint; the chart picks labels vs legend at creation
+        window.matchMedia('(max-width: 768px)').addEventListener('change', () => loadWeeklyOverview());
+
         // Swipe the day agenda left/right to move between days, rolling into adjacent weeks
         (function initWeekSwipe() {
             let startX = null, startY = null;
