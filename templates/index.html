@@ -4347,7 +4347,8 @@
                     let countBadge = '';
                     if (isActive && plugin.has_counts) {
                         try {
-                            const count = plugin.id === 'todos' ? (await Storage.getTodos()).length : 0;
+                            const counters = { todos: Storage.getTodos, discussions: Storage.getDiscussions, rt: Storage.getTickets };
+                            const count = counters[plugin.id] ? (await counters[plugin.id]()).length : 0;
                             countBadge = `<span style="display: inline-block; padding: 0.125rem 0.5rem; border-radius: 4px; font-size: 0.75rem; background: var(--accent); color: white;">${count} items</span>`;
                         } catch (e) { /* offline */ }
                     }

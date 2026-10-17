@@ -53,6 +53,8 @@ All notable changes to this project are documented here. The format follows
   on mobile instead of only on hover, which touch screens can't do.
 
 ### Fixed
+- The "N items" badge on the Discussions and RT Tickets plugin rows now
+  shows their real counts. Only To-do was being counted.
 - RT settings now show how you sign in. The Authentication section is no
   longer collapsed. You choose "Username & password" or "REST token", a saved
   secret shows as •••••••• marked "saved", and a summary line names the method
