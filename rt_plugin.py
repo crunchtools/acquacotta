@@ -108,6 +108,7 @@ class RTError(Exception):
 # Per-user connection config, stored in the user's own Google Drive.
 # --------------------------------------------------------------------------- #
 
+_URL_SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
 _CONFIG_FIELDS = ("base_url", "public_url", "rest_token", "basic_user", "basic_pass", "query")
 
 
@@ -231,7 +232,7 @@ def validate_config(config):
             clean[field] = value.strip() if field != "query" else value
     for field in ("base_url", "public_url"):
         # People type "rt.example.com"; without a scheme it's not a URL at all.
-        if clean[field] and "://" not in clean[field]:
+        if clean[field] and not _URL_SCHEME.match(clean[field]):
             clean[field] = "https://" + clean[field]
     if not clean["query"].strip():
         clean["query"] = DEFAULT_QUERY

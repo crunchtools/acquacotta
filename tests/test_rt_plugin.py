@@ -136,6 +136,10 @@ class TestUrlScheme:
     def test_explicit_scheme_kept(self):
         assert rt_plugin.validate_config({"base_url": "http://10.0.0.5:8080"})["base_url"] == "http://10.0.0.5:8080"
 
+    def test_scheme_only_counts_at_start(self):
+        clean = rt_plugin.validate_config({"base_url": "rt.example.com/?next=https://other"})
+        assert clean["base_url"] == "https://rt.example.com/?next=https://other"
+
     def test_empty_stays_empty(self):
         assert rt_plugin.validate_config({"base_url": ""})["base_url"] == ""
 
