@@ -175,6 +175,12 @@ classification = "by_design"
 
 [[exceptions]]
 check = "hidden_env_config"
+path = "rt_plugin.py"
+justification = "RT_ALLOWED_HOSTS is a documented operator security control (SSRF allowlist for the RT proxy), documented in README.md's Environment Variables table and acquacotta.env.example. It is config, not a hidden feature toggle, and defaults to no restriction when unset."
+classification = "by_design"
+
+[[exceptions]]
+check = "hidden_env_config"
 path = "mcp_server.py"
 justification = "GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET are documented in README.md and acquacotta.env.example; MCP_HOST/MCP_PORT are documented in README.md's MCP-specific Environment Variables row (including the network/TLS-proxy caveat for MCP_HOST)."
 classification = "by_design"

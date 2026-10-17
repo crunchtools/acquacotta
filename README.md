@@ -93,6 +93,7 @@ python app.py
 | `CLEAR_CACHE_ON_START` | No | Clear SQLite cache on startup (default: `true`) |
 | `MCP_HOST` | No | Host the MCP server binds to (default: `127.0.0.1`) |
 | `MCP_PORT` | No | Port the MCP server listens on (default: `5001`) |
+| `RT_ALLOWED_HOSTS` | No | Comma-separated hostname allowlist for the RT Tickets plugin's server-side proxy. When set, a user's RT `base_url` host must be listed (SSRF guard for multi-tenant deployments). Unset = no restriction (single-tenant/dev). |
 
 The MCP server (`mcp_server.py`) is a separate process from the Flask app. It
 binds to localhost by default and is reached through the in-container Apache,
@@ -206,6 +207,7 @@ Then open http://localhost:5000 in your browser.
 | `CLEAR_CACHE_ON_START` | No | Clear SQLite cache on startup (default: `true`) |
 | `MCP_HOST` | No | Host the MCP server binds to (default: `127.0.0.1`) |
 | `MCP_PORT` | No | Port the MCP server listens on (default: `5001`) |
+| `RT_ALLOWED_HOSTS` | No | Comma-separated hostname allowlist for the RT Tickets plugin's server-side proxy. When set, a user's RT `base_url` host must be listed (SSRF guard for multi-tenant deployments). Unset = no restriction (single-tenant/dev). |
 
 The MCP server (`mcp_server.py`) is a separate process from the Flask app. It
 binds to localhost by default and is reached through the in-container Apache,

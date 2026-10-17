@@ -7,6 +7,17 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **RT Tickets** plugin: a first-class tab for your Request Tracker tickets,
+  grouped by queue with a dynamic queue filter bar, and a detail view showing
+  each ticket's native RT history thread. You can reply, comment, and change
+  status from inside Acquacotta. RT is the source of truth: the server proxies
+  RT's REST 2.0 API per request (reads are cached in IndexedDB for offline) and
+  never stores ticket data. Point it at any RT 5+/6.x instance — the base URL,
+  auth (HTTP Basic or an RT REST token), and the TicketSQL search are per-user
+  config stored only in your own Google Drive, never on the server. Ships with
+  its own `/api/rt/*` endpoints and MCP tools (`list_tickets`, `get_ticket`,
+  `reply_ticket_tool`, `comment_ticket_tool`, `set_ticket_status_tool`).
+  Optional and per-user, enabled by default (spec 011).
 - **Discussions** plugin: a first-class tab for conversations to have with
   people, broken out of the Todos "Discussions" list. Each discussion records
   the person, topic, context, talking points, priority, and — once it happens —
