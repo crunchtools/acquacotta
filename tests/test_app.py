@@ -14,9 +14,11 @@ import json
 from unittest.mock import MagicMock, patch
 
 import pytest
+from googleapiclient.errors import HttpError
 
 import app as app_module
 import plugin_registry
+import rt_plugin
 import storage_api
 
 
@@ -251,6 +253,47 @@ class TestRTEndpoints:
 
     def test_reply_requires_auth(self, client):
         assert client.post("/api/rt/ticket/5/reply", json={"content": "hi"}).status_code == 401
+
+
+class TestRTConfigSave:
+    """POST /api/rt/config for a logged-in caller, with their Drive faked in memory."""
+
+    @pytest.fixture
+    def drive(self, monkeypatch):
+        store = {"cfg": rt_plugin.validate_config({"base_url": "http://rt", "rest_token": "tok123"})}
+        monkeypatch.setattr(app_module, "_rt_drive_context", lambda: (object(), "folder"))
+        monkeypatch.setattr(rt_plugin, "read_config", lambda _s, _f: dict(store["cfg"]))
+
+        def fake_write(_s, _f, cfg):
+            store["cfg"] = rt_plugin.validate_config(cfg)
+            return store["cfg"]
+
+        monkeypatch.setattr(rt_plugin, "write_config", fake_write)
+        return store
+
+    def test_rejects_non_object_payload(self, client, drive):
+        resp = client.post("/api/rt/config", json=["base_url", "http://evil"])
+        assert resp.status_code == 400
+        assert drive["cfg"]["base_url"] == "http://rt"
+
+    def test_update_preserves_secret_and_masks_response(self, client, drive):
+        resp = client.post("/api/rt/config", json={"base_url": "http://rt2", "rest_token": ""})
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["base_url"] == "http://rt2"
+        assert body["has_rest_token"] is True
+        assert "rest_token" not in body and "tok123" not in json.dumps(body)
+        assert drive["cfg"]["rest_token"] == "tok123"
+
+    def test_bad_field_type_is_400(self, client, drive):
+        assert client.post("/api/rt/config", json={"base_url": 5}).status_code == 400
+
+    def test_drive_error_is_500(self, client, drive, monkeypatch):
+        def boom(_s, _f):
+            raise HttpError(MagicMock(status=500, reason="boom"), b"boom")
+
+        monkeypatch.setattr(rt_plugin, "read_config", boom)
+        assert client.post("/api/rt/config", json={"base_url": "http://rt2"}).status_code == 500
 
 
 class TestExtensionTogglePerUser:
