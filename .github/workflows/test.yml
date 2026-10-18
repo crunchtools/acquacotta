@@ -105,3 +105,6 @@ jobs:
 
       - name: Run index.html browser tests
         run: node tests/js/test_index.js
+
+      - name: Run storage.js sync tests
+        run: node tests/js/test_storage_sync.js
