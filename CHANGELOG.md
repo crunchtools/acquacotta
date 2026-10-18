@@ -53,6 +53,9 @@ All notable changes to this project are documented here. The format follows
   on mobile instead of only on hover, which touch screens can't do.
 
 ### Fixed
+- RT ticket detail modal now widens to a readable 720px on desktop instead of
+  staying a cramped 400px column (it shared the compact form-modal width). Mobile
+  is unchanged — it was already full-width there.
 - The "N items" badge on the Discussions and RT Tickets plugin rows now
   shows their real counts. Only To-do was being counted.
 - RT settings now show how you sign in. The Authentication section is no
