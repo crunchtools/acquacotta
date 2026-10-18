@@ -113,6 +113,10 @@ All notable changes to this project are documented here. The format follows
 - Constitution validation is pinned to the inherited release via
   `.github/workflows/constitution.yml`.
 - Dependabot auto-merges GitHub Actions minor and patch updates.
+- CI runs browser tests against `index.html` (`tests/js/test_index.js`):
+  tab order (apply, move, drag-and-drop, reset, save, arrow keys over hidden
+  and reordered tabs) and plugin settings panels across `loadPlugins()`
+  re-renders. The page is served with `Storage` and the CDN libraries stubbed.
 
 ## [2.16.2] - 2026-09-20
 
