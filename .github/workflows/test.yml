@@ -102,3 +102,6 @@ jobs:
             process.exit(parseInt(results.exitCode));
           })();
           EOF
+
+      - name: Run index.html browser tests
+        run: node tests/js/test_index.js
