@@ -177,6 +177,10 @@
         }
         .modal-overlay.active { display: flex; }
         .modal { background: var(--bg-secondary); border-radius: 8px; padding: 1.5rem; width: 100%; max-width: 400px; margin: 1rem; max-height: calc(100dvh - 2rem); overflow-y: auto; }
+        /* The ticket detail modal is a reading surface (long subject, history thread,
+           action forms), not a compact form — give it room on desktop. On mobile the
+           width:100% cap still holds, so it stays full-width there. */
+        #rt-detail-modal .modal { max-width: 720px; }
         .modal h2 { margin-bottom: 1.5rem; }
         .modal-actions {
             display: flex; gap: 0.75rem; justify-content: flex-end;
