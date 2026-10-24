@@ -2304,6 +2304,16 @@
             return await res.json();
         },
 
+        socialPreview: async function(url) {
+            const res = await authenticatedFetch('/api/social/preview', {
+                method: 'POST',
+                body: JSON.stringify({ url }),
+                signal: AbortSignal.timeout(SOCIAL_TIMEOUT_MS)
+            });
+            if (!res.ok) throw new Error(await apiErrorMessage(res));
+            return await res.json();
+        },
+
         socialDraft: async function(url, channels) {
             const res = await authenticatedFetch('/api/social/draft', {
                 method: 'POST',

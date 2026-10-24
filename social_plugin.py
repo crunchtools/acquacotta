@@ -17,6 +17,7 @@ API key sent bare in ``Authorization`` (no ``Bearer``); Postiz shows it under
 Settings, "Agents / Dev". Post content is HTML: one ``<p>`` per line.
 """
 
+import base64
 import html
 import json
 import re
@@ -74,6 +75,9 @@ _PROVIDER_DEFAULT_SETTINGS = {"x": {"who_can_reply_post": "everyone"}}
 # Image types Postiz accepts as post media, and the extension each is stored with.
 _IMAGE_TYPES = {"image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp"}
 _IMAGE_MAX_BYTES = 5_000_000
+# A preview thumbnail travels inline as a data: URI (the page CSP blocks other
+# image hosts), so a bigger og:image is dropped from the preview, not shrunk.
+_PREVIEW_IMAGE_MAX_BYTES = 750_000
 
 _POST_MODES = ("schedule", "draft", "now")
 
@@ -562,6 +566,33 @@ def _fetch_image(image_url):
     if len(body) > _IMAGE_MAX_BYTES:
         raise SocialError("the image is larger than 5 MB")
     return body, content_type, _IMAGE_TYPES[content_type]
+
+
+def link_preview(url):
+    """A link card for the composer: url, title, site (name or domain) and image.
+
+    ``image`` is a data: URI of the page's og:image, or "" when there is none, it
+    fails, or it is over the preview cap. The preview is display-only: the posts
+    carry just the URL and each platform builds its own card from it.
+
+    Raises:
+        ValueError / SocialError: as ``fetch_page`` (the page itself failed).
+    """
+    page = fetch_page(url)
+    image = ""
+    if page.get("image"):
+        try:
+            body, content_type, _ext = _fetch_image(page["image"])
+            if len(body) <= _PREVIEW_IMAGE_MAX_BYTES:
+                image = f"data:{content_type};base64,{base64.b64encode(body).decode('ascii')}"
+        except (ValueError, SocialError):
+            image = ""
+    return {
+        "url": page["url"],
+        "title": page["title"],
+        "site": page["site_name"] or (urlparse(page["url"]).hostname or "").removeprefix("www."),
+        "image": image,
+    }
 
 
 def _upload_image(config, image_url):

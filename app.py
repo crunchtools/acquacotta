@@ -1765,6 +1765,19 @@ def api_social_draft():
     return jsonify({"page": page, "drafts": drafts})
 
 
+@app.route("/api/social/preview", methods=["POST"])
+def api_social_preview():
+    """A link card for the composer. Body: ``{"url": "..."}`` (a POST, so the URL stays out of access logs)."""
+    drive_service, _folder_id = _plugin_drive_context()
+    if not drive_service:
+        return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
+    try:
+        preview = social_plugin.link_preview(_social_payload().get("url"))
+    except (ValueError, social_plugin.SocialError) as exc:
+        return _social_error_response(exc)
+    return jsonify(preview)
+
+
 @app.route("/api/social/schedule", methods=["POST"])
 def api_social_schedule():
     """Create the edited posts in Postiz.

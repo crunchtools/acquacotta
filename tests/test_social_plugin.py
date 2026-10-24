@@ -627,6 +627,47 @@ class TestPostiz:
 # --------------------------------------------------------------------------- #
 
 
+class TestLinkPreview:
+    PAGE = {
+        "url": "https://www.example.com/a",
+        "title": "A title",
+        "site_name": "",
+        "image": "https://cdn.example.com/i.png",
+    }
+
+    def _page(self, monkeypatch, **over):
+        monkeypatch.setattr(social_plugin, "fetch_page", lambda url: {**self.PAGE, **over})
+
+    def test_small_image_inlined_as_data_uri(self, monkeypatch):
+        self._page(monkeypatch)
+        monkeypatch.setattr(social_plugin, "_fetch_image", lambda u: (b"\x89PNG", "image/png", "png"))
+        card = social_plugin.link_preview("https://www.example.com/a")
+        assert card["image"] == "data:image/png;base64,iVBORw=="
+        assert card["site"] == "example.com", "domain without www when there is no og:site_name"
+        assert card["title"] == "A title"
+
+    def test_oversized_image_dropped(self, monkeypatch):
+        self._page(monkeypatch, site_name="Example")
+        big = b"x" * (social_plugin._PREVIEW_IMAGE_MAX_BYTES + 1)
+        monkeypatch.setattr(social_plugin, "_fetch_image", lambda u: (big, "image/jpeg", "jpg"))
+        card = social_plugin.link_preview("https://www.example.com/a")
+        assert card["image"] == "" and card["site"] == "Example"
+
+    def test_image_failure_keeps_card(self, monkeypatch):
+        self._page(monkeypatch)
+
+        def boom(_url):
+            raise social_plugin.SocialError("nope")
+
+        monkeypatch.setattr(social_plugin, "_fetch_image", boom)
+        assert social_plugin.link_preview("https://www.example.com/a")["image"] == ""
+
+    def test_no_image_skips_fetch(self, monkeypatch):
+        self._page(monkeypatch, image="")
+        monkeypatch.setattr(social_plugin, "_fetch_image", lambda u: pytest.fail("should not fetch"))
+        assert social_plugin.link_preview("https://www.example.com/a")["image"] == ""
+
+
 class TestShareRoute:
     def test_url_param_redirects_to_social_tab(self, client):
         resp = client.get("/share?url=https%3A%2F%2Fexample.com%2Fa%3Fb%3D1&title=Hi")
@@ -765,6 +806,7 @@ class TestSocialEndpoints:
             ("post", "/api/social/test"),
             ("get", "/api/social/integrations"),
             ("post", "/api/social/draft"),
+            ("post", "/api/social/preview"),
             ("post", "/api/social/schedule"),
         ],
     )
@@ -799,6 +841,17 @@ class TestSocialEndpoints:
     def test_integrations_unconfigured(self, client, logged_in):
         logged_in["cfg"]["postiz_api_key"] = ""
         assert client.get("/api/social/integrations").get_json() == {"configured": False, "integrations": []}
+
+    def test_preview_ssrf_is_400(self, client, logged_in, public_dns):
+        assert client.post("/api/social/preview", json={"url": "http://169.254.169.254/"}).status_code == 400
+
+    def test_preview_route_returns_card(self, client, logged_in, monkeypatch):
+        monkeypatch.setattr(
+            social_plugin, "link_preview", lambda url: {"url": url, "title": "T", "site": "example.com", "image": ""}
+        )
+        resp = client.post("/api/social/preview", json={"url": "https://example.com/a"})
+        assert resp.status_code == 200
+        assert resp.get_json()["title"] == "T"
 
     def test_draft_url_must_be_a_string(self, client, logged_in):
         assert client.post("/api/social/draft", json={"url": 5, "channels": CHANNELS}).status_code == 400
