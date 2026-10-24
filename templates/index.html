@@ -617,22 +617,18 @@
             clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
         }
         /* Social Share */
-        .social-url-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
-        .social-url-row input { flex: 1 1 14rem; min-width: 0; }
-        .social-page { display: flex; gap: 0.75rem; align-items: flex-start; margin: 0.75rem 0; }
-        .social-page img { width: 72px; height: 72px; object-fit: cover; border-radius: 6px; flex-shrink: 0; }
-        .social-page-title { font-weight: 600; overflow-wrap: anywhere; }
-        .social-page-desc { color: var(--text-secondary); font-size: 0.85rem; overflow-wrap: anywhere; }
-        .social-channel { background: var(--bg-secondary); border-radius: 8px; padding: 0.75rem; margin-bottom: 0.75rem; }
-        .social-channel.excluded { opacity: 0.5; }
-        .social-channel-head { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
-        .social-channel-head img { width: 28px; height: 28px; border-radius: 50%; }
-        .social-channel-head .social-channel-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .social-channel textarea { width: 100%; resize: vertical; font-size: 1rem; }
-        .social-count { text-align: right; font-size: 0.75rem; color: var(--text-secondary); }
+        .social-chips { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem; }
+        .social-chip { border: 1px solid var(--text-secondary); background: transparent; color: var(--text-secondary); border-radius: 999px; padding: 0.375rem 0.875rem; font-size: 0.875rem; cursor: pointer; }
+        .social-chip[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: #fff; }
+        #social-text { width: 100%; resize: vertical; font-size: 1rem; min-height: 8rem; }
+        .social-meta { display: flex; justify-content: space-between; gap: 0.5rem; font-size: 0.75rem; color: var(--text-secondary); margin: 0.25rem 0 0.75rem; }
+        .social-meta #social-page-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+        .social-count { white-space: nowrap; }
         .social-count.over { color: var(--accent); font-weight: 600; }
-        .social-when { display: flex; flex-direction: column; gap: 0.5rem; margin: 0.75rem 0; }
-        .social-when label { cursor: pointer; }
+        .social-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+        .social-actions button { flex: 1 1 8rem; }
+        .social-later { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
+        .social-later input { flex: 1 1 12rem; min-width: 0; }
         .social-default-channels label { display: block; cursor: pointer; margin: 0.25rem 0; }
     </style>
     <script src="{{ url_for('static', filename='js/utils.js') }}?v=7"></script>
@@ -1055,23 +1051,19 @@
                 <button class="secondary" onclick="openPluginSettings('social')" title="Postiz and Gemini settings" style="padding: 0.5rem 0.75rem; font-size: 0.875rem;">&#9881; Settings</button>
             </div>
             <div id="social-status-msg" style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 0.5rem;"></div>
-            <div class="form-group">
-                <label for="social-url">Link to share</label>
-                <div class="social-url-row">
-                    <input type="url" id="social-url" inputmode="url" placeholder="https://..." autocomplete="off">
-                    <button class="primary" id="social-draft-btn" onclick="socialDraft()">Draft posts</button>
+            <div id="social-compose" hidden>
+                <div id="social-chips" class="social-chips" role="group" aria-label="Post to"></div>
+                <textarea id="social-text" rows="5" aria-label="Post text" placeholder="What do you want to say?" oninput="socialTextChanged()"></textarea>
+                <div class="social-meta"><span id="social-page-title"></span><span class="social-count" id="social-count"></span></div>
+                <div class="social-actions">
+                    <button class="secondary" id="social-draft-btn" onclick="socialDraft()" hidden>Draft from link</button>
+                    <button class="secondary" id="social-later-btn" onclick="socialToggleLater()" aria-expanded="false">Schedule&hellip;</button>
+                    <button class="primary" id="social-now-btn" onclick="socialPostNow()">Post now</button>
                 </div>
-            </div>
-            <div id="social-page"></div>
-            <div id="social-channels"></div>
-            <div id="social-compose-actions" hidden>
-                <div class="social-when" role="radiogroup" aria-label="When to post">
-                    <label><input type="radio" name="social-when" value="slot" checked onchange="socialWhenChanged()"> Next free slot in Postiz</label>
-                    <label><input type="radio" name="social-when" value="time" onchange="socialWhenChanged()"> Pick a time</label>
-                    <input type="datetime-local" id="social-time" hidden>
-                    <label><input type="radio" name="social-when" value="draft" onchange="socialWhenChanged()"> Save as draft in Postiz</label>
+                <div class="social-later" id="social-later" hidden>
+                    <input type="datetime-local" id="social-time" aria-label="Post at">
+                    <button class="primary" id="social-schedule-btn" onclick="socialSchedule()">Schedule</button>
                 </div>
-                <button class="primary" id="social-schedule-btn" onclick="socialSchedule()" style="width: 100%;">Schedule</button>
                 <div id="social-result" role="status" style="margin-top: 0.75rem; font-size: 0.875rem;"></div>
             </div>
         </div>
@@ -7009,19 +7001,25 @@
         }
 
         // ===== Social Share =====
-        // A link shared from Android lands here (manifest share_target -> /share ->
-        // /?view=social&share=...). The server fetches the page and drafts one post
-        // per Postiz channel with Gemini; the user edits, picks a time and schedules.
-        // Page metadata, channel names and drafts are untrusted: rendered through
-        // escapeHtml or assigned as .value/.textContent, never as raw HTML.
+        // One composer: type (or share a link into) a single post, pick channels,
+        // then post now or schedule. A link shared from Android lands here
+        // (manifest share_target -> /share -> /?view=social&share=...) and is
+        // dropped into the text. With a Gemini key, "Draft from link" rewrites the
+        // text as one post that fits the tightest selected channel. Channel names,
+        // page metadata and drafts are untrusted: rendered with escapeHtml or
+        // assigned as .value/.textContent, never as raw HTML.
         let socialChannels = [];      // active Postiz channels, with max_length
         let socialIncluded = new Set();
-        let socialTexts = {};         // channel id -> current text
-        let socialPage = null;        // metadata of the drafted page
         let socialHasGemini = false;
         let socialChannelsLoaded = false;
         let socialSavedConfig = null;
+        let socialNowArmed = null;    // timer while "Post now" waits for its confirming tap
         const SOCIAL_SECRET_SAVED = '••••••••';
+        const SOCIAL_URL_RE = /https?:\/\/\S+/i;
+        const SOCIAL_PLATFORM_LABELS = {
+            x: 'X', linkedin: 'LinkedIn', 'linkedin-page': 'LinkedIn Page', mastodon: 'Mastodon',
+            threads: 'Threads', bluesky: 'Bluesky', facebook: 'Facebook', instagram: 'Instagram',
+        };
 
         function socialSetMsg(text) {
             document.getElementById('social-status-msg').textContent = text;
@@ -7040,12 +7038,18 @@
             try { return sessionStorage.getItem(SOCIAL_SHARE_KEY) || ''; } catch (e) { return ''; }
         }
 
-        async function socialOnShow(opts = {}) {
+        function socialChannelLabel(c) {
+            return SOCIAL_PLATFORM_LABELS[c.identifier] || c.identifier || c.name || 'Channel';
+        }
+
+        async function socialOnShow() {
             const pending = socialStoredShare();
-            const urlInput = document.getElementById('social-url');
-            if (pending && !urlInput.value) urlInput.value = pending;
+            const text = document.getElementById('social-text');
+            if (pending && !text.value.includes(pending)) {
+                text.value = text.value ? `${text.value.trimEnd()} ${pending}` : `\n\n${pending}`;
+            }
             if (!authStatus || !authStatus.logged_in) {
-                socialSetMsg('Sign in with Google to draft and schedule posts. The link is kept through sign-in.');
+                socialSetMsg('Sign in with Google to post. The link is kept through sign-in.');
                 const btn = document.createElement('button');
                 btn.className = 'primary';
                 btn.textContent = 'Sign in with Google';
@@ -7055,7 +7059,8 @@
                 return;
             }
             if (!socialChannelsLoaded) await socialLoadChannels();
-            if (opts.autoDraft && urlInput.value && socialHasGemini && socialIncluded.size) await socialDraft();
+            socialUpdate();
+            if (pending) { text.focus(); text.setSelectionRange(0, 0); }
         }
 
         async function socialLoadChannels() {
@@ -7078,150 +7083,180 @@
                 socialIncluded = new Set(defaults.length ? defaults : [...ids]);
                 socialHasGemini = !!data.has_gemini_api_key;
                 socialChannelsLoaded = true;
-                socialSetMsg(socialHasGemini ? '' : 'Add a Gemini API key in Social settings to draft posts; you can still write them by hand.');
-                socialRenderChannels();
+                socialSetMsg(socialChannels.length ? '' : 'No active channels in Postiz.');
+                document.getElementById('social-compose').hidden = !socialChannels.length;
+                socialRenderChips();
             } catch (e) {
                 socialSetMsg('Could not load channels: ' + (e.message || 'error'));
             }
         }
 
-        function socialRenderChannels() {
-            const container = document.getElementById('social-channels');
-            document.getElementById('social-compose-actions').hidden = !socialChannels.length;
-            if (!socialChannels.length) {
-                container.innerHTML = '<div class="empty">No active channels in Postiz.</div>';
+        function socialRenderChips() {
+            document.getElementById('social-chips').innerHTML = socialChannels.map((c, i) =>
+                `<button type="button" class="social-chip" id="social-chip-${i}" aria-pressed="${socialIncluded.has(c.id)}" title="${escapeHtml(c.name || '')}" onclick="socialToggleChannel(${i})">${escapeHtml(socialChannelLabel(c))}</button>`
+            ).join('');
+        }
+
+        function socialToggleChannel(i) {
+            const c = socialChannels[i];
+            if (!c) return;
+            const on = !socialIncluded.has(c.id);
+            if (on) socialIncluded.add(c.id); else socialIncluded.delete(c.id);
+            socialDisarmNow(); // a confirmation covers the channels it was armed for
+            document.getElementById(`social-chip-${i}`).setAttribute('aria-pressed', String(on));
+            socialUpdate();
+        }
+
+        function socialSelected() {
+            return socialChannels.filter(c => socialIncluded.has(c.id));
+        }
+
+        // The tightest limit among the selected channels, and who sets it.
+        function socialLimit() {
+            const sel = socialSelected();
+            if (!sel.length) return null;
+            const max = Math.min(...sel.map(c => c.max_length));
+            return { max, by: sel.filter(c => c.max_length === max).map(socialChannelLabel) };
+        }
+
+        function socialTextChanged() {
+            socialDisarmNow();
+            socialUpdate();
+        }
+
+        function socialUpdate() {
+            const text = document.getElementById('social-text').value;
+            const limit = socialLimit();
+            const count = document.getElementById('social-count');
+            count.textContent = limit ? `${text.length} / ${limit.max} (${limit.by.join(', ')})` : `${text.length}`;
+            count.classList.toggle('over', !!limit && text.length > limit.max);
+            document.getElementById('social-draft-btn').hidden = !(socialHasGemini && limit && SOCIAL_URL_RE.test(text));
+        }
+
+        // Shared by Post now and Schedule: the one text, sent to every selected channel.
+        function socialPostsOrError() {
+            const text = document.getElementById('social-text').value.trim();
+            const sel = socialSelected();
+            if (!sel.length) return { error: 'Pick at least one channel.' };
+            if (!text) return { error: 'Write something first.' };
+            const over = sel.filter(c => text.length > c.max_length);
+            if (over.length) return { error: 'Too long for ' + over.map(socialChannelLabel).join(', ') + '. Trim it or drop those channels.' };
+            return { posts: sel.map(c => ({ integration_id: c.id, identifier: c.identifier, text })) };
+        }
+
+        function socialDisarmNow() {
+            if (!socialNowArmed) return;
+            clearTimeout(socialNowArmed);
+            socialNowArmed = null;
+            document.getElementById('social-now-btn').textContent = 'Post now';
+        }
+
+        // Publishing is irreversible, so Post now takes a second tap within 4s
+        // (no modal dialog: one thumb, one button).
+        function socialPostNow() {
+            const resultEl = document.getElementById('social-result');
+            const { posts, error } = socialPostsOrError();
+            if (error) { socialDisarmNow(); resultEl.textContent = error; return; }
+            if (!socialNowArmed) {
+                document.getElementById('social-now-btn').textContent = `Tap again to post to ${posts.length}`;
+                resultEl.textContent = '';
+                socialNowArmed = setTimeout(socialDisarmNow, 4000);
                 return;
             }
-            container.innerHTML = socialChannels.map((c, i) => {
-                const pic = discussionSafeUrl(c.picture);
-                const included = socialIncluded.has(c.id);
-                return `<div class="social-channel${included ? '' : ' excluded'}" id="social-card-${i}">
-                    <div class="social-channel-head">
-                        ${pic ? `<img src="${escapeHtml(pic)}" alt="" referrerpolicy="no-referrer">` : ''}
-                        <span class="social-channel-name">${escapeHtml(c.name || c.identifier)} <span style="color: var(--text-secondary); font-size: 0.8rem;">${escapeHtml(c.identifier)}</span></span>
-                        <label style="cursor: pointer;"><input type="checkbox" id="social-include-${i}" ${included ? 'checked' : ''} onchange="socialToggleChannel(${i}, this.checked)"> Post</label>
-                    </div>
-                    <textarea id="social-text-${i}" rows="4" aria-label="Post for ${escapeHtml(c.name || c.identifier)}" placeholder="Draft appears here, or write your own." oninput="socialTextChanged(${i})"></textarea>
-                    <div class="social-count" id="social-count-${i}"></div>
-                </div>`;
-            }).join('');
-            socialChannels.forEach((c, i) => {
-                document.getElementById(`social-text-${i}`).value = socialTexts[c.id] || '';
-                socialUpdateCount(i);
-            });
+            socialDisarmNow();
+            socialSend({ mode: 'now', posts });
         }
 
-        function socialToggleChannel(i, on) {
-            const c = socialChannels[i];
-            if (!c) return;
-            if (on) socialIncluded.add(c.id); else socialIncluded.delete(c.id);
-            document.getElementById(`social-card-${i}`).classList.toggle('excluded', !on);
-        }
-
-        function socialTextChanged(i) {
-            const c = socialChannels[i];
-            if (!c) return;
-            socialTexts[c.id] = document.getElementById(`social-text-${i}`).value;
-            socialUpdateCount(i);
-        }
-
-        function socialUpdateCount(i) {
-            const c = socialChannels[i];
-            const len = (socialTexts[c.id] || '').length;
-            const el = document.getElementById(`social-count-${i}`);
-            el.textContent = `${len} / ${c.max_length}`;
-            el.classList.toggle('over', len > c.max_length);
-        }
-
-        function socialRenderPage(page) {
-            const el = document.getElementById('social-page');
-            if (!page || (!page.title && !page.description)) { el.innerHTML = ''; return; }
-            const img = discussionSafeUrl(page.image);
-            el.innerHTML = `<div class="social-page">
-                ${img ? `<img src="${escapeHtml(img)}" alt="" referrerpolicy="no-referrer">` : ''}
-                <div><div class="social-page-title">${escapeHtml(page.title || page.url)}</div>
-                <div class="social-page-desc">${escapeHtml(page.description || '')}</div></div>
-            </div>`;
-        }
-
-        async function socialDraft() {
-            const url = document.getElementById('social-url').value.trim();
-            if (!/^https?:\/\//i.test(url)) { socialSetMsg('Enter an http(s) link first.'); return; }
-            if (!socialChannelsLoaded) await socialLoadChannels();
-            const channels = socialChannels.filter(c => socialIncluded.has(c.id));
-            if (!channels.length) { socialSetMsg('Tick at least one channel to draft for.'); return; }
-            const btn = document.getElementById('social-draft-btn');
-            btn.disabled = true;
-            btn.textContent = 'Drafting…';
-            socialSetMsg('Reading the page and drafting posts…');
-            document.getElementById('social-result').textContent = '';
-            try {
-                const data = await Storage.socialDraft(url, channels);
-                socialPage = data.page || null;
-                socialRenderPage(socialPage);
-                for (const d of data.drafts || []) socialTexts[d.integration_id] = d.text || '';
-                socialRenderChannels();
-                const over = (data.drafts || []).filter(d => d.over_limit).length;
-                socialSetMsg(over ? `${over} draft(s) run over the channel limit; trim before scheduling.` : 'Drafts ready. Edit as you like.');
-            } catch (e) {
-                socialSetMsg('Drafting failed: ' + (e.message || 'error'));
-            } finally {
-                btn.disabled = false;
-                btn.textContent = 'Draft posts';
+        function socialToggleLater() {
+            const row = document.getElementById('social-later');
+            const open = row.hidden;
+            row.hidden = !open;
+            document.getElementById('social-later-btn').setAttribute('aria-expanded', String(open));
+            const input = document.getElementById('social-time');
+            if (open && !input.value) {
+                // Default to the top of the next hour, in local time.
+                const d = new Date(Date.now() + 3600000);
+                d.setMinutes(0, 0, 0);
+                input.value = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
             }
         }
 
-        function socialWhenChanged() {
-            const when = document.querySelector('input[name="social-when"]:checked').value;
-            document.getElementById('social-time').hidden = when !== 'time';
-            document.getElementById('social-schedule-btn').textContent = when === 'draft' ? 'Save drafts' : 'Schedule';
-        }
-
-        function socialScheduleRequest() {
-            const when = document.querySelector('input[name="social-when"]:checked').value;
-            const posts = socialChannels
-                .filter(c => socialIncluded.has(c.id) && (socialTexts[c.id] || '').trim())
-                .map(c => ({ integration_id: c.id, identifier: c.identifier, text: socialTexts[c.id] }));
-            if (!posts.length) return { error: 'Nothing to post: tick a channel and write its post.' };
-            const over = socialChannels.filter(c => socialIncluded.has(c.id) && (socialTexts[c.id] || '').length > c.max_length);
-            if (over.length && when !== 'draft') return { error: 'Over the limit on: ' + over.map(c => c.name || c.identifier).join(', ') + '.' };
-            const request = { mode: when === 'draft' ? 'draft' : 'schedule', posts };
-            if (when === 'time') {
-                const local = document.getElementById('social-time').value;
-                if (!local) return { error: 'Pick a date and time.' };
-                request.date = new Date(local).toISOString();
-            }
-            const image = discussionSafeUrl(socialPage && socialPage.image);
-            if (image) request.image_url = image;
-            return { request };
-        }
-
-        async function socialSchedule() {
+        function socialSchedule() {
             const resultEl = document.getElementById('social-result');
-            const { request, error } = socialScheduleRequest();
+            const { posts, error } = socialPostsOrError();
             if (error) { resultEl.textContent = error; return; }
-            const btn = document.getElementById('social-schedule-btn');
-            btn.disabled = true;
+            const local = document.getElementById('social-time').value;
+            if (!local) { resultEl.textContent = 'Pick a date and time.'; return; }
+            const date = new Date(local);
+            if (date.getTime() <= Date.now()) { resultEl.textContent = 'That time has passed; use Post now instead.'; return; }
+            socialSend({ mode: 'schedule', posts, date: date.toISOString() });
+        }
+
+        async function socialSend(request) {
+            const resultEl = document.getElementById('social-result');
+            const buttons = ['social-now-btn', 'social-schedule-btn', 'social-later-btn'].map(id => document.getElementById(id));
+            buttons.forEach(b => { b.disabled = true; });
             resultEl.textContent = 'Sending to Postiz…';
             try {
                 const r = await Storage.socialSchedule(request);
-                const when = r.date ? new Date(r.date).toLocaleString() : '';
                 const n = (r.posts || []).length || request.posts.length;
-                resultEl.textContent = request.mode === 'draft'
-                    ? `Saved ${n} draft(s) in Postiz.`
-                    : `Scheduled ${n} post(s) for ${when}.`;
+                resultEl.textContent = request.mode === 'now'
+                    ? `Posted to ${n} channel(s).`
+                    : `Scheduled ${n} post(s) for ${new Date(r.date || request.date).toLocaleString()}.`;
                 for (const w of r.warnings || []) resultEl.appendChild(Object.assign(document.createElement('div'), { textContent: w }));
                 const link = discussionSafeUrl(r.postiz_url);
                 if (link) {
-                    const a = Object.assign(document.createElement('a'), { href: link, target: '_blank', rel: 'noopener', textContent: 'Open Postiz' });
                     resultEl.appendChild(document.createTextNode(' '));
-                    resultEl.appendChild(a);
+                    resultEl.appendChild(Object.assign(document.createElement('a'), { href: link, target: '_blank', rel: 'noopener', textContent: 'Open Postiz' }));
                 }
+                document.getElementById('social-text').value = '';
+                document.getElementById('social-page-title').textContent = '';
+                document.getElementById('social-later').hidden = true;
+                document.getElementById('social-later-btn').setAttribute('aria-expanded', 'false');
                 socialRememberShare('');
+                socialUpdate();
             } catch (e) {
                 resultEl.textContent = 'Failed: ' + (e.message || 'error');
             } finally {
+                buttons.forEach(b => { b.disabled = false; });
+            }
+        }
+
+        // Rewrite the text as one post about the link in it, sized for the
+        // tightest selected channel. The server treats the selection as a single
+        // pseudo-channel, so Gemini returns exactly one draft.
+        async function socialDraft() {
+            const textEl = document.getElementById('social-text');
+            const match = textEl.value.match(SOCIAL_URL_RE);
+            const limit = socialLimit();
+            if (!match || !limit) {
+                document.getElementById('social-result').textContent = limit ? 'Put a link in the text to draft from.' : 'Pick at least one channel.';
+                return;
+            }
+            // Lock the composer until the draft lands, so a late reply can't
+            // overwrite newer text or slip under an armed Post now.
+            socialDisarmNow();
+            const btn = document.getElementById('social-draft-btn');
+            const locked = ['social-now-btn', 'social-schedule-btn', 'social-later-btn'].map(id => document.getElementById(id));
+            btn.disabled = true;
+            btn.textContent = 'Drafting…';
+            textEl.readOnly = true;
+            locked.forEach(b => { b.disabled = true; });
+            document.getElementById('social-result').textContent = '';
+            try {
+                const ids = socialSelected().map(c => c.identifier).join(', ');
+                const data = await Storage.socialDraft(match[0], [{ id: 'all', name: 'every selected channel', identifier: ids, max_length: limit.max }]);
+                const draft = (data.drafts || [])[0];
+                if (draft && draft.text) textEl.value = draft.text;
+                document.getElementById('social-page-title').textContent = (data.page && data.page.title) || '';
+                socialUpdate();
+            } catch (e) {
+                document.getElementById('social-result').textContent = 'Drafting failed: ' + (e.message || 'error');
+            } finally {
                 btn.disabled = false;
+                btn.textContent = 'Draft from link';
+                textEl.readOnly = false;
+                locked.forEach(b => { b.disabled = false; });
             }
         }
 
@@ -7699,9 +7734,9 @@
             } catch (e) { /* offline — use server defaults */ }
 
             // Opened from the share sheet (or ?view=social): now that auth is known,
-            // load channels and draft the shared link straight away.
+            // load channels; the shared link is already in the text.
             if (socialOpenedFromURL && document.getElementById('social-view').classList.contains('active')) {
-                socialOnShow({ autoDraft: !!socialStoredShare() });
+                socialOnShow();
             }
 
             // Phase 3: Sync cloud data then render todos once with fresh state.

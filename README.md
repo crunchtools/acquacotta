@@ -11,7 +11,7 @@ Key Features
 
 Daily Cockpit Plugins:
 - To-dos, Discussions and RT Tickets tabs, each optional per user
-- Social Share: install Acquacotta on Android, share a link to it, and get AI-drafted posts per channel that you edit and schedule through your own Postiz ([docs](docs/SOCIAL_SHARE.md))
+- Social Share: install Acquacotta on Android, share a link to it, and type one post, and post it now or schedule it through your own Postiz, with optional AI drafting ([docs](docs/SOCIAL_SHARE.md))
 
 Advanced Time Management:
 - Weekly dashboard which helps you proactively tune how much you work and on which focus areas

@@ -1,16 +1,17 @@
 # Social Share
 
-Share a link from your phone to Acquacotta and it drafts one post per social
-channel, sized to each channel's limit. You edit the drafts, pick the channels
-and a time, and Acquacotta schedules them through your own
-[Postiz](https://postiz.com) instance.
+A one-box composer for quick posts from your phone: type a post (or share a
+link into it), tap the channels, then Post now or Schedule. Acquacotta sends the
+same text to every selected channel through your own
+[Postiz](https://postiz.com) instance. Long-form, per-channel posts stay a
+desktop job.
 
 ## Why it matters
 
 Sharing a good article everywhere means writing the same post four times with
 four different length limits, usually on a phone. Postiz handles the publishing
 but not the writing, and its own UI is a desktop tool. This puts the whole loop
-in the Android share sheet: share, glance at the drafts, tap Schedule.
+in the Android share sheet: share, type a line, tap Post now.
 
 ## How it works
 
@@ -24,17 +25,21 @@ in the Android share sheet: share, glance at the drafts, tap Schedule.
 3. **Sign in if needed.** Credentials live in the browser, so the server cannot
    tell on that redirect whether you are signed in. If you are not, the page
    keeps the link and the sign-in button carries it through Google inside the
-   signed OAuth state; you land back on the Social tab with the link.
-4. **Draft.** The server fetches the page (public addresses only, every
+   signed OAuth state; you land back on the Social tab with the link in the
+   text box.
+4. **Write, or draft (optional).** With a Gemini key and a link in the text,
+   "Draft from link" rewrites the text as one post sized for the tightest
+   selected channel. The server fetches the page (public addresses only, every
    redirect and the connected address re-checked, 1 MB and 10 s caps), extracts title, description,
    `og:image` and a short excerpt, and makes one Gemini call in JSON mode that
-   returns a post for each selected channel within its character limit. The
+   returns one post within that limit. The
    voice rules are fixed: practical, plain-spoken, no hype, at most two hashtags,
    at most one emoji, the URL exactly once.
-5. **Edit and schedule.** Each channel gets a card with an include toggle, an
-   editable text box and a live count against its limit. Choose the next free
-   Postiz slot (default), a specific time, or "save as draft". Scheduling is
-   refused while an included post is over its limit, except for drafts.
+5. **Post.** Channels are toggle chips (your default channels start selected),
+   and the count runs against the tightest selected limit. **Post now** needs a
+   second tap within four seconds, since publishing can't be undone.
+   **Schedule…** opens a time picker that defaults to the next hour. Both are
+   refused while the text is over a selected channel's limit.
 
 Channel limits come from Postiz (`/integration-settings/:id`), with a built-in
 table as fallback. The page image (PNG, JPEG, GIF or WebP, up to 5 MB) is
