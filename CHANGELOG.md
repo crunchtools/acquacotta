@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.22.1] - 2026-10-24
+
+### Fixed
+- "Schedule for later" prefilled every post with the next weekday at 9 AM, so
+  scheduled posts piled onto one time. The picker now fills with Postiz's next
+  free posting window for the channel (new `GET /api/social/slot`), so each
+  post takes the next open window. A time you pick by hand still wins.
+
 ## [2.22.0] - 2026-10-24
 
 ### Changed

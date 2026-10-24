@@ -643,7 +643,7 @@
         .social-default-channels label { display: block; cursor: pointer; margin: 0.25rem 0; }
     </style>
     <script src="{{ url_for('static', filename='js/utils.js') }}?v=7"></script>
-    <script src="{{ url_for('static', filename='js/storage.js') }}?v=13"></script>
+    <script src="{{ url_for('static', filename='js/storage.js') }}?v=14"></script>
     <script>
         // Pass-through worker (caches nothing): required for Chrome to install the
         // app, and only an installed app is offered in Android's share sheet.
@@ -7021,6 +7021,7 @@
         let socialLink = null;        // { url, title, site, image } for the card, or null
         let socialArmed = false;      // primary button waiting for its confirming tap
         let socialScheduling = false; // primary button schedules instead of posting
+        let socialSlotPending = false; // asking Postiz for the next free window
         const SOCIAL_SECRET_SAVED = '••••••••';
         const SOCIAL_URL_RE = /https?:\/\/\S+/i;
         const SOCIAL_CACHE_KEY = 'acquacotta_social_channels';
@@ -7225,7 +7226,7 @@
             const where = n === 1 ? '1 channel' : `${n} channels`;
             if (!socialScheduling) return `Post to ${where}`;
             const t = document.getElementById('social-time').value;
-            return t ? `Schedule ${where} · ${new Date(t).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : 'Pick a time';
+            return t ? `Schedule ${where} · ${new Date(t).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : (socialSlotPending ? 'Finding next open slot…' : 'Pick a time');
         }
 
         // ---- the one button: tap to arm, tap again to send ----
@@ -7241,18 +7242,33 @@
             if (socialArmed && !(e.target instanceof Element && e.target.closest('#social-go'))) socialDisarm();
         }, true);
 
-        function socialNextNineAm() {
-            const d = new Date();
-            d.setHours(9, 0, 0, 0);
-            do { d.setDate(d.getDate() + 1); } while (d.getDay() === 0 || d.getDay() === 6);
-            return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+        // Prefill the picker with Postiz's next free posting window, so each
+        // scheduled post takes the next open window instead of piling onto one
+        // time. A failed lookup leaves the picker empty; a manual pick wins.
+        async function socialFillSlot() {
+            const time = document.getElementById('social-time');
+            const sel = socialSelected();
+            time.value = '';
+            if (!sel.length) return;
+            socialSlotPending = true;
+            try {
+                const { date } = await Storage.socialSlot(sel[0].id);
+                const d = new Date(date);
+                if (socialScheduling && !time.value && !isNaN(d)) {
+                    time.value = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+                }
+            } catch (e) {
+                document.getElementById('social-result').textContent = 'No open slot found: ' + (e.message || 'error');
+            }
+            socialSlotPending = false;
+            socialChanged();
         }
 
         function socialToggleMode() {
             socialScheduling = !socialScheduling;
             const time = document.getElementById('social-time');
             time.hidden = !socialScheduling;
-            if (socialScheduling && !time.value) time.value = socialNextNineAm();
+            if (socialScheduling) socialFillSlot();
             document.getElementById('social-mode-link').textContent = socialScheduling ? 'Post now instead' : 'Schedule for later';
             socialChanged();
         }
