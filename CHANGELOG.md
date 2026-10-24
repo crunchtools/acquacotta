@@ -140,6 +140,8 @@ All notable changes to this project are documented here. The format follows
   re-renders. The page is served with `Storage` and the CDN libraries stubbed.
 
 ### Security
+- certifi 2026.10.23 (from 2026.7.22): drops the emSign root CAs whose
+  intermediate keys were compromised (GHSA-6q48-6c7w-9gw2, critical).
 - The SSRF check shared by RT Tickets and Social Share accepts only globally
   routable addresses (so carrier-grade NAT and IPv4-mapped loopback are refused
   too), and Social's fetches also check the address the socket actually
