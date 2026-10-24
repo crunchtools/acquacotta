@@ -153,17 +153,21 @@ def _clean_channels(value):
 def normalize_postiz_base(value):
     """Turn what a user types into the public API base.
 
-    "postiz.example.com/api" and "https://postiz.example.com/api/public/v1" both
-    become "https://postiz.example.com/api/public/v1".
+    "postiz.example.com", "postiz.example.com/api" and
+    "https://postiz.example.com/api/public/v1" all become
+    "https://postiz.example.com/api/public/v1". A bare host gets ``/api``: a
+    self-hosted Postiz serves its frontend at the root and the backend under
+    ``/api``, and the frontend answers ``/public/v1`` with a redirect. Configs
+    saved before this rule (``https://host/public/v1``) are repaired the same way.
     """
     base = (value or "").strip().rstrip("/")
     if not base:
         return ""
     if not _URL_SCHEME.match(base):
         base = "https://" + base
-    if not base.endswith(POSTIZ_API_SUFFIX):
-        base += POSTIZ_API_SUFFIX
-    return base
+    parsed = urlparse(base)
+    path = parsed.path.rstrip("/").removesuffix(POSTIZ_API_SUFFIX) or "/api"
+    return f"{parsed.scheme}://{parsed.netloc}{path}{POSTIZ_API_SUFFIX}"
 
 
 def validate_config(config):
@@ -443,7 +447,7 @@ def fetch_page(url):
 def _postiz_request(config, method, path, **kwargs):
     if not postiz_configured(config):
         raise ValueError("Postiz is not configured: set its URL and API key in Social settings")
-    base = config["postiz_base_url"].rstrip("/")
+    base = normalize_postiz_base(config["postiz_base_url"])
     plugin_common.check_destination(base, _POSTIZ_ALLOWLIST_ENV)
     # The API key travels in a header, so plain http is only for a host the
     # operator allowlisted (a Postiz on the same machine or LAN).
@@ -461,6 +465,10 @@ def _postiz_request(config, method, path, **kwargs):
         raise SocialError(f"Could not reach Postiz: {exc}") from exc
     if resp.status_code in (HTTPStatus.UNAUTHORIZED, HTTPStatus.FORBIDDEN):
         raise SocialError("Postiz rejected the API key")
+    if HTTPStatus.MULTIPLE_CHOICES <= resp.status_code < HTTPStatus.BAD_REQUEST:
+        raise SocialError(
+            f"Postiz redirected the API call (HTTP {resp.status_code}); the URL should end in /api/public/v1"
+        )
     if resp.status_code >= HTTPStatus.BAD_REQUEST:
         raise SocialError(f"Postiz returned HTTP {resp.status_code}: {resp.text[:300]}")
     try:

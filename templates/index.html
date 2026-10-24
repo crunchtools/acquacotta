@@ -1374,9 +1374,9 @@
                         Connect Postiz and Gemini. Keys are stored only in your own Google Drive, encrypted, and used by the server per request. They are never saved on the server.
                     </p>
                     <div class="form-group">
-                        <label for="social-cfg-postiz-url">Postiz API URL</label>
-                        <input type="text" id="social-cfg-postiz-url" placeholder="https://postiz.example.com/api/public/v1">
-                        <p style="color: var(--text-secondary); font-size: 0.75rem; margin-top: 0.25rem;">The backend URL plus /public/v1. On the standard Postiz image that is your Postiz address + /api/public/v1.</p>
+                        <label for="social-cfg-postiz-url">Postiz address</label>
+                        <input type="text" id="social-cfg-postiz-url" placeholder="https://postiz.example.com">
+                        <p style="color: var(--text-secondary); font-size: 0.75rem; margin-top: 0.25rem;">Your Postiz address is enough; /api/public/v1 is added for you.</p>
                     </div>
                     <div class="form-group">
                         <label for="social-cfg-postiz-key">Postiz API key <span id="social-postiz-key-state" style="color: var(--text-secondary); font-size: 0.75rem;"></span></label>
@@ -1384,9 +1384,9 @@
                         <p style="color: var(--text-secondary); font-size: 0.75rem; margin-top: 0.25rem;">In Postiz: Settings &rarr; Agents / Dev.</p>
                     </div>
                     <div class="form-group">
-                        <label for="social-cfg-gemini-key">Gemini API key <span id="social-gemini-key-state" style="color: var(--text-secondary); font-size: 0.75rem;"></span></label>
+                        <label for="social-cfg-gemini-key">Gemini API key (optional) <span id="social-gemini-key-state" style="color: var(--text-secondary); font-size: 0.75rem;"></span></label>
                         <input type="password" id="social-cfg-gemini-key" autocomplete="new-password">
-                        <p style="color: var(--text-secondary); font-size: 0.75rem; margin-top: 0.25rem;">From Google AI Studio (aistudio.google.com/apikey).</p>
+                        <p style="color: var(--text-secondary); font-size: 0.75rem; margin-top: 0.25rem;">Only needed for AI-drafted posts; without it you write them yourself. From Google AI Studio (aistudio.google.com/apikey).</p>
                     </div>
                     <div class="form-group">
                         <label for="social-cfg-gemini-model">Gemini model</label>
