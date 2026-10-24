@@ -261,6 +261,30 @@ test('Post now refuses over-limit text, then needs a confirming tap', SOCIAL_SIG
     assert.equal(await page.$eval('#social-text', el => el.value), '', 'composer clears after posting');
 });
 
+test('an armed Post now expires after four seconds without sending', SOCIAL_SIGNED_IN, async ({ page }) => {
+    await page.waitForFunction(() => !document.getElementById('social-compose').hidden);
+    await setSocialText(page, 'Short one');
+    await page.click('#social-now-btn');
+    assert.match(await page.$eval('#social-now-btn', el => el.textContent), /Tap again/);
+    await page.waitForFunction(() => document.getElementById('social-now-btn').textContent === 'Post now', { timeout: 6000 });
+    await page.click('#social-now-btn');
+    assert.equal((await socialCalls(page, 'socialSchedule')).length, 0, 'the tap after expiry re-arms instead of sending');
+});
+
+test('a Postiz failure keeps the text and re-enables the buttons', {
+    ...SOCIAL_SIGNED_IN, socialScheduleError: 'Postiz rejected the API key',
+}, async ({ page }) => {
+    await page.waitForFunction(() => !document.getElementById('social-compose').hidden);
+    await setSocialText(page, 'Keep me');
+    await page.click('#social-now-btn');
+    await page.click('#social-now-btn');
+    await page.waitForFunction(() => document.getElementById('social-result').textContent.includes('Failed'));
+    assert.match(await page.$eval('#social-result', el => el.textContent), /rejected the API key/);
+    assert.equal(await page.$eval('#social-text', el => el.value), 'Keep me');
+    assert.deepEqual(await page.$$eval('#social-now-btn, #social-later-btn, #social-schedule-btn', els => els.map(b => b.disabled)),
+        [false, false, false]);
+});
+
 test('Schedule sends the picked time and refuses a past one', SOCIAL_SIGNED_IN, async ({ page }) => {
     await page.waitForFunction(() => !document.getElementById('social-compose').hidden);
     await setSocialText(page, 'Later');

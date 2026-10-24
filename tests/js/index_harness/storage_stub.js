@@ -8,6 +8,7 @@
  *   rtConfig     what getRTConfig() returns
  *   socialIntegrations  what getSocialIntegrations() returns
  *   socialDraft  what socialDraft() returns (the call is recorded)
+ *   socialScheduleError  when set, socialSchedule() rejects with this message
  *   holdPlugins  when true, /api/plugins waits for window.__releasePlugins()
  *
  * Every saveSettings() call is recorded in window.__storageCalls. Methods the
@@ -60,6 +61,7 @@
         },
         socialSchedule: async request => {
             calls.push(['socialSchedule', clone(request)]);
+            if (cfg.socialScheduleError) throw new Error(cfg.socialScheduleError);
             return { date: '2026-10-25T14:00:00Z', posts: [], warnings: [], postiz_url: 'https://postiz.example.com' };
         },
         // loadTodos() creates a list and reloads until one exists.

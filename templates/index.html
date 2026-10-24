@@ -7233,9 +7233,15 @@
                 document.getElementById('social-result').textContent = limit ? 'Put a link in the text to draft from.' : 'Pick at least one channel.';
                 return;
             }
+            // Lock the composer until the draft lands, so a late reply can't
+            // overwrite newer text or slip under an armed Post now.
+            socialDisarmNow();
             const btn = document.getElementById('social-draft-btn');
+            const locked = ['social-now-btn', 'social-schedule-btn', 'social-later-btn'].map(id => document.getElementById(id));
             btn.disabled = true;
             btn.textContent = 'Drafting…';
+            textEl.readOnly = true;
+            locked.forEach(b => { b.disabled = true; });
             document.getElementById('social-result').textContent = '';
             try {
                 const ids = socialSelected().map(c => c.identifier).join(', ');
@@ -7249,6 +7255,8 @@
             } finally {
                 btn.disabled = false;
                 btn.textContent = 'Draft from link';
+                textEl.readOnly = false;
+                locked.forEach(b => { b.disabled = false; });
             }
         }
 
