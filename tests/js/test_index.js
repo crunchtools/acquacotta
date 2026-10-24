@@ -318,6 +318,12 @@ test('a failed slot lookup still schedules into the next open slot', { ...SOCIAL
     await page.waitForFunction(() => /Could not look up the next open slot/.test(document.getElementById('social-result').textContent));
     assert.equal(await page.$eval('#social-when-next', el => el.textContent), 'Next open slot');
     assert.equal(await page.$eval('#social-go', el => el.textContent), 'Schedule 1 channel · next open slot');
+    await page.click('#social-go');
+    await page.click('#social-go');
+    await page.waitForFunction(() => window.__storageCalls.some(c => c[0] === 'socialSchedule'));
+    const [[, req]] = await socialCalls(page, 'socialSchedule');
+    assert.equal(req.mode, 'schedule');
+    assert.equal('date' in req, false, 'the server still asks Postiz at send time');
 });
 
 test('Draft from link fills the text without repeating the card URL', SOCIAL_SIGNED_IN, async ({ page }) => {
