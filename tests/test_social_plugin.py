@@ -807,6 +807,7 @@ class TestSocialEndpoints:
             ("get", "/api/social/integrations"),
             ("post", "/api/social/draft"),
             ("post", "/api/social/preview"),
+            ("get", "/api/social/slot?channel=x1"),
             ("post", "/api/social/schedule"),
         ],
     )
@@ -852,6 +853,23 @@ class TestSocialEndpoints:
         resp = client.post("/api/social/preview", json={"url": "https://example.com/a"})
         assert resp.status_code == 200
         assert resp.get_json()["title"] == "T"
+
+    def test_slot_route_returns_postiz_slot(self, client, logged_in, monkeypatch):
+        seen = {}
+
+        def fake_request(_config, method, path, **_kw):
+            seen.update(method=method, path=path)
+            return {"date": "2026-10-25T14:20:00"}
+
+        monkeypatch.setattr(social_plugin, "_postiz_request", fake_request)
+        resp = client.get("/api/social/slot?channel=x1")
+        assert resp.status_code == 200
+        assert resp.get_json() == {"date": "2026-10-25T14:20:00Z"}
+        assert seen == {"method": "GET", "path": "/find-slot/x1"}
+
+    @pytest.mark.parametrize("query", ["", "?channel=", "?channel=../posts"])
+    def test_slot_route_rejects_bad_channel(self, client, logged_in, query):
+        assert client.get(f"/api/social/slot{query}").status_code == 400
 
     def test_draft_url_must_be_a_string(self, client, logged_in):
         assert client.post("/api/social/draft", json={"url": 5, "channels": CHANNELS}).status_code == 400

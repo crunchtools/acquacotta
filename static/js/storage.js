@@ -2314,6 +2314,15 @@
             return await res.json();
         },
 
+        // Postiz's next free posting window for a channel: { date } in UTC.
+        socialSlot: async function(channelId) {
+            const res = await authenticatedFetch(`/api/social/slot?channel=${encodeURIComponent(channelId)}`, {
+                signal: AbortSignal.timeout(SOCIAL_TIMEOUT_MS)
+            });
+            if (!res.ok) throw new Error(await apiErrorMessage(res));
+            return await res.json();
+        },
+
         socialDraft: async function(url, channels) {
             const res = await authenticatedFetch('/api/social/draft', {
                 method: 'POST',

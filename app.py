@@ -1744,6 +1744,26 @@ def api_social_integrations():
     )
 
 
+@app.route("/api/social/slot", methods=["GET"])
+def api_social_slot():
+    """Postiz's next free posting slot for ``?channel=<integration id>``.
+
+    Returns ``{"date": ISO-8601 UTC}``. The composer prefills its schedule picker
+    with it, so successive posts land in successive posting windows.
+    """
+    drive_service, folder_id = _plugin_drive_context()
+    if not drive_service:
+        return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
+    try:
+        config = social_plugin.read_config(drive_service, folder_id)
+        date = social_plugin.find_slot(config, request.args.get("channel"))
+    except (ValueError, social_plugin.SocialError) as exc:
+        return _social_error_response(exc)
+    except HttpError as e:
+        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+    return jsonify({"date": date})
+
+
 @app.route("/api/social/draft", methods=["POST"])
 def api_social_draft():
     """Fetch the shared page and draft one post per channel.
