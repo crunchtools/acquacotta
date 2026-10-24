@@ -5,8 +5,8 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=/app
-PassEnvironment=FLASK_SECRET_KEY GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET PCLOUD_CLIENT_ID PCLOUD_CLIENT_SECRET XDG_DATA_HOME FLASK_HOST OAUTH_REDIRECT_BASE FLASK_ENV SESSION_COOKIE_SECURE MCP_TOKEN_SEAL_KEY
-ExecStart=/usr/local/bin/gunicorn --bind 127.0.0.1:5000 --workers 2 --access-logfile - --error-logfile - app:app
+PassEnvironment=FLASK_SECRET_KEY GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET PCLOUD_CLIENT_ID PCLOUD_CLIENT_SECRET XDG_DATA_HOME FLASK_HOST OAUTH_REDIRECT_BASE FLASK_ENV SESSION_COOKIE_SECURE MCP_TOKEN_SEAL_KEY RT_ALLOWED_HOSTS SOCIAL_ALLOWED_HOSTS
+ExecStart=/usr/local/bin/gunicorn --bind 127.0.0.1:5000 --workers 2 --timeout 90 --access-logformat "%%(h)s %%(t)s %%(m)s %%(U)s %%(s)s %%(b)s %%(L)s" --access-logfile - --error-logfile - app:app
 Restart=on-failure
 RestartSec=5
 

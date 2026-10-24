@@ -12,6 +12,7 @@ import json
 import pytest
 from cryptography.fernet import Fernet
 
+import plugin_common
 import rt_plugin
 
 # --------------------------------------------------------------------------- #
@@ -61,7 +62,7 @@ def fake_rt(monkeypatch):
 
     monkeypatch.setattr(rt_plugin.requests, "Session", make_session)
     # Client-behaviour tests use the default base_url host "rt-internal"; allowlist it
-    # so _check_destination passes without real DNS. SSRF tests override this env.
+    # so the destination check passes without real DNS. SSRF tests override this env.
     monkeypatch.setenv("RT_ALLOWED_HOSTS", "rt-internal")
 
     class Access:
@@ -167,8 +168,7 @@ class TestConfigRoundtrip:
             def upload_file(self, name, content):
                 store[name] = content
 
-        monkeypatch.setattr(rt_plugin, "GoogleDriveTransport", FakeTransport)
-        monkeypatch.setattr(rt_plugin, "_ensure_plugin_folder", lambda s, f: "rtfolder")
+        monkeypatch.setattr(plugin_common, "config_transport", lambda s, f, plugin_id: FakeTransport(s, f))
         # Seal key for at-rest secret encryption (shared with the MCP process in prod).
         monkeypatch.setenv("MCP_TOKEN_SEAL_KEY", Fernet.generate_key().decode())
         return store

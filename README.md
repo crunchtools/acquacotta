@@ -9,6 +9,10 @@ Key Features
 - Seemlessly works with an external pomodoro timer sitting on your desk
 - Free and open source [online service](https://acquacotta.crunchtools.com:8443) or use in a local container
 
+Daily Cockpit Plugins:
+- To-dos, Discussions and RT Tickets tabs, each optional per user
+- Social Share: install Acquacotta on Android, share a link to it, and get AI-drafted posts per channel that you edit and schedule through your own Postiz ([docs](docs/SOCIAL_SHARE.md))
+
 Advanced Time Management:
 - Weekly dashboard which helps you proactively tune how much you work and on which focus areas
 - Set visual daily minutes goal to make sure you're getting enough pomodoros done each day, but not too many
@@ -25,7 +29,7 @@ Technical Features:
 
 ## The Story Behind the Soup
 
-Acquacotta was created as fun project by a veteran of the Pomodoro Technique with over 20+ years of using this system from doing HPC work at NASA to Product Management for Podman, Red Hat Universal Base Image, and Red Hat Enterprise Linux 10 [LinkedIn](https://www.linkedin.com/in/fatherlinux/details/experience/). It could be said that Acquacotta was rigorously vibe coded (I know, it sounds like an oxymoron) using spec-kit, and a strict process for adding Features. The [constitution](https://github.com/crunchtools/acquacotta/blob/main/.specify/memory/constitution.md) and [feature specifications](https://github.com/crunchtools/acquacotta/blob/main/.specify/specs/000-baseline/spec.md) are transparently committed in the [Acquacotta Git repository](https://github.com/crunchtools/acquacotta). For 20+ years I have meticulously tracked my pomodoros, always analyzing the last four weeks. I have refined the Pomodoro technique into set of practices that not only give me focus, but also give me a sense of satisfaction and freedom. 
+Acquacotta was created as fun project by a veteran of the Pomodoro Technique with over 20+ years of using this system from doing HPC work at NASA to Product Management for Podman, Red Hat Universal Base Image, and Red Hat Enterprise Linux 10 [LinkedIn](https://www.linkedin.com/in/fatherlinux/details/experience/). It could be said that Acquacotta was rigorously vibe coded (I know, it sounds like an oxymoron) using spec-kit, and a strict process for adding Features. The [constitution](https://github.com/crunchtools/acquacotta/blob/main/.specify/memory/constitution.md) and [feature specifications](https://github.com/crunchtools/acquacotta/blob/main/.specify/specs/000-baseline/spec.md) are transparently committed in the [Acquacotta Git repository](https://github.com/crunchtools/acquacotta). For 20+ years I have meticulously tracked my pomodoros, always analyzing the last four weeks. I have refined the Pomodoro technique into set of practices that not only give me focus, but also give me a sense of satisfaction and freedom.
 
 **Why the name?**
 
@@ -93,7 +97,8 @@ python app.py
 | `CLEAR_CACHE_ON_START` | No | Clear SQLite cache on startup (default: `true`) |
 | `MCP_HOST` | No | Host the MCP server binds to (default: `127.0.0.1`) |
 | `MCP_PORT` | No | Port the MCP server listens on (default: `5001`) |
-| `RT_ALLOWED_HOSTS` | No | Comma-separated hostname allowlist for the RT Tickets plugin's server-side proxy. When set, a user's RT `base_url` host must be listed (SSRF guard for multi-tenant deployments). Unset = no restriction (single-tenant/dev). |
+| `RT_ALLOWED_HOSTS` | No | Comma-separated hostname allowlist for the RT Tickets plugin's server-side proxy. When set, a user's RT `base_url` host must be listed, private addresses included. Unset = public addresses only. |
+| `SOCIAL_ALLOWED_HOSTS` | No | Comma-separated hosts the Social Share plugin may reach for Postiz even if they resolve to private addresses. Unset = public addresses only. Shared pages are always public-only. See [docs/SOCIAL_SHARE.md](docs/SOCIAL_SHARE.md). |
 
 The MCP server (`mcp_server.py`) is a separate process from the Flask app. It
 binds to localhost by default and is reached through the in-container Apache,
@@ -207,7 +212,8 @@ Then open http://localhost:5000 in your browser.
 | `CLEAR_CACHE_ON_START` | No | Clear SQLite cache on startup (default: `true`) |
 | `MCP_HOST` | No | Host the MCP server binds to (default: `127.0.0.1`) |
 | `MCP_PORT` | No | Port the MCP server listens on (default: `5001`) |
-| `RT_ALLOWED_HOSTS` | No | Comma-separated hostname allowlist for the RT Tickets plugin's server-side proxy. When set, a user's RT `base_url` host must be listed (SSRF guard for multi-tenant deployments). Unset = no restriction (single-tenant/dev). |
+| `RT_ALLOWED_HOSTS` | No | Comma-separated hostname allowlist for the RT Tickets plugin's server-side proxy. When set, a user's RT `base_url` host must be listed, private addresses included. Unset = public addresses only. |
+| `SOCIAL_ALLOWED_HOSTS` | No | Comma-separated hosts the Social Share plugin may reach for Postiz even if they resolve to private addresses. Unset = public addresses only. Shared pages are always public-only. See [docs/SOCIAL_SHARE.md](docs/SOCIAL_SHARE.md). |
 
 The MCP server (`mcp_server.py`) is a separate process from the Flask app. It
 binds to localhost by default and is reached through the in-container Apache,

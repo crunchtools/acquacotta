@@ -261,7 +261,7 @@ class TestRTConfigSave:
     @pytest.fixture
     def drive(self, monkeypatch):
         store = {"cfg": rt_plugin.validate_config({"base_url": "http://rt", "rest_token": "tok123"})}
-        monkeypatch.setattr(app_module, "_rt_drive_context", lambda: (object(), "folder"))
+        monkeypatch.setattr(app_module, "_plugin_drive_context", lambda: (object(), "folder"))
         monkeypatch.setattr(rt_plugin, "read_config", lambda _s, _f: dict(store["cfg"]))
 
         def fake_write(_s, _f, cfg):

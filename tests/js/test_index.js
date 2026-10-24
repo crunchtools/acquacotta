@@ -9,7 +9,7 @@ const {
     run, navOrder, listOrder, savedTabOrders, focusedTab, activeView, labels, panelHome, panelHidden,
 } = require('./index_harness/harness');
 
-const DEFAULT_ORDER = ['timer', 'reports', 'history', 'todos', 'discussions', 'rt', 'settings'];
+const DEFAULT_ORDER = ['timer', 'reports', 'history', 'todos', 'discussions', 'rt', 'social', 'settings'];
 
 const tests = [];
 const test = (name, cfg, fn) => tests.push({ name, cfg, fn });
@@ -18,7 +18,7 @@ test('saved tab_order is applied to the nav, missing tabs slotted in', {
     settings: { tab_order: ['settings', 'todos', 'timer'] },
 }, async ({ page }) => {
     // Each missing tab lands after its nearest earlier default neighbour.
-    const expected = ['settings', 'todos', 'discussions', 'rt', 'timer', 'reports', 'history'];
+    const expected = ['settings', 'todos', 'discussions', 'rt', 'social', 'timer', 'reports', 'history'];
     assert.deepEqual(await navOrder(page), expected);
     const names = await labels(page);
     assert.deepEqual(await listOrder(page), expected.map(v => names[v]));
@@ -35,7 +35,7 @@ test('moveTab swaps neighbours, re-renders and saves; out-of-range is a no-op', 
     assert.deepEqual(await listOrder(page), expected.map(v => names[v]));
     assert.deepEqual(await savedTabOrders(page), [expected]);
 
-    await page.evaluate(() => { moveTab(0, -1); moveTab(6, 1); });
+    await page.evaluate(() => { moveTab(0, -1); moveTab(7, 1); });
     assert.deepEqual(await savedTabOrders(page), [expected], 'no extra save');
     assert.equal(await page.$eval('#tab-order-list .tab-order-item:first-child button', b => b.disabled), true);
 });
@@ -58,7 +58,7 @@ test('drag-and-drop puts the dragged tab at the drop target index', {}, async ({
         fire(rows()[3], 'drop');
         fire(rows()[0], 'dragend');
     });
-    const expected = ['reports', 'history', 'todos', 'timer', 'discussions', 'rt', 'settings'];
+    const expected = ['reports', 'history', 'todos', 'timer', 'discussions', 'rt', 'social', 'settings'];
     assert.deepEqual(await navOrder(page), expected);
     assert.deepEqual(await savedTabOrders(page), [expected]);
     assert.equal(await page.$$eval('#tab-order-list .dragging, #tab-order-list .drag-over', els => els.length), 0);
@@ -94,7 +94,7 @@ test('hidden tabs are marked in the tab order list', {
 
 test('arrow keys follow the custom order and skip hidden tabs', {
     settings: {
-        tab_order: ['history', 'timer', 'discussions', 'todos', 'settings', 'reports', 'rt'],
+        tab_order: ['history', 'timer', 'discussions', 'todos', 'settings', 'reports', 'social', 'rt'],
         plugin_state_discussions: false,
     },
 }, async ({ page }) => {
@@ -120,12 +120,12 @@ test('arrow keys follow the custom order and skip hidden tabs', {
 });
 
 test('arrow keys pick up a reorder made after load', {}, async ({ page }) => {
-    await page.evaluate(() => moveTab(6, -1)); // settings before rt
-    await page.focus('#tab-rt');
+    await page.evaluate(() => moveTab(7, -1)); // settings before social
+    await page.focus('#tab-social');
     await page.keyboard.press('ArrowLeft');
     assert.equal(await focusedTab(page), 'settings');
     await page.keyboard.press('ArrowRight');
-    assert.equal(await focusedTab(page), 'rt');
+    assert.equal(await focusedTab(page), 'social');
 });
 
 test('an open plugin panel survives loadPlugins() with its form values', {}, async ({ page }) => {
@@ -180,6 +180,67 @@ test("openPluginSettings('rt') before the plugin rows render", {
     assert.equal(await page.$eval('#plugin-settings-btn-rt', b => b.getAttribute('aria-expanded')), 'true');
     assert.equal(await page.$eval('#rt-cfg-base-url', el => el.value), 'https://rt.example.com');
     assert.equal(await page.evaluate(() => document.activeElement.id), 'rt-cfg-base-url');
+});
+
+const SHARED = 'https://example.com/a?b=1';
+const SHARE_PATH = '/?view=social&share=' + encodeURIComponent(SHARED);
+
+test('a share while signed out lands on Social, keeps the link, asks to sign in', {
+    path: SHARE_PATH,
+}, async ({ page }) => {
+    assert.equal(await activeView(page), 'social-view');
+    await page.waitForFunction(() => document.getElementById('social-status-msg').textContent.includes('Sign in'));
+    assert.equal(await page.$eval('#social-url', el => el.value), SHARED);
+    assert.equal(await page.evaluate(() => sessionStorage.getItem('acquacotta_pending_share')), SHARED);
+    assert.equal(await page.evaluate(() => location.search), '', 'share param cleared from the address bar');
+});
+
+const SOCIAL_SIGNED_IN = {
+    path: SHARE_PATH,
+    auth: { logged_in: true, email: 'test@example.com' },
+    socialIntegrations: {
+        configured: true,
+        has_gemini_api_key: true,
+        default_channels: ['x1'],
+        integrations: [
+            { id: 'x1', name: 'Scott on X', identifier: 'x', picture: '/static/icon-192.png?v="1', max_length: 20 },
+            { id: 'li1', name: '<b>LinkedIn</b>', identifier: 'linkedin', picture: '', max_length: 3000 },
+        ],
+    },
+    socialDraft: {
+        page: { url: SHARED, title: '"><img id=pwned src=x>', description: 'desc', image: 'javascript:alert(1)' },
+        drafts: [{ integration_id: 'x1', text: 'This draft is far too long for twenty', max_length: 20, over_limit: true }],
+    },
+};
+
+test('a share while signed in drafts for the default channels at once', SOCIAL_SIGNED_IN, async ({ page }) => {
+    await page.waitForFunction(() => window.__storageCalls.some(c => c[0] === 'socialDraft'));
+    const call = await page.evaluate(() => window.__storageCalls.find(c => c[0] === 'socialDraft'));
+    assert.equal(call[1], SHARED);
+    assert.deepEqual(call[2].map(c => c.id), ['x1'], 'only the default channel');
+    await page.waitForFunction(() => document.getElementById('social-text-0').value !== '');
+    assert.equal(await page.$eval('#social-text-0', el => el.value), 'This draft is far too long for twenty');
+    assert.equal(await page.$eval('#social-count-0', el => el.textContent), '37 / 20');
+    assert.equal(await page.$eval('#social-count-0', el => el.classList.contains('over')), true);
+    assert.equal(await page.$('#pwned'), null, 'page title is rendered as text');
+    assert.equal(await page.$$eval('#social-page img', els => els.length), 0, 'non-http image dropped');
+    assert.equal(await page.$eval('#social-card-1 .social-channel-name', el => el.textContent.includes('<b>LinkedIn</b>')), true);
+    assert.equal(await page.$eval('#social-card-0 img', img => img.getAttribute('src')), '/static/icon-192.png?v="1',
+        'a quote in a URL stays inside the attribute');
+});
+
+test('scheduling is refused while a draft is over its limit, then sent once trimmed', SOCIAL_SIGNED_IN, async ({ page }) => {
+    await page.waitForFunction(() => document.getElementById('social-text-0').value !== '');
+    await page.click('#social-schedule-btn');
+    assert.match(await page.$eval('#social-result', el => el.textContent), /Over the limit/);
+    assert.equal(await page.evaluate(() => window.__storageCalls.some(c => c[0] === 'socialSchedule')), false);
+
+    await page.$eval('#social-text-0', el => { el.value = 'Short one'; el.dispatchEvent(new Event('input')); });
+    await page.click('#social-schedule-btn');
+    await page.waitForFunction(() => window.__storageCalls.some(c => c[0] === 'socialSchedule'));
+    const req = await page.evaluate(() => window.__storageCalls.find(c => c[0] === 'socialSchedule')[1]);
+    assert.deepEqual(req, { mode: 'schedule', posts: [{ integration_id: 'x1', identifier: 'x', text: 'Short one' }] });
+    await page.waitForFunction(() => document.getElementById('social-result').textContent.includes('Scheduled'));
 });
 
 run(tests);

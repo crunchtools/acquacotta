@@ -412,8 +412,10 @@
         return payload;
     }
 
-    // Ticket sync proxies RT live; gunicorn's own worker timeout is 30s.
+    // Ticket sync proxies RT live; gunicorn's own worker timeout is 90s.
     const RT_SYNC_TIMEOUT_MS = 45000;
+    // Drafting fetches a page and waits on Gemini; gunicorn allows 90s.
+    const SOCIAL_TIMEOUT_MS = 85000;
 
     async function authenticatedFetch(url, options = {}) {
         if (!storedCredentials) {
@@ -2272,6 +2274,52 @@
 
         testRTConnection: async function() {
             const res = await authenticatedFetch('/api/rt/test', { method: 'POST', body: JSON.stringify({}) });
+            if (!res.ok) throw new Error(await apiErrorMessage(res));
+            return await res.json();
+        },
+
+        // Social Share: live calls through the server to Postiz and Gemini; nothing
+        // is cached, the drafts live in the page until scheduled.
+        getSocialConfig: async function() {
+            const res = await authenticatedFetch('/api/social/config');
+            if (!res.ok) throw new Error(await apiErrorMessage(res));
+            return await res.json();
+        },
+
+        saveSocialConfig: async function(config) {
+            const res = await authenticatedFetch('/api/social/config', { method: 'POST', body: JSON.stringify(config) });
+            if (!res.ok) throw new Error(await apiErrorMessage(res));
+            return await res.json();
+        },
+
+        testSocialConnection: async function() {
+            const res = await authenticatedFetch('/api/social/test', { method: 'POST', body: JSON.stringify({}) });
+            if (!res.ok) throw new Error(await apiErrorMessage(res));
+            return await res.json();
+        },
+
+        getSocialIntegrations: async function() {
+            const res = await authenticatedFetch('/api/social/integrations', { signal: AbortSignal.timeout(SOCIAL_TIMEOUT_MS) });
+            if (!res.ok) throw new Error(await apiErrorMessage(res));
+            return await res.json();
+        },
+
+        socialDraft: async function(url, channels) {
+            const res = await authenticatedFetch('/api/social/draft', {
+                method: 'POST',
+                body: JSON.stringify({ url, channels }),
+                signal: AbortSignal.timeout(SOCIAL_TIMEOUT_MS)
+            });
+            if (!res.ok) throw new Error(await apiErrorMessage(res));
+            return await res.json();
+        },
+
+        socialSchedule: async function(request) {
+            const res = await authenticatedFetch('/api/social/schedule', {
+                method: 'POST',
+                body: JSON.stringify(request),
+                signal: AbortSignal.timeout(SOCIAL_TIMEOUT_MS)
+            });
             if (!res.ok) throw new Error(await apiErrorMessage(res));
             return await res.json();
         },
