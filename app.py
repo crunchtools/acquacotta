@@ -1767,7 +1767,13 @@ def api_social_draft():
 
 @app.route("/api/social/preview", methods=["POST"])
 def api_social_preview():
-    """A link card for the composer. Body: ``{"url": "..."}`` (a POST, so the URL stays out of access logs)."""
+    """A link card for the composer.
+
+    Body: ``{"url": "..."}`` (a POST, so the URL stays out of access logs).
+    Returns ``{"url", "title", "site", "image"}`` from ``social_plugin.link_preview``,
+    with ``image`` a data: URI or "". 401 when not signed in, 400 for a missing,
+    non-http(s) or non-public URL, 502 when the page can't be fetched.
+    """
     drive_service, _folder_id = _plugin_drive_context()
     if not drive_service:
         return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
