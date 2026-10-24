@@ -273,16 +273,32 @@ test('over the limit names the channel and blocks posting', SOCIAL_SIGNED_IN, as
     assert.equal(await page.evaluate(() => sessionStorage.getItem('acquacotta_pending_share')), null, 'removing the card drops the share');
 });
 
-test('schedule mode relabels the one button and sends the picked time', SOCIAL_SIGNED_IN, async ({ page }) => {
+test('scheduling defaults to the next open slot and sends no date', SOCIAL_SIGNED_IN, async ({ page }) => {
     await composerReady(page);
     await setSocialText(page, 'Later');
     await page.click('#social-mode-link');
-    await page.waitForFunction(() => document.getElementById('social-time').value !== '');
+    await page.waitForFunction(() => /^Next open slot · /.test(document.getElementById('social-when-next').textContent));
+    assert.deepEqual((await socialCalls(page, 'socialSlot')).map(c => c[1]), ['x1']);
+    assert.equal(await page.$eval('#social-when-next', el => el.getAttribute('aria-pressed')), 'true');
+    assert.equal(await page.$eval('#social-time', el => el.hidden), true, 'no picker unless asked for');
+    assert.match(await page.$eval('#social-go', el => el.textContent), /^Schedule 1 channel · /);
+    await page.click('#social-go');
+    await page.click('#social-go');
+    await page.waitForFunction(() => window.__storageCalls.some(c => c[0] === 'socialSchedule'));
+    const [[, req]] = await socialCalls(page, 'socialSchedule');
+    assert.equal(req.mode, 'schedule');
+    assert.equal('date' in req, false, 'the server picks the slot at send time');
+});
+
+test('Pick a time sends the picked time', SOCIAL_SIGNED_IN, async ({ page }) => {
+    await composerReady(page);
+    await setSocialText(page, 'Later');
+    await page.click('#social-mode-link');
+    await page.waitForFunction(() => /^Next open slot · /.test(document.getElementById('social-when-next').textContent));
+    await page.click('#social-when-pick');
     const slot = new Date('2999-06-01T14:20:00Z');
     const local = new Date(slot.getTime() - slot.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-    assert.equal(await page.$eval('#social-time', el => el.value), local, "defaults to Postiz's next free slot");
-    assert.deepEqual((await socialCalls(page, 'socialSlot')).map(c => c[1]), ['x1']);
-    assert.match(await page.$eval('#social-go', el => el.textContent), /^Schedule 1 channel · /);
+    assert.equal(await page.$eval('#social-time', el => el.value), local, 'picker starts at the next open slot');
     await page.$eval('#social-time', el => { el.value = '2000-01-01T09:00'; el.dispatchEvent(new Event('change')); });
     await page.click('#social-go');
     assert.match(await page.$eval('#social-result', el => el.textContent), /passed/);
@@ -295,13 +311,19 @@ test('schedule mode relabels the one button and sends the picked time', SOCIAL_S
     assert.equal(req.date, new Date('2999-01-01T09:00').toISOString());
 });
 
-test('a failed slot lookup leaves the picker empty', { ...SOCIAL_SIGNED_IN, socialSlotError: 'Postiz down' }, async ({ page }) => {
+test('a failed slot lookup still schedules into the next open slot', { ...SOCIAL_SIGNED_IN, socialSlotError: 'Postiz down' }, async ({ page }) => {
     await composerReady(page);
     await setSocialText(page, 'Later');
     await page.click('#social-mode-link');
-    await page.waitForFunction(() => /No open slot found/.test(document.getElementById('social-result').textContent));
-    assert.equal(await page.$eval('#social-time', el => el.value), '');
-    assert.equal(await page.$eval('#social-go', el => el.textContent), 'Pick a time');
+    await page.waitForFunction(() => /Could not look up the next open slot/.test(document.getElementById('social-result').textContent));
+    assert.equal(await page.$eval('#social-when-next', el => el.textContent), 'Next open slot');
+    assert.equal(await page.$eval('#social-go', el => el.textContent), 'Schedule 1 channel · next open slot');
+    await page.click('#social-go');
+    await page.click('#social-go');
+    await page.waitForFunction(() => window.__storageCalls.some(c => c[0] === 'socialSchedule'));
+    const [[, req]] = await socialCalls(page, 'socialSchedule');
+    assert.equal(req.mode, 'schedule');
+    assert.equal('date' in req, false, 'the server still asks Postiz at send time');
 });
 
 test('Draft from link fills the text without repeating the card URL', SOCIAL_SIGNED_IN, async ({ page }) => {
