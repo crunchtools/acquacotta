@@ -27,7 +27,7 @@ from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"
 
 import requests
-from flask import Flask, Response, jsonify, redirect, render_template, request, session
+from flask import Flask, Response, jsonify, redirect, render_template, request, send_from_directory, session
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
@@ -39,11 +39,13 @@ import discussions_plugin
 import json_google_drive_storage
 import json_pcloud_storage
 import mcp_tokens
+import plugin_common
 import plugin_registry
 import pomodoro_tools
 import rt_plugin
 import settings_plugin
 import sheets_storage
+import social_plugin
 import storage_api
 import todos_plugin
 from storage_api import StorageUnavailable
@@ -78,6 +80,14 @@ plugin_registry.activate_extension("discussions")
 # their own Drive), and nothing from RT is persisted server-side.
 plugin_registry.register("extension", "rt", rt_plugin, rt_plugin.PLUGIN_METADATA)
 plugin_registry.activate_extension("rt")
+
+# Social Share — optional plugin, per-user (spec 012). The installed PWA is an
+# Android share target: /share hands the link to the Social tab, which drafts a
+# post per channel with Gemini and schedules them through the user's Postiz. Like
+# RT, the connection config lives in the user's own Drive and nothing is stored
+# server-side.
+plugin_registry.register("extension", "social", social_plugin, social_plugin.PLUGIN_METADATA)
+plugin_registry.activate_extension("social")
 
 # MCP access appears in the plugin list. It has no server-side module contract —
 # enable/disable and per-user state live in the /api/mcp/* routes + the user's Drive, so a
@@ -467,6 +477,66 @@ def terms():
     return render_template("terms.html")
 
 
+# PWA: the manifest makes Acquacotta installable and registers it as an Android
+# share target; the service worker exists only because Chrome requires one for
+# installability. Both are served from the root so the worker's scope is "/".
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+SHARED_URL_MAX_LENGTH = 2048
+
+
+@app.route("/manifest.webmanifest")
+def web_manifest():
+    """The web app manifest, with the MIME type browsers expect."""
+    resp = send_from_directory(STATIC_DIR, "manifest.webmanifest", mimetype="application/manifest+json")
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
+@app.route("/sw.js")
+def service_worker():
+    """The pass-through service worker. Never cached, so a deploy is picked up at once."""
+    resp = send_from_directory(STATIC_DIR / "js", "sw.js", mimetype="text/javascript")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Service-Worker-Allowed"] = "/"
+    return resp
+
+
+def _shared_url_from_request():
+    """The shared link from a share-target request ('' if there is none)."""
+    url = social_plugin.extract_shared_url(request.args.get("url", ""), request.args.get("text", ""))
+    return url if len(url) <= SHARED_URL_MAX_LENGTH else ""
+
+
+def _decrypt_shared_url(sealed):
+    """The shared link sealed into the OAuth state, or '' if absent or unreadable."""
+    try:
+        url = plugin_common.decrypt_secret(sealed or "")
+    except mcp_tokens.TokenError:
+        return ""
+    return social_plugin.extract_shared_url(url, "")
+
+
+def _social_view_url(shared_url):
+    """Where to land with a shared link: the Social tab, link prefilled."""
+    params = {"view": "social"}
+    if shared_url:
+        params["share"] = shared_url
+    return "/?" + urlencode(params)
+
+
+@app.route("/share")
+def share_target():
+    """Android share-sheet entry point (manifest share_target, GET).
+
+    The server cannot tell whether the browser is signed in: credentials live in
+    the browser's IndexedDB and a navigation carries none. So this always lands on
+    the Social tab with the link in the query string; the page drafts at once when
+    signed in, or keeps the link and sends it through Google sign-in (as signed
+    OAuth state, see auth_google) when not.
+    """
+    return redirect(_social_view_url(_shared_url_from_request()))
+
+
 # OAuth Authentication
 @app.route("/auth/google")
 def auth_google():
@@ -496,6 +566,16 @@ def auth_google():
             state_payload["sid"] = requested_spreadsheet_id
         if requested_folder_id:
             state_payload["fid"] = requested_folder_id
+        # A link shared while signed out rides through Google in the signed state,
+        # so the callback can land on the Social tab with it.
+        # It is encrypted, not just signed: the state passes through Google, and
+        # what the user is sharing is none of Google's business.
+        shared_url = social_plugin.extract_shared_url(request.args.get("share", ""), "")
+        if shared_url and len(shared_url) <= SHARED_URL_MAX_LENGTH:
+            try:
+                state_payload["shr"] = plugin_common.encrypt_secret(shared_url)
+            except mcp_tokens.TokenError:
+                app.logger.warning("No seal key: the shared link relies on the browser across sign-in")
 
         s = URLSafeTimedSerializer(app.config["SECRET_KEY"])
         signed_state = s.dumps(state_payload)
@@ -610,7 +690,12 @@ def _provision_json_google_drive(credentials, user_email, requested_id):
     return folder_id, existed
 
 
-def _pending_auth_handoff(credentials_data, settings_data, message="Completing login..."):
+def _script_json(value):
+    """JSON safe to inline in a <script> block: '<' can't close the tag."""
+    return json.dumps(value).replace("<", "\\u003c")
+
+
+def _pending_auth_handoff(credentials_data, settings_data, message="Completing login...", next_url="/?view=settings"):
     """Hand an OAuth result off to storage.js via sessionStorage, then redirect.
 
     The callback deliberately does NOT open IndexedDB itself. storage.js is the
@@ -631,11 +716,11 @@ def _pending_auth_handoff(credentials_data, settings_data, message="Completing l
 <p>{message}</p>
 <script>
 try {{
-    sessionStorage.setItem('acquacotta_pending_auth', JSON.stringify({json.dumps(pending_auth)}));
+    sessionStorage.setItem('acquacotta_pending_auth', JSON.stringify({_script_json(pending_auth)}));
 }} catch (e) {{
     console.error('Failed to stash pending auth:', e);
 }}
-window.location.href = '/?view=settings';
+window.location.href = {_script_json(next_url)};
 </script>
 </body>
 </html>"""
@@ -785,6 +870,9 @@ def auth_callback():
         # Clear server session - credentials will live in browser IndexedDB
         session.clear()
 
+        shared_url = _decrypt_shared_url(state_data.get("shr"))
+        if shared_url:
+            return _pending_auth_handoff(credentials_data, settings_data, next_url=_social_view_url(shared_url))
         return _pending_auth_handoff(credentials_data, settings_data)
     except Exception as e:
         return f"<pre>Error: {e}\n\n{traceback.format_exc()}</pre>", HTTPStatus.INTERNAL_SERVER_ERROR
@@ -1432,8 +1520,11 @@ def api_save_discussions():
 _RT_ACTION_BODY_KEY = {"reply": "content", "comment": "content", "status": "status"}
 
 
-def _rt_drive_context():
-    """(drive_service, folder_id) for the logged-in user, or (None, None)."""
+def _plugin_drive_context():
+    """(drive_service, folder_id) for the logged-in user, or (None, None).
+
+    Shared by the plugins that keep their config in the user's Drive (RT, Social).
+    """
     if not is_logged_in():
         return None, None
     credentials = get_credentials()
@@ -1458,7 +1549,7 @@ def _rt_error_response(exc):
 @app.route("/api/rt/config", methods=["GET"])
 def api_rt_get_config():
     """Return the caller's RT connection config (secrets masked)."""
-    drive_service, folder_id = _rt_drive_context()
+    drive_service, folder_id = _plugin_drive_context()
     if not drive_service:
         return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
     try:
@@ -1476,7 +1567,7 @@ def api_rt_save_config():
     only overwritten when a non-empty value is provided, so editing other fields
     doesn't wipe a previously stored token/password (they are masked on read).
     """
-    drive_service, folder_id = _rt_drive_context()
+    drive_service, folder_id = _plugin_drive_context()
     if not drive_service:
         return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
     payload = get_request_data() or {}
@@ -1494,7 +1585,7 @@ def api_rt_save_config():
 @app.route("/api/rt/test", methods=["POST"])
 def api_rt_test():
     """Test the stored RT connection; returns RT's version on success."""
-    drive_service, folder_id = _rt_drive_context()
+    drive_service, folder_id = _plugin_drive_context()
     if not drive_service:
         return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
     try:
@@ -1510,7 +1601,7 @@ def api_rt_test():
 @app.route("/api/rt/sync", methods=["GET"])
 def api_rt_sync():
     """Fetch the caller's RT tickets live (read-through). Cached client-side."""
-    drive_service, folder_id = _rt_drive_context()
+    drive_service, folder_id = _plugin_drive_context()
     if not drive_service:
         return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
     try:
@@ -1528,7 +1619,7 @@ def api_rt_sync():
 @app.route("/api/rt/ticket/<ticket_id>/history", methods=["GET"])
 def api_rt_ticket_history(ticket_id):
     """Fetch one ticket's recent history thread live from RT."""
-    drive_service, folder_id = _rt_drive_context()
+    drive_service, folder_id = _plugin_drive_context()
     if not drive_service:
         return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
     try:
@@ -1552,7 +1643,7 @@ def api_rt_ticket_action(ticket_id, action):
     body_key = _RT_ACTION_BODY_KEY.get(action)
     if body_key is None:
         return jsonify({"error": f"Unknown ticket action: {action}"}), HTTPStatus.NOT_FOUND
-    drive_service, folder_id = _rt_drive_context()
+    drive_service, folder_id = _plugin_drive_context()
     if not drive_service:
         return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
     payload = get_request_data()
@@ -1566,6 +1657,140 @@ def api_rt_ticket_action(ticket_id, action):
     except HttpError as e:
         return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
     return jsonify({"status": "ok"})
+
+
+# Social Share — draft per-channel posts for a shared link with Gemini and
+# schedule them through the user's Postiz. Same custody as RT: the config lives in
+# the user's Drive (plugins/social/config.json), is read per request, and is used
+# in memory; the Drive context is the one RT uses.
+def _social_error_response(exc):
+    """502 for an upstream failure (Postiz, Gemini, the page), 400 for bad input."""
+    status = HTTPStatus.BAD_GATEWAY if isinstance(exc, social_plugin.SocialError) else HTTPStatus.BAD_REQUEST
+    return jsonify({"error": str(exc)}), status
+
+
+def _social_payload():
+    payload = get_request_data()
+    if not isinstance(payload, dict):
+        raise ValueError("Request body must be a JSON object")
+    return payload
+
+
+@app.route("/api/social/config", methods=["GET"])
+def api_social_get_config():
+    """The caller's social config, secrets masked."""
+    drive_service, folder_id = _plugin_drive_context()
+    if not drive_service:
+        return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
+    try:
+        config = social_plugin.read_config(drive_service, folder_id)
+    except HttpError as e:
+        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+    return jsonify({**social_plugin.public_config(config), "postiz_url": social_plugin.postiz_app_url(config)})
+
+
+@app.route("/api/social/config", methods=["POST"])
+def api_social_save_config():
+    """Save the caller's social config; an empty secret keeps the stored one."""
+    drive_service, folder_id = _plugin_drive_context()
+    if not drive_service:
+        return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
+    try:
+        clean = social_plugin.update_config(drive_service, folder_id, _social_payload())
+    except ValueError as exc:
+        return _social_error_response(exc)
+    except HttpError as e:
+        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+    return jsonify({**social_plugin.public_config(clean), "postiz_url": social_plugin.postiz_app_url(clean)})
+
+
+@app.route("/api/social/test", methods=["POST"])
+def api_social_test():
+    """Test the saved Postiz connection."""
+    drive_service, folder_id = _plugin_drive_context()
+    if not drive_service:
+        return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
+    try:
+        result = social_plugin.test_connection(social_plugin.read_config(drive_service, folder_id))
+    except (ValueError, social_plugin.SocialError) as exc:
+        return _social_error_response(exc)
+    except HttpError as e:
+        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+    return jsonify(result)
+
+
+@app.route("/api/social/integrations", methods=["GET"])
+def api_social_integrations():
+    """The caller's Postiz channels with their character limits."""
+    drive_service, folder_id = _plugin_drive_context()
+    if not drive_service:
+        return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
+    try:
+        config = social_plugin.read_config(drive_service, folder_id)
+        if not social_plugin.postiz_configured(config):
+            return jsonify({"configured": False, "integrations": []})
+        integrations = social_plugin.list_integrations(config)
+    except (ValueError, social_plugin.SocialError) as exc:
+        return _social_error_response(exc)
+    except HttpError as e:
+        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+    return jsonify(
+        {
+            "configured": True,
+            "integrations": integrations,
+            "default_channels": config["default_channels"],
+            "has_gemini_api_key": bool(config["gemini_api_key"]),
+        }
+    )
+
+
+@app.route("/api/social/draft", methods=["POST"])
+def api_social_draft():
+    """Fetch the shared page and draft one post per channel.
+
+    Body: ``{"url": "...", "channels": [{"id", "name", "identifier", "max_length"}]}``.
+    """
+    drive_service, folder_id = _plugin_drive_context()
+    if not drive_service:
+        return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
+    try:
+        payload = _social_payload()
+        config = social_plugin.read_config(drive_service, folder_id)
+        page = social_plugin.fetch_page(payload.get("url"))
+        drafts = social_plugin.draft_posts(config, page, payload.get("channels"))
+    except (ValueError, social_plugin.SocialError) as exc:
+        return _social_error_response(exc)
+    except HttpError as e:
+        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+    return jsonify({"page": page, "drafts": drafts})
+
+
+@app.route("/api/social/schedule", methods=["POST"])
+def api_social_schedule():
+    """Create the edited posts in Postiz.
+
+    Body: ``{"mode": "schedule"|"draft"|"now", "date"?: ISO-8601, "image_url"?: str,
+    "posts": [{"integration_id", "identifier", "text"}]}``. With mode "schedule" and
+    no date, Postiz's next free slot for the first channel is used.
+    """
+    drive_service, folder_id = _plugin_drive_context()
+    if not drive_service:
+        return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
+    try:
+        payload = _social_payload()
+        config = social_plugin.read_config(drive_service, folder_id)
+        result = social_plugin.schedule(
+            config,
+            payload.get("mode", "schedule"),
+            payload.get("posts"),
+            date=payload.get("date") or None,
+            image_url=payload.get("image_url") or None,
+        )
+    except (ValueError, social_plugin.SocialError) as exc:
+        return _social_error_response(exc)
+    except HttpError as e:
+        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+    return jsonify(result)
 
 
 # MCP Access — enable/disable the hosted MCP endpoint and mint per-user tokens.

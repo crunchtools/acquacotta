@@ -7,6 +7,16 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Social Share** plugin (spec 012). Install Acquacotta on Android and it shows up
+  in the share sheet. Share a link and the new Social tab drafts one post per Postiz
+  channel with Gemini, each within that channel's character limit. Edit the drafts,
+  untick channels, and schedule for Postiz's next free slot, at a time you choose,
+  or as Postiz drafts. The Postiz URL and API key, the Gemini key and model, and
+  the default channels are stored only in your own Drive, encrypted. A link shared
+  while signed out survives Google sign-in. Optional and per-user, enabled by
+  default.
+- The app is now an installable PWA: a web app manifest with icons and a share
+  target, and a pass-through service worker that caches nothing.
 - **Settings over MCP.** New tools `get_settings` and `update_settings` read
   and change your preferences: timer presets, breaks, sounds, display, clock,
   working hours, daily goal, Pomodoro types and colors, tab order, and turning
@@ -53,6 +63,10 @@ All notable changes to this project are documented here. The format follows
   on mobile instead of only on hover, which touch screens can't do.
 
 ### Fixed
+- `RT_ALLOWED_HOSTS` was never passed through to Gunicorn, so the RT allowlist
+  set in the environment had no effect. It and `SOCIAL_ALLOWED_HOSTS` are now
+  passed through. The README described an unset allowlist as "no restriction";
+  it means public addresses only.
 - RT ticket detail modal now widens to a readable 720px on desktop instead of
   staying a cramped 400px column (it shared the compact form-modal width). Mobile
   is unchanged — it was already full-width there.
@@ -106,6 +120,10 @@ All notable changes to this project are documented here. The format follows
   retries.
 
 ### Changed
+- RT Tickets and Social Share share one implementation of secret encryption,
+  Drive config storage and the SSRF destination check (`plugin_common.py`).
+- Gunicorn's worker timeout is 90s (was the 30s default) and the container's
+  Apache proxy timeout matches, so a draft that waits on Gemini isn't cut off.
 - Relicensed from GPL-3.0 to AGPL-3.0-or-later, matching Constitution I and
   what this repo's constitution already declared.
 
@@ -120,6 +138,19 @@ All notable changes to this project are documented here. The format follows
   tab order (apply, move, drag-and-drop, reset, save, arrow keys over hidden
   and reordered tabs) and plugin settings panels across `loadPlugins()`
   re-renders. The page is served with `Storage` and the CDN libraries stubbed.
+
+### Security
+- The SSRF check shared by RT Tickets and Social Share accepts only globally
+  routable addresses (so carrier-grade NAT and IPv4-mapped loopback are refused
+  too), and Social's fetches also check the address the socket actually
+  connected to, which defeats DNS rebinding.
+- Access logs (Gunicorn and the container's Apache) record the path without the
+  query string or Referer, so shared links and OAuth location ids stay out of
+  the logs.
+- `escapeHtml` in the page now escapes quotes as well, so values it escapes are
+  safe inside HTML attributes, not only in text.
+- The Google sign-in hand-off page escapes `<` in its inline JSON, so a profile
+  name can't close the script tag.
 
 ## [2.16.2] - 2026-09-20
 

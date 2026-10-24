@@ -190,3 +190,9 @@ check = "hidden_env_config"
 path = "mcp_tokens.py"
 justification = "MCP_TOKEN_SEAL_KEY is documented in acquacotta.env.example, including the fallback-to-FLASK_SECRET_KEY behavior and the production requirement to set it explicitly. FLASK_ENV and FLASK_SECRET_KEY are documented in README.md/CLAUDE.md as above."
 classification = "by_design"
+
+[[exceptions]]
+check = "dead_structs"
+path = "plugin_common.py"
+justification = "The _Public* connection and pool classes are instantiated by urllib3, not by our code: the adapter registers them in pool_classes_by_scheme and the pools build connections from ConnectionCls. They are how the connect-time public-peer check (DNS rebinding guard) is installed."
+classification = "by_design"

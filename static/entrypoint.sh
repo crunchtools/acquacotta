@@ -5,7 +5,7 @@ set -e
 
 # Start Flask with Gunicorn (production WSGI server)
 start_flask() {
-    gunicorn --bind 127.0.0.1:5000 --workers 2 --access-logfile - --error-logfile - app:app &
+    gunicorn --bind 127.0.0.1:5000 --workers 2 --timeout 90 --access-logformat '%(h)s %(t)s %(m)s %(U)s %(s)s %(b)s %(L)s' --access-logfile - --error-logfile - app:app &
     FLASK_PID=$!
     echo "Gunicorn started with PID $FLASK_PID"
 }

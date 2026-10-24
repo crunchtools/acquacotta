@@ -6,6 +6,8 @@
  *   plugins      the /api/plugins body pluginFetch() returns
  *   auth         what getAuthStatus() returns (default: logged out)
  *   rtConfig     what getRTConfig() returns
+ *   socialIntegrations  what getSocialIntegrations() returns
+ *   socialDraft  what socialDraft() returns (the call is recorded)
  *   holdPlugins  when true, /api/plugins waits for window.__releasePlugins()
  *
  * Every saveSettings() call is recorded in window.__storageCalls. Methods the
@@ -51,11 +53,21 @@
         },
         authenticatedFetch: async () => json({}),
         getRTConfig: async () => clone(cfg.rtConfig || {}),
+        getSocialIntegrations: async () => clone(cfg.socialIntegrations || { configured: false, integrations: [] }),
+        socialDraft: async (url, channels) => {
+            calls.push(['socialDraft', url, clone(channels)]);
+            return clone(cfg.socialDraft || { page: {}, drafts: [] });
+        },
+        socialSchedule: async request => {
+            calls.push(['socialSchedule', clone(request)]);
+            return { date: '2026-10-25T14:00:00Z', posts: [], warnings: [], postiz_url: 'https://postiz.example.com' };
+        },
         // loadTodos() creates a list and reloads until one exists.
         getTodoLists: async () => [{ id: 'general', name: 'General', sort_order: 0 }],
         getSyncStatus: async () => ({}),
         getLocalPomodoroCount: async () => 0,
-        getReport: async () => ({}),
+        // An empty report, shaped like the real one: the Reports tab renders it.
+        getReport: async () => ({ total_minutes: 0, total_pomodoros: 0, by_type: {}, daily_totals: [], labels: [] }),
         getPomodorosPage: async () => ({ pomodoros: [], has_more: false }),
     };
 

@@ -23,20 +23,14 @@ RT REST 2.0 token (``Authorization: token <t>``).
 """
 
 import base64
-import ipaddress
 import json
-import os
 import re
-import socket
 from concurrent.futures import ThreadPoolExecutor
 from http import HTTPStatus
-from urllib.parse import urlparse
 
 import requests
-from cryptography.fernet import Fernet, InvalidToken
 
-import mcp_tokens
-from transports.google_drive_transport import GoogleDriveTransport
+import plugin_common
 
 # RT ticket and transaction ids are integers. The sync boundary enforces this so a
 # crafted id can never reach the frontend, where ids are interpolated into HTML
@@ -59,7 +53,7 @@ PLUGIN_METADATA = {
     "has_import_export": False,
 }
 
-CONFIG_FILE = "config.json"
+CONFIG_FILE = plugin_common.CONFIG_FILE
 PLUGIN_FOLDER = "plugins/rt"
 
 # Default TicketSQL: the tickets I own that are still open. RT expands
@@ -90,9 +84,7 @@ _MAX_TICKETS = 500
 _HTTP_TIMEOUT = 20  # seconds, per RT request
 
 # RT secret fields are encrypted at rest in the user's Drive (constitution:
-# credentials are not persisted in the clear). Values are stored as
-# ``fernet:<token>`` using the server seal key shared with the MCP process.
-_ENC_PREFIX = "fernet:"
+# credentials are not persisted in the clear), see plugin_common.
 _SECRET_CONFIG_FIELDS = ("basic_pass", "rest_token")
 
 
@@ -125,48 +117,6 @@ def _empty_config():
     }
 
 
-def _encrypt_secret(value):
-    """Encrypt a secret for at-rest storage in the user's Drive, or '' for empty."""
-    if not value:
-        return ""
-    return _ENC_PREFIX + Fernet(mcp_tokens.seal_key()).encrypt(value.encode()).decode()
-
-
-def _decrypt_secret(value):
-    """Decrypt a stored secret. Returns '' if the seal key has rotated (the user
-    re-enters it) and passes through any legacy plaintext value unchanged."""
-    if not value or not value.startswith(_ENC_PREFIX):
-        return value or ""
-    try:
-        return Fernet(mcp_tokens.seal_key()).decrypt(value[len(_ENC_PREFIX) :].encode()).decode()
-    except InvalidToken:
-        return ""
-
-
-def _ensure_plugin_folder(drive_service, folder_id):
-    """Ensure plugins/rt/ subfolder exists under the user's root, return its folder ID."""
-    plugins_id = _find_or_create_folder(drive_service, folder_id, "plugins")
-    return _find_or_create_folder(drive_service, plugins_id, "rt")
-
-
-def _find_or_create_folder(service, parent_id, name):
-    query = (
-        f"name='{name}' and '{parent_id}' in parents "
-        f"and mimeType='application/vnd.google-apps.folder' and trashed=false"
-    )
-    results = service.files().list(q=query, spaces="drive", fields="files(id)").execute()
-    files = results.get("files", [])
-    if files:
-        return files[0]["id"]
-    metadata = {
-        "name": name,
-        "mimeType": "application/vnd.google-apps.folder",
-        "parents": [parent_id],
-    }
-    folder = service.files().create(body=metadata, fields="id").execute()
-    return folder["id"]
-
-
 def read_config(drive_service, folder_id):
     """Read the user's RT connection config from their Google Drive.
 
@@ -175,9 +125,7 @@ def read_config(drive_service, folder_id):
     empty, or malformed file degrades to the all-defaults config rather than
     raising.
     """
-    rt_folder_id = _ensure_plugin_folder(drive_service, folder_id)
-    rt_transport = GoogleDriveTransport(drive_service, rt_folder_id)
-    content = rt_transport.download_file(CONFIG_FILE)
+    content = plugin_common.config_transport(drive_service, folder_id, PLUGIN_METADATA["id"]).download_file(CONFIG_FILE)
     config = _empty_config()
     if content is None:
         return config
@@ -191,7 +139,7 @@ def read_config(drive_service, folder_id):
         if isinstance(stored.get(field), str):
             config[field] = stored[field]
     for field in _SECRET_CONFIG_FIELDS:
-        config[field] = _decrypt_secret(config[field])
+        config[field] = plugin_common.decrypt_secret(config[field])
     if not config["query"].strip():
         config["query"] = DEFAULT_QUERY
     return config
@@ -203,16 +151,10 @@ def write_config(drive_service, folder_id, config):
     ``config`` is normalized through ``validate_config`` first, so only the known
     string fields are written and the file shape is always clean.
     """
+    # Secrets are encrypted on the way out; the plaintext result is only returned
+    # to the caller (which masks secrets before sending to the browser).
     clean = validate_config(config)
-    rt_folder_id = _ensure_plugin_folder(drive_service, folder_id)
-    rt_transport = GoogleDriveTransport(drive_service, rt_folder_id)
-    # Encrypt secrets at rest; the plaintext ``clean`` is only returned to the caller
-    # (which masks secrets before sending to the browser), never written.
-    to_store = dict(clean)
-    for field in _SECRET_CONFIG_FIELDS:
-        to_store[field] = _encrypt_secret(clean[field])
-    rt_transport.upload_file(CONFIG_FILE, json.dumps(to_store, indent=2, ensure_ascii=False))
-    return clean
+    return plugin_common.save_config(drive_service, folder_id, PLUGIN_METADATA["id"], clean, _SECRET_CONFIG_FIELDS)
 
 
 def validate_config(config):
@@ -292,65 +234,14 @@ def config_is_connectable(config):
 # --------------------------------------------------------------------------- #
 
 
-def _resolved_ips(host):
-    """Resolve a host to IP objects (or parse an IP literal). Raises ValueError if
-    the name can't be resolved."""
-    try:
-        literal = ipaddress.ip_address(host)
-    except ValueError:
-        literal = None
-    if literal is not None:
-        return [literal]
-    try:
-        infos = socket.getaddrinfo(host, None)
-    except socket.gaierror as exc:
-        raise ValueError(f"RT host '{host}' could not be resolved") from exc
-    return [ipaddress.ip_address(info[4][0]) for info in infos]
-
-
-def _check_destination(base):
-    """Guard the server-side proxy against SSRF.
-
-    A user supplies ``base_url`` and the server fetches it, so an unguarded proxy
-    would let any authenticated user reach internal services (cloud metadata,
-    localhost, 10.x, ...). Policy:
-
-    * ``RT_ALLOWED_HOSTS`` set → the host MUST be listed. The operator has then
-      explicitly trusted it, so an internal/private RT address is allowed (this is
-      how a deployment reaches RT privately behind an auth proxy).
-    * ``RT_ALLOWED_HOSTS`` unset → only public destinations: the scheme must be
-      http(s) and the host must not resolve to a loopback/link-local/private/
-      reserved address.
-    """
-    parsed = urlparse(base)
-    if parsed.scheme not in ("http", "https"):
-        raise ValueError("RT base_url must be an http(s) URL")
-    host = (parsed.hostname or "").lower()
-    if not host:
-        raise ValueError("RT base_url has no host")
-    allowed_raw = os.environ.get("RT_ALLOWED_HOSTS", "").strip()
-    if allowed_raw:
-        allowed = {h.strip().lower() for h in allowed_raw.split(",") if h.strip()}
-        if host not in allowed:
-            raise ValueError(f"RT host '{host}' is not in the RT_ALLOWED_HOSTS allowlist")
-        return
-    for ip in _resolved_ips(host):
-        if (
-            ip.is_loopback
-            or ip.is_private
-            or ip.is_link_local
-            or ip.is_reserved
-            or ip.is_multicast
-            or ip.is_unspecified
-        ):
-            raise ValueError("RT host resolves to a non-public address — set RT_ALLOWED_HOSTS to allow an internal RT")
-
-
 def _rest_base(config):
     base = (config.get("base_url") or "").strip().rstrip("/")
     if not base:
         raise ValueError("RT base_url is not configured")
-    _check_destination(base)
+    # SSRF guard: a user supplies base_url and the server fetches it. With
+    # RT_ALLOWED_HOSTS set, the host MUST be listed (the operator trusts it, so a
+    # private RT behind an auth proxy works); unset, only public addresses pass.
+    plugin_common.check_destination(base, "RT_ALLOWED_HOSTS", strict=True)
     return f"{base}/REST/2.0"
 
 

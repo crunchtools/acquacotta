@@ -8,6 +8,9 @@
     <meta http-equiv="Expires" content="0">
     <title>Acquacotta</title>
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <meta name="theme-color" content="#1a1a2e">
+    <link rel="apple-touch-icon" href="/static/icon-192.png">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/dark.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -613,9 +616,37 @@
             padding: 0; margin: -1px; overflow: hidden;
             clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
         }
+        /* Social Share */
+        .social-url-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+        .social-url-row input { flex: 1 1 14rem; min-width: 0; }
+        .social-page { display: flex; gap: 0.75rem; align-items: flex-start; margin: 0.75rem 0; }
+        .social-page img { width: 72px; height: 72px; object-fit: cover; border-radius: 6px; flex-shrink: 0; }
+        .social-page-title { font-weight: 600; overflow-wrap: anywhere; }
+        .social-page-desc { color: var(--text-secondary); font-size: 0.85rem; overflow-wrap: anywhere; }
+        .social-channel { background: var(--bg-secondary); border-radius: 8px; padding: 0.75rem; margin-bottom: 0.75rem; }
+        .social-channel.excluded { opacity: 0.5; }
+        .social-channel-head { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
+        .social-channel-head img { width: 28px; height: 28px; border-radius: 50%; }
+        .social-channel-head .social-channel-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .social-channel textarea { width: 100%; resize: vertical; font-size: 1rem; }
+        .social-count { text-align: right; font-size: 0.75rem; color: var(--text-secondary); }
+        .social-count.over { color: var(--accent); font-weight: 600; }
+        .social-when { display: flex; flex-direction: column; gap: 0.5rem; margin: 0.75rem 0; }
+        .social-when label { cursor: pointer; }
+        .social-default-channels label { display: block; cursor: pointer; margin: 0.25rem 0; }
     </style>
     <script src="{{ url_for('static', filename='js/utils.js') }}?v=7"></script>
-    <script src="{{ url_for('static', filename='js/storage.js') }}?v=11"></script>
+    <script src="{{ url_for('static', filename='js/storage.js') }}?v=12"></script>
+    <script>
+        // Pass-through worker (caches nothing): required for Chrome to install the
+        // app, and only an installed app is offered in Android's share sheet.
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js', { scope: '/' })
+                    .catch(e => console.warn('Service worker registration failed:', e));
+            });
+        }
+    </script>
 </head>
 <body>
     <a href="#main-content" class="skip-link">Skip to main content</a>
@@ -647,6 +678,7 @@
             <button data-view="todos" role="tab" aria-selected="false" aria-controls="todos-view" id="tab-todos" tabindex="-1" title="Manage your to-do lists and tasks">To-do</button>
             <button data-view="discussions" role="tab" aria-selected="false" aria-controls="discussions-view" id="tab-discussions" tabindex="-1" title="Track conversations to have with people, by person">Discussions</button>
             <button data-view="rt" role="tab" aria-selected="false" aria-controls="rt-view" id="tab-rt" tabindex="-1" title="Your Request Tracker tickets, grouped by queue">Tickets</button>
+            <button data-view="social" role="tab" aria-selected="false" aria-controls="social-view" id="tab-social" tabindex="-1" title="Share a link: AI-drafted posts per channel, scheduled through Postiz">Social</button>
             <button data-view="settings" role="tab" aria-selected="false" aria-controls="settings-view" id="tab-settings" tabindex="-1" title="Configure timer presets, breaks, and display options">Settings</button>
         </nav>
 
@@ -1016,6 +1048,34 @@
             </div>
         </div>
 
+        <!-- Social Share View -->
+        <div id="social-view" class="view" role="tabpanel" aria-labelledby="tab-social">
+            <div class="todo-header">
+                <h2>Social</h2>
+                <button class="secondary" onclick="openPluginSettings('social')" title="Postiz and Gemini settings" style="padding: 0.5rem 0.75rem; font-size: 0.875rem;">&#9881; Settings</button>
+            </div>
+            <div id="social-status-msg" style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 0.5rem;"></div>
+            <div class="form-group">
+                <label for="social-url">Link to share</label>
+                <div class="social-url-row">
+                    <input type="url" id="social-url" inputmode="url" placeholder="https://..." autocomplete="off">
+                    <button class="primary" id="social-draft-btn" onclick="socialDraft()">Draft posts</button>
+                </div>
+            </div>
+            <div id="social-page"></div>
+            <div id="social-channels"></div>
+            <div id="social-compose-actions" hidden>
+                <div class="social-when" role="radiogroup" aria-label="When to post">
+                    <label><input type="radio" name="social-when" value="slot" checked onchange="socialWhenChanged()"> Next free slot in Postiz</label>
+                    <label><input type="radio" name="social-when" value="time" onchange="socialWhenChanged()"> Pick a time</label>
+                    <input type="datetime-local" id="social-time" hidden>
+                    <label><input type="radio" name="social-when" value="draft" onchange="socialWhenChanged()"> Save as draft in Postiz</label>
+                </div>
+                <button class="primary" id="social-schedule-btn" onclick="socialSchedule()" style="width: 100%;">Schedule</button>
+                <div id="social-result" role="status" style="margin-top: 0.75rem; font-size: 0.875rem;"></div>
+            </div>
+        </div>
+
         <!-- Settings View -->
         <div id="settings-view" class="view" role="tabpanel" aria-labelledby="tab-settings">
             <h2>Settings</h2>
@@ -1307,6 +1367,39 @@
                         <button class="primary" onclick="rtSaveConfig()">Save</button>
                         <button class="secondary" onclick="rtTestConnection()">Test connection</button>
                         <span id="rt-cfg-status" style="font-size: 0.875rem; color: var(--text-secondary);"></span>
+                    </div>
+                </div>
+                <div class="plugin-settings-panel" id="social-settings-panel">
+                    <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1rem;">
+                        Connect Postiz and Gemini. Keys are stored only in your own Google Drive, encrypted, and used by the server per request. They are never saved on the server.
+                    </p>
+                    <div class="form-group">
+                        <label for="social-cfg-postiz-url">Postiz API URL</label>
+                        <input type="text" id="social-cfg-postiz-url" placeholder="https://postiz.example.com/api/public/v1">
+                        <p style="color: var(--text-secondary); font-size: 0.75rem; margin-top: 0.25rem;">The backend URL plus /public/v1. On the standard Postiz image that is your Postiz address + /api/public/v1.</p>
+                    </div>
+                    <div class="form-group">
+                        <label for="social-cfg-postiz-key">Postiz API key <span id="social-postiz-key-state" style="color: var(--text-secondary); font-size: 0.75rem;"></span></label>
+                        <input type="password" id="social-cfg-postiz-key" autocomplete="new-password">
+                        <p style="color: var(--text-secondary); font-size: 0.75rem; margin-top: 0.25rem;">In Postiz: Settings &rarr; Agents / Dev.</p>
+                    </div>
+                    <div class="form-group">
+                        <label for="social-cfg-gemini-key">Gemini API key <span id="social-gemini-key-state" style="color: var(--text-secondary); font-size: 0.75rem;"></span></label>
+                        <input type="password" id="social-cfg-gemini-key" autocomplete="new-password">
+                        <p style="color: var(--text-secondary); font-size: 0.75rem; margin-top: 0.25rem;">From Google AI Studio (aistudio.google.com/apikey).</p>
+                    </div>
+                    <div class="form-group">
+                        <label for="social-cfg-gemini-model">Gemini model</label>
+                        <input type="text" id="social-cfg-gemini-model" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label>Channels selected by default (none ticked means all)</label>
+                        <div id="social-cfg-channels" class="social-default-channels"><span style="color: var(--text-secondary); font-size: 0.8rem;">Save the Postiz URL and key, then Test connection to list channels.</span></div>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+                        <button class="primary" onclick="socialSaveConfig()">Save</button>
+                        <button class="secondary" onclick="socialTestConnection()">Test connection</button>
+                        <span id="social-cfg-status" style="font-size: 0.875rem; color: var(--text-secondary);"></span>
                     </div>
                 </div>
             </div>
@@ -2525,6 +2618,7 @@
                 if (btn.dataset.view === 'todos') loadTodos();
                 if (btn.dataset.view === 'discussions') { loadDiscussions(); refreshDiscussionsIfChanged(); }
                 if (btn.dataset.view === 'rt') { loadTickets(); refreshTickets(); }
+                if (btn.dataset.view === 'social') socialOnShow();
                 if (btn.dataset.view === 'settings') rtLoadConfigForm();
             });
         });
@@ -2614,11 +2708,24 @@
             setTabOrder(DEFAULT_TAB_ORDER.slice());
         }
 
+        // Social Share state read by switchToViewFromURL below, which runs while
+        // the page parses, so it is declared here rather than with the Social code.
+        let socialPendingShare = '';
+        let socialOpenedFromURL = false;
+        const SOCIAL_SHARE_KEY = 'acquacotta_pending_share';
+
         // Handle view URL parameter (e.g., after OAuth redirect)
         function switchToViewFromURL() {
             const params = new URLSearchParams(window.location.search);
             const view = params.get('view');
-            if (view && ['timer', 'reports', 'history', 'todos', 'discussions', 'rt', 'settings'].includes(view)) {
+            // A link from the Android share sheet (/share -> ?view=social&share=...).
+            // Kept in sessionStorage too, so it survives a Google sign-in detour.
+            if (view === 'social') {
+                socialOpenedFromURL = true;
+                const shared = params.get('share') || '';
+                if (/^https?:\/\//i.test(shared)) socialRememberShare(shared);
+            }
+            if (view && ['timer', 'reports', 'history', 'todos', 'discussions', 'rt', 'social', 'settings'].includes(view)) {
                 document.querySelectorAll('nav button').forEach(b => {
                     b.classList.remove('active');
                     b.setAttribute('aria-selected', 'false');
@@ -4307,6 +4414,7 @@
             const btn = document.getElementById(`plugin-settings-btn-${pluginId}`);
             if (btn) btn.setAttribute('aria-expanded', String(open));
             if (open && pluginId === 'rt') rtLoadConfigForm();
+            if (open && pluginId === 'social') socialLoadConfigForm();
         }
 
         // Jump from a plugin's own tab to its settings, expanded and in view.
@@ -4321,6 +4429,10 @@
             if (pluginId === 'rt') {
                 await rtLoadConfigForm();
                 document.getElementById('rt-cfg-base-url').focus({ preventScroll: true });
+            }
+            if (pluginId === 'social') {
+                await socialLoadConfigForm();
+                document.getElementById('social-cfg-postiz-url').focus({ preventScroll: true });
             }
         }
 
@@ -4703,10 +4815,13 @@
         });
 
         // Utility
+        // Safe in text and in quoted attributes: innerHTML serialization leaves
+        // quotes alone, so they are escaped here (an untrusted URL with a '"' in
+        // it must not close an href/src attribute).
         function escapeHtml(text) {
             const div = document.createElement('div');
             div.textContent = text;
-            return div.innerHTML;
+            return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
 
         // Type management functions
@@ -5528,11 +5643,14 @@
                 }
             }
 
-            if (locationId) {
-                window.location.href = '/auth/google?' + field + '=' + encodeURIComponent(locationId);
-            } else {
-                window.location.href = '/auth/google';
-            }
+            const params = new URLSearchParams();
+            if (locationId) params.set(field, locationId);
+            // A link shared while signed out travels through Google in the signed
+            // OAuth state; the callback lands back on the Social tab with it.
+            const pendingShare = socialStoredShare();
+            if (pendingShare) params.set('share', pendingShare);
+            const query = params.toString();
+            window.location.href = '/auth/google' + (query ? '?' + query : '');
         }
 
         function loginPCloud() {
@@ -6890,6 +7008,300 @@
             }
         }
 
+        // ===== Social Share =====
+        // A link shared from Android lands here (manifest share_target -> /share ->
+        // /?view=social&share=...). The server fetches the page and drafts one post
+        // per Postiz channel with Gemini; the user edits, picks a time and schedules.
+        // Page metadata, channel names and drafts are untrusted: rendered through
+        // escapeHtml or assigned as .value/.textContent, never as raw HTML.
+        let socialChannels = [];      // active Postiz channels, with max_length
+        let socialIncluded = new Set();
+        let socialTexts = {};         // channel id -> current text
+        let socialPage = null;        // metadata of the drafted page
+        let socialHasGemini = false;
+        let socialChannelsLoaded = false;
+        let socialSavedConfig = null;
+        const SOCIAL_SECRET_SAVED = '••••••••';
+
+        function socialSetMsg(text) {
+            document.getElementById('social-status-msg').textContent = text;
+        }
+
+        function socialRememberShare(url) {
+            socialPendingShare = url || '';
+            try {
+                if (url) sessionStorage.setItem(SOCIAL_SHARE_KEY, url);
+                else sessionStorage.removeItem(SOCIAL_SHARE_KEY);
+            } catch (e) { /* storage blocked: the OAuth state still carries it */ }
+        }
+
+        function socialStoredShare() {
+            if (socialPendingShare) return socialPendingShare;
+            try { return sessionStorage.getItem(SOCIAL_SHARE_KEY) || ''; } catch (e) { return ''; }
+        }
+
+        async function socialOnShow(opts = {}) {
+            const pending = socialStoredShare();
+            const urlInput = document.getElementById('social-url');
+            if (pending && !urlInput.value) urlInput.value = pending;
+            if (!authStatus || !authStatus.logged_in) {
+                socialSetMsg('Sign in with Google to draft and schedule posts. The link is kept through sign-in.');
+                const btn = document.createElement('button');
+                btn.className = 'primary';
+                btn.textContent = 'Sign in with Google';
+                btn.style.cssText = 'padding: 0.375rem 0.75rem; font-size: 0.875rem; margin-left: 0.25rem;';
+                btn.addEventListener('click', () => loginWithGoogle());
+                document.getElementById('social-status-msg').appendChild(btn);
+                return;
+            }
+            if (!socialChannelsLoaded) await socialLoadChannels();
+            if (opts.autoDraft && urlInput.value && socialHasGemini && socialIncluded.size) await socialDraft();
+        }
+
+        async function socialLoadChannels() {
+            socialSetMsg('Loading channels from Postiz…');
+            try {
+                const data = await Storage.getSocialIntegrations();
+                if (!data.configured) {
+                    socialSetMsg('Postiz isn’t connected yet. ');
+                    const btn = document.createElement('button');
+                    btn.className = 'primary';
+                    btn.textContent = 'Connect Postiz';
+                    btn.style.cssText = 'padding: 0.375rem 0.75rem; font-size: 0.875rem; margin-left: 0.25rem;';
+                    btn.addEventListener('click', () => openPluginSettings('social'));
+                    document.getElementById('social-status-msg').appendChild(btn);
+                    return;
+                }
+                socialChannels = (data.integrations || []).filter(c => !c.disabled);
+                const ids = new Set(socialChannels.map(c => c.id));
+                const defaults = (data.default_channels || []).filter(id => ids.has(id));
+                socialIncluded = new Set(defaults.length ? defaults : [...ids]);
+                socialHasGemini = !!data.has_gemini_api_key;
+                socialChannelsLoaded = true;
+                socialSetMsg(socialHasGemini ? '' : 'Add a Gemini API key in Social settings to draft posts; you can still write them by hand.');
+                socialRenderChannels();
+            } catch (e) {
+                socialSetMsg('Could not load channels: ' + (e.message || 'error'));
+            }
+        }
+
+        function socialRenderChannels() {
+            const container = document.getElementById('social-channels');
+            document.getElementById('social-compose-actions').hidden = !socialChannels.length;
+            if (!socialChannels.length) {
+                container.innerHTML = '<div class="empty">No active channels in Postiz.</div>';
+                return;
+            }
+            container.innerHTML = socialChannels.map((c, i) => {
+                const pic = discussionSafeUrl(c.picture);
+                const included = socialIncluded.has(c.id);
+                return `<div class="social-channel${included ? '' : ' excluded'}" id="social-card-${i}">
+                    <div class="social-channel-head">
+                        ${pic ? `<img src="${escapeHtml(pic)}" alt="" referrerpolicy="no-referrer">` : ''}
+                        <span class="social-channel-name">${escapeHtml(c.name || c.identifier)} <span style="color: var(--text-secondary); font-size: 0.8rem;">${escapeHtml(c.identifier)}</span></span>
+                        <label style="cursor: pointer;"><input type="checkbox" id="social-include-${i}" ${included ? 'checked' : ''} onchange="socialToggleChannel(${i}, this.checked)"> Post</label>
+                    </div>
+                    <textarea id="social-text-${i}" rows="4" aria-label="Post for ${escapeHtml(c.name || c.identifier)}" placeholder="Draft appears here, or write your own." oninput="socialTextChanged(${i})"></textarea>
+                    <div class="social-count" id="social-count-${i}"></div>
+                </div>`;
+            }).join('');
+            socialChannels.forEach((c, i) => {
+                document.getElementById(`social-text-${i}`).value = socialTexts[c.id] || '';
+                socialUpdateCount(i);
+            });
+        }
+
+        function socialToggleChannel(i, on) {
+            const c = socialChannels[i];
+            if (!c) return;
+            if (on) socialIncluded.add(c.id); else socialIncluded.delete(c.id);
+            document.getElementById(`social-card-${i}`).classList.toggle('excluded', !on);
+        }
+
+        function socialTextChanged(i) {
+            const c = socialChannels[i];
+            if (!c) return;
+            socialTexts[c.id] = document.getElementById(`social-text-${i}`).value;
+            socialUpdateCount(i);
+        }
+
+        function socialUpdateCount(i) {
+            const c = socialChannels[i];
+            const len = (socialTexts[c.id] || '').length;
+            const el = document.getElementById(`social-count-${i}`);
+            el.textContent = `${len} / ${c.max_length}`;
+            el.classList.toggle('over', len > c.max_length);
+        }
+
+        function socialRenderPage(page) {
+            const el = document.getElementById('social-page');
+            if (!page || (!page.title && !page.description)) { el.innerHTML = ''; return; }
+            const img = discussionSafeUrl(page.image);
+            el.innerHTML = `<div class="social-page">
+                ${img ? `<img src="${escapeHtml(img)}" alt="" referrerpolicy="no-referrer">` : ''}
+                <div><div class="social-page-title">${escapeHtml(page.title || page.url)}</div>
+                <div class="social-page-desc">${escapeHtml(page.description || '')}</div></div>
+            </div>`;
+        }
+
+        async function socialDraft() {
+            const url = document.getElementById('social-url').value.trim();
+            if (!/^https?:\/\//i.test(url)) { socialSetMsg('Enter an http(s) link first.'); return; }
+            if (!socialChannelsLoaded) await socialLoadChannels();
+            const channels = socialChannels.filter(c => socialIncluded.has(c.id));
+            if (!channels.length) { socialSetMsg('Tick at least one channel to draft for.'); return; }
+            const btn = document.getElementById('social-draft-btn');
+            btn.disabled = true;
+            btn.textContent = 'Drafting…';
+            socialSetMsg('Reading the page and drafting posts…');
+            document.getElementById('social-result').textContent = '';
+            try {
+                const data = await Storage.socialDraft(url, channels);
+                socialPage = data.page || null;
+                socialRenderPage(socialPage);
+                for (const d of data.drafts || []) socialTexts[d.integration_id] = d.text || '';
+                socialRenderChannels();
+                const over = (data.drafts || []).filter(d => d.over_limit).length;
+                socialSetMsg(over ? `${over} draft(s) run over the channel limit; trim before scheduling.` : 'Drafts ready. Edit as you like.');
+            } catch (e) {
+                socialSetMsg('Drafting failed: ' + (e.message || 'error'));
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Draft posts';
+            }
+        }
+
+        function socialWhenChanged() {
+            const when = document.querySelector('input[name="social-when"]:checked').value;
+            document.getElementById('social-time').hidden = when !== 'time';
+            document.getElementById('social-schedule-btn').textContent = when === 'draft' ? 'Save drafts' : 'Schedule';
+        }
+
+        function socialScheduleRequest() {
+            const when = document.querySelector('input[name="social-when"]:checked').value;
+            const posts = socialChannels
+                .filter(c => socialIncluded.has(c.id) && (socialTexts[c.id] || '').trim())
+                .map(c => ({ integration_id: c.id, identifier: c.identifier, text: socialTexts[c.id] }));
+            if (!posts.length) return { error: 'Nothing to post: tick a channel and write its post.' };
+            const over = socialChannels.filter(c => socialIncluded.has(c.id) && (socialTexts[c.id] || '').length > c.max_length);
+            if (over.length && when !== 'draft') return { error: 'Over the limit on: ' + over.map(c => c.name || c.identifier).join(', ') + '.' };
+            const request = { mode: when === 'draft' ? 'draft' : 'schedule', posts };
+            if (when === 'time') {
+                const local = document.getElementById('social-time').value;
+                if (!local) return { error: 'Pick a date and time.' };
+                request.date = new Date(local).toISOString();
+            }
+            const image = discussionSafeUrl(socialPage && socialPage.image);
+            if (image) request.image_url = image;
+            return { request };
+        }
+
+        async function socialSchedule() {
+            const resultEl = document.getElementById('social-result');
+            const { request, error } = socialScheduleRequest();
+            if (error) { resultEl.textContent = error; return; }
+            const btn = document.getElementById('social-schedule-btn');
+            btn.disabled = true;
+            resultEl.textContent = 'Sending to Postiz…';
+            try {
+                const r = await Storage.socialSchedule(request);
+                const when = r.date ? new Date(r.date).toLocaleString() : '';
+                const n = (r.posts || []).length || request.posts.length;
+                resultEl.textContent = request.mode === 'draft'
+                    ? `Saved ${n} draft(s) in Postiz.`
+                    : `Scheduled ${n} post(s) for ${when}.`;
+                for (const w of r.warnings || []) resultEl.appendChild(Object.assign(document.createElement('div'), { textContent: w }));
+                const link = discussionSafeUrl(r.postiz_url);
+                if (link) {
+                    const a = Object.assign(document.createElement('a'), { href: link, target: '_blank', rel: 'noopener', textContent: 'Open Postiz' });
+                    resultEl.appendChild(document.createTextNode(' '));
+                    resultEl.appendChild(a);
+                }
+                socialRememberShare('');
+            } catch (e) {
+                resultEl.textContent = 'Failed: ' + (e.message || 'error');
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        function socialRenderDefaultChannels(channels, selected) {
+            const box = document.getElementById('social-cfg-channels');
+            if (!channels.length) {
+                box.innerHTML = '<span style="color: var(--text-secondary); font-size: 0.8rem;">No channels found in Postiz.</span>';
+                return;
+            }
+            box.innerHTML = channels.map(c => `<label><input type="checkbox" class="social-cfg-channel" data-id="${escapeHtml(c.id)}" ${selected.includes(c.id) ? 'checked' : ''}> ${escapeHtml(c.name || c.identifier)} <span style="color: var(--text-secondary); font-size: 0.8rem;">${escapeHtml(c.identifier)}</span></label>`).join('');
+        }
+
+        async function socialLoadDefaultChannels(cfg) {
+            if (!cfg || !cfg.postiz_base_url || !cfg.has_postiz_api_key) return;
+            try {
+                const data = await Storage.getSocialIntegrations();
+                socialRenderDefaultChannels((data.integrations || []).filter(c => !c.disabled), cfg.default_channels || []);
+            } catch (e) {
+                document.getElementById('social-cfg-status').textContent = 'Could not list channels: ' + (e.message || 'error');
+            }
+        }
+
+        async function socialLoadConfigForm() {
+            if (!authStatus || !authStatus.logged_in) return;
+            try {
+                const cfg = await Storage.getSocialConfig();
+                socialSavedConfig = cfg;
+                document.getElementById('social-cfg-postiz-url').value = cfg.postiz_base_url || '';
+                document.getElementById('social-cfg-gemini-model').value = cfg.gemini_model || '';
+                for (const [field, input, state] of [
+                    ['has_postiz_api_key', 'social-cfg-postiz-key', 'social-postiz-key-state'],
+                    ['has_gemini_api_key', 'social-cfg-gemini-key', 'social-gemini-key-state'],
+                ]) {
+                    const el = document.getElementById(input);
+                    el.value = '';
+                    el.placeholder = cfg[field] ? `${SOCIAL_SECRET_SAVED}  (type to replace)` : '';
+                    document.getElementById(state).textContent = cfg[field] ? '— saved' : '— not set';
+                }
+                await socialLoadDefaultChannels(cfg);
+                return cfg;
+            } catch (e) {
+                document.getElementById('social-cfg-status').textContent = 'Could not load settings: ' + (e.message || 'error');
+            }
+        }
+
+        async function socialSaveConfig() {
+            const statusEl = document.getElementById('social-cfg-status');
+            const payload = {
+                postiz_base_url: document.getElementById('social-cfg-postiz-url').value.trim(),
+                gemini_model: document.getElementById('social-cfg-gemini-model').value.trim(),
+            };
+            const postizKey = document.getElementById('social-cfg-postiz-key').value.trim();
+            const geminiKey = document.getElementById('social-cfg-gemini-key').value.trim();
+            if (postizKey) payload.postiz_api_key = postizKey;
+            if (geminiKey) payload.gemini_api_key = geminiKey;
+            const boxes = document.querySelectorAll('#social-cfg-channels .social-cfg-channel');
+            if (boxes.length) payload.default_channels = [...boxes].filter(b => b.checked).map(b => b.dataset.id);
+            statusEl.textContent = 'Saving…';
+            try {
+                await Storage.saveSocialConfig(payload);
+                statusEl.textContent = 'Saved.';
+                socialChannelsLoaded = false;  // the compose view reloads channels next time
+                await socialLoadConfigForm();
+            } catch (e) {
+                statusEl.textContent = 'Save failed: ' + (e.message || 'error');
+            }
+        }
+
+        async function socialTestConnection() {
+            const statusEl = document.getElementById('social-cfg-status');
+            statusEl.textContent = 'Testing the saved connection…';
+            try {
+                const r = await Storage.testSocialConnection();
+                statusEl.textContent = `Connected to Postiz: ${r.channels} channel(s).`;
+                await socialLoadDefaultChannels(socialSavedConfig);
+            } catch (e) {
+                statusEl.textContent = 'Failed: ' + (e.message || 'error');
+            }
+        }
+
         // Only http(s) sources become clickable links; anything else (e.g. a
         // javascript: URL) is rejected so it can't execute when rendered.
         function discussionSafeUrl(u) {
@@ -7285,6 +7697,12 @@
                 const pluginData = await Storage.pluginFetch('/api/plugins').then(r => r.json());
                 updateExtensionTabs(pluginData.plugins);
             } catch (e) { /* offline — use server defaults */ }
+
+            // Opened from the share sheet (or ?view=social): now that auth is known,
+            // load channels and draft the shared link straight away.
+            if (socialOpenedFromURL && document.getElementById('social-view').classList.contains('active')) {
+                socialOnShow({ autoDraft: !!socialStoredShare() });
+            }
 
             // Phase 3: Sync cloud data then render todos once with fresh state.
             if (authStatus.logged_in) {

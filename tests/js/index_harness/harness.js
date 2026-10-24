@@ -24,6 +24,7 @@ const PLUGINS = {
         plugin('todos', { plugin_type: 'extension', has_tab: true, tab_id: 'todos', has_counts: true }),
         plugin('discussions', { plugin_type: 'extension', has_tab: true, tab_id: 'discussions' }),
         plugin('rt', { plugin_type: 'extension', has_tab: true, tab_id: 'rt' }),
+        plugin('social', { plugin_type: 'extension', has_tab: true, tab_id: 'social' }),
     ],
 };
 
@@ -39,6 +40,7 @@ function startServer() {
     const server = http.createServer((req, res) => {
         const url = new URL(req.url, 'http://localhost');
         if (url.pathname === '/') return send(res, 200, 'text/html', renderIndex());
+        if (url.pathname === '/sw.js') return send(res, 200, types['.js'], fs.readFileSync(path.join(ROOT, 'static', 'js', 'sw.js')));
         if (url.pathname === '/static/js/storage.js') {
             return send(res, 200, types['.js'], fs.readFileSync(path.join(HARNESS, 'storage_stub.js')));
         }
@@ -87,7 +89,7 @@ async function openPage(browser, baseUrl, cfg) {
 // Boot is done once loadSettings() has rendered the tab order list and, unless the
 // test is holding /api/plugins, loadPlugins() has rendered the plugin rows.
 async function boot({ page }, baseUrl, cfg) {
-    await page.goto(baseUrl + '/', { waitUntil: 'domcontentloaded' });
+    await page.goto(baseUrl + (cfg.path || '/'), { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => document.querySelectorAll('#tab-order-list .tab-order-item').length > 0);
     if (!cfg.holdPlugins) {
         await page.waitForFunction(() => document.querySelector('#plugins-list .plugin-settings-slot'));
