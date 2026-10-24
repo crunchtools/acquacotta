@@ -7,8 +7,10 @@
  *   auth         what getAuthStatus() returns (default: logged out)
  *   rtConfig     what getRTConfig() returns
  *   socialIntegrations  what getSocialIntegrations() returns
+ *   socialIntegrationsDelayMs  hold that answer this long (to see the cached render)
  *   socialDraft  what socialDraft() returns (the call is recorded)
  *   socialScheduleError  when set, socialSchedule() rejects with this message
+ *   socialPreview / socialPreviewError  what socialPreview() returns, or its rejection
  *   holdPlugins  when true, /api/plugins waits for window.__releasePlugins()
  *
  * Every saveSettings() call is recorded in window.__storageCalls. Methods the
@@ -54,7 +56,16 @@
         },
         authenticatedFetch: async () => json({}),
         getRTConfig: async () => clone(cfg.rtConfig || {}),
-        getSocialIntegrations: async () => clone(cfg.socialIntegrations || { configured: false, integrations: [] }),
+        getSocialIntegrations: async () => {
+            calls.push(['getSocialIntegrations']);
+            if (cfg.socialIntegrationsDelayMs) await new Promise(r => setTimeout(r, cfg.socialIntegrationsDelayMs));
+            return clone(cfg.socialIntegrations || { configured: false, integrations: [] });
+        },
+        socialPreview: async url => {
+            calls.push(['socialPreview', url]);
+            if (cfg.socialPreviewError) throw new Error(cfg.socialPreviewError);
+            return clone(cfg.socialPreview || { url, title: '', site: 'example.com', image: '' });
+        },
         socialDraft: async (url, channels) => {
             calls.push(['socialDraft', url, clone(channels)]);
             return clone(cfg.socialDraft || { page: {}, drafts: [] });

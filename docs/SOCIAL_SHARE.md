@@ -35,11 +35,15 @@ in the Android share sheet: share, type a line, tap Post now.
    returns one post within that limit. The
    voice rules are fixed: practical, plain-spoken, no hype, at most two hashtags,
    at most one emoji, the URL exactly once.
-5. **Post.** Channels are toggle chips (your default channels start selected),
-   and the count runs against the tightest selected limit. **Post now** needs a
-   second tap within four seconds, since publishing can't be undone.
-   **Schedule…** opens a time picker that defaults to the next hour. Both are
-   refused while the text is over a selected channel's limit.
+5. **Post.** A shared link shows as a card under the text (thumbnail, title,
+   site) and its URL is appended to the post on send; ✕ drops it. The preview
+   is display-only: platforms build their own cards from the URL (Bluesky and
+   LinkedIn show it as a plain link). Channels are platform chips that remember
+   your last selection; the counter shows what's left on the tightest channel
+   (X and Mastodon count a link as 23) and names any channel you're over. One
+   button posts; "Schedule for later" turns it into a scheduling button with a
+   time picker (next weekday 9 AM). Either way it takes a second tap to confirm,
+   and tapping anywhere else cancels.
 
 Channel limits come from Postiz (`/integration-settings/:id`), with a built-in
 table as fallback. The page image (PNG, JPEG, GIF or WebP, up to 5 MB) is

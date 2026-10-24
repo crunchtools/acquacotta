@@ -6,6 +6,23 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.22.0] - 2026-10-24
+
+### Changed
+- Social composer redesign (UX review by Fable): text first, then a link card
+  (thumbnail, title, site; ✕ removes it) for a shared link, one row of platform
+  chips that remember your selection, a "N left · X" counter that names any
+  channel you're over, and one button ("Post to N channels"). "Schedule for
+  later" switches that button to scheduling instead of adding a second one.
+  The confirming tap waits until you tap again or tap elsewhere, with no timer.
+- Channels render instantly from a per-device cache and refresh in the
+  background (the Postiz round trip took 1.2–2.1 s on every open).
+
+### Added
+- `POST /api/social/preview`: a link card for the composer. The og:image travels
+  as a data: URI under 750 KB (the CSP blocks other image hosts), and it's
+  display-only: posts carry just the URL and each platform builds its own card.
+
 ## [2.21.0] - 2026-10-24
 
 ### Changed

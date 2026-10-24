@@ -190,7 +190,8 @@ test('a share while signed out lands on Social, keeps the link, asks to sign in'
 }, async ({ page }) => {
     assert.equal(await activeView(page), 'social-view');
     await page.waitForFunction(() => document.getElementById('social-status-msg').textContent.includes('Sign in'));
-    assert.equal(await page.$eval('#social-text', el => el.value.trim()), SHARED);
+    assert.equal(await page.$eval('#social-text', el => el.value), '', 'the link is a card, not text');
+    assert.match(await page.$eval('#social-card', el => el.textContent), /example\.com\/a/);
     assert.equal(await page.evaluate(() => sessionStorage.getItem('acquacotta_pending_share')), SHARED);
     assert.equal(await page.evaluate(() => location.search), '', 'share param cleared from the address bar');
 });
@@ -203,104 +204,125 @@ const SOCIAL_SIGNED_IN = {
         has_gemini_api_key: true,
         default_channels: ['x1'],
         integrations: [
-            { id: 'x1', name: 'Scott on X', identifier: 'x', picture: '', max_length: 20 },
+            { id: 'x1', name: 'Scott on X', identifier: 'x', picture: '', max_length: 40 },
             { id: 'li1', name: '<b>LinkedIn</b>', identifier: 'linkedin', picture: '', max_length: 3000 },
         ],
     },
+    socialPreview: { url: SHARED, title: '"><img id=pwned src=x>', site: 'example.com', image: 'javascript:alert(1)' },
     socialDraft: {
-        page: { url: SHARED, title: '"><img id=pwned src=x>', description: 'desc', image: 'javascript:alert(1)' },
-        drafts: [{ integration_id: 'all', text: 'This draft is far too long for twenty', max_length: 20, over_limit: true }],
+        page: { url: SHARED, title: 'T' },
+        drafts: [{ integration_id: 'all', text: 'A sharp take ' + SHARED, max_length: 15, over_limit: false }],
     },
 };
 
 const socialCalls = (page, name) => page.evaluate(n => window.__storageCalls.filter(c => c[0] === n), name);
 const setSocialText = (page, text) => page.$eval('#social-text', (el, t) => { el.value = t; el.dispatchEvent(new Event('input')); }, text);
+const composerReady = page => page.waitForFunction(() => !document.getElementById('social-compose').hidden);
 
-test('a share while signed in fills one composer, defaults selected, no auto-draft', SOCIAL_SIGNED_IN, async ({ page }) => {
-    await page.waitForFunction(() => !document.getElementById('social-compose').hidden);
-    assert.equal(await page.$eval('#social-text', el => el.value.trim()), SHARED);
-    assert.deepEqual(await page.$$eval('.social-chip', els => els.map(e => [e.textContent, e.getAttribute('aria-pressed')])),
-        [['X', 'true'], ['LinkedIn', 'false']]);
-    assert.equal(await page.$('.social-chip b'), null, 'channel names never render as HTML');
-    assert.match(await page.$eval('#social-count', el => el.textContent), /\/ 20 \(X\)$/);
-    assert.equal((await socialCalls(page, 'socialDraft')).length, 0, 'drafting waits for the button');
-    assert.equal(await page.$eval('#social-draft-btn', el => el.hidden), false, 'offered: Gemini key and a link');
-});
-
-test('Draft from link asks for one post at the tightest limit, rendered as text', SOCIAL_SIGNED_IN, async ({ page }) => {
-    await page.waitForFunction(() => !document.getElementById('social-compose').hidden);
-    await page.click('#social-chip-1');
-    await page.click('#social-draft-btn');
-    await page.waitForFunction(() => document.getElementById('social-text').value.startsWith('This draft'));
-    const [call] = await socialCalls(page, 'socialDraft');
-    assert.equal(call[1], SHARED);
-    assert.deepEqual(call[2].map(c => [c.id, c.max_length]), [['all', 20]]);
+test('a shared link becomes a card; untrusted fields render as text', SOCIAL_SIGNED_IN, async ({ page }) => {
+    await composerReady(page);
+    await page.waitForFunction(() => window.__storageCalls.some(c => c[0] === 'socialPreview'));
+    await page.waitForFunction(() => !document.querySelector('.social-card.loading'));
+    assert.equal(await page.$eval('#social-text', el => el.value), '');
     assert.equal(await page.$('#pwned'), null, 'page title is rendered as text');
-    assert.equal(await page.$eval('#social-count', el => el.classList.contains('over')), true);
+    assert.equal(await page.$$eval('.social-card-thumb', els => els.length), 0, 'a non-data: image is dropped');
+    assert.deepEqual(await page.$$eval('.social-chip', els => els.map(e => [e.getAttribute('aria-label'), e.getAttribute('aria-pressed')])),
+        [['X (Scott on X)', 'true'], ['LinkedIn (<b>LinkedIn</b>)', 'false']]);
+    assert.equal(await page.$('.social-chip b'), null, 'channel names never render as HTML');
+    assert.equal((await socialCalls(page, 'socialDraft')).length, 0, 'no auto-draft');
+    // X counts the link as 23: 40 - 23 = 17 left, which is under the 20 warning line.
+    assert.equal(await page.$eval('#social-count', el => el.textContent), '17 left · X');
+    assert.equal(await page.$eval('#social-count', el => el.classList.contains('warn')), true);
+    assert.equal(await page.$eval('#social-go', el => el.textContent), 'Post to 1 channel');
 });
 
-test('Post now refuses over-limit text, then needs a confirming tap', SOCIAL_SIGNED_IN, async ({ page }) => {
-    await page.waitForFunction(() => !document.getElementById('social-compose').hidden);
-    await setSocialText(page, 'This is far too long for X at twenty');
-    await page.click('#social-now-btn');
-    assert.match(await page.$eval('#social-result', el => el.textContent), /Too long for X/);
-
-    await setSocialText(page, 'Short one');
-    await page.click('#social-now-btn');
-    assert.match(await page.$eval('#social-now-btn', el => el.textContent), /Tap again to post to 1/);
+test('the card URL is appended on send, after one confirming tap', SOCIAL_SIGNED_IN, async ({ page }) => {
+    await composerReady(page);
+    await setSocialText(page, 'Worth a read');
+    await page.click('#social-go');
+    assert.match(await page.$eval('#social-go', el => el.textContent), /Tap again to post to 1/);
     assert.equal((await socialCalls(page, 'socialSchedule')).length, 0, 'first tap only arms');
-    await page.click('#social-chip-1');
-    assert.equal(await page.$eval('#social-now-btn', el => el.textContent), 'Post now', 'changing channels disarms');
-    await page.click('#social-chip-1');
-    await page.click('#social-now-btn');
-    await page.click('#social-now-btn');
+    await page.click('#social-go');
     await page.waitForFunction(() => window.__storageCalls.some(c => c[0] === 'socialSchedule'));
     const [[, req]] = await socialCalls(page, 'socialSchedule');
-    assert.deepEqual(req, { mode: 'now', posts: [{ integration_id: 'x1', identifier: 'x', text: 'Short one' }] });
-    await page.waitForFunction(() => document.getElementById('social-result').textContent.includes('Posted'));
-    assert.equal(await page.$eval('#social-text', el => el.value), '', 'composer clears after posting');
+    assert.deepEqual(req, { mode: 'now', posts: [{ integration_id: 'x1', identifier: 'x', text: 'Worth a read\n\n' + SHARED }] });
+    await page.waitForFunction(() => document.getElementById('social-go').textContent.includes('Posted to 1'));
+    assert.equal(await page.$eval('#social-text', el => el.value), '', 'composer clears');
+    assert.equal(await page.$eval('#social-card', el => el.innerHTML), '', 'card clears');
 });
 
-test('an armed Post now expires after four seconds without sending', SOCIAL_SIGNED_IN, async ({ page }) => {
-    await page.waitForFunction(() => !document.getElementById('social-compose').hidden);
-    await setSocialText(page, 'Short one');
-    await page.click('#social-now-btn');
-    assert.match(await page.$eval('#social-now-btn', el => el.textContent), /Tap again/);
-    await page.waitForFunction(() => document.getElementById('social-now-btn').textContent === 'Post now', { timeout: 6000 });
-    await page.click('#social-now-btn');
-    assert.equal((await socialCalls(page, 'socialSchedule')).length, 0, 'the tap after expiry re-arms instead of sending');
+test('an armed button is cancelled by a tap elsewhere or a channel change', SOCIAL_SIGNED_IN, async ({ page }) => {
+    await composerReady(page);
+    await setSocialText(page, 'Hi');
+    await page.click('#social-go');
+    await page.click('#social-count');
+    assert.equal(await page.$eval('#social-go', el => el.classList.contains('armed')), false, 'tap outside disarms');
+    await page.click('#social-go');
+    await page.click('#social-chip-1');
+    assert.equal(await page.$eval('#social-go', el => el.textContent), 'Post to 2 channels', 'chip change disarms and relabels');
+    assert.equal((await socialCalls(page, 'socialSchedule')).length, 0);
 });
 
-test('a Postiz failure keeps the text and re-enables the buttons', {
-    ...SOCIAL_SIGNED_IN, socialScheduleError: 'Postiz rejected the API key',
-}, async ({ page }) => {
-    await page.waitForFunction(() => !document.getElementById('social-compose').hidden);
-    await setSocialText(page, 'Keep me');
-    await page.click('#social-now-btn');
-    await page.click('#social-now-btn');
-    await page.waitForFunction(() => document.getElementById('social-result').textContent.includes('Failed'));
-    assert.match(await page.$eval('#social-result', el => el.textContent), /rejected the API key/);
-    assert.equal(await page.$eval('#social-text', el => el.value), 'Keep me');
-    assert.deepEqual(await page.$$eval('#social-now-btn, #social-later-btn, #social-schedule-btn', els => els.map(b => b.disabled)),
-        [false, false, false]);
+test('over the limit names the channel and blocks posting', SOCIAL_SIGNED_IN, async ({ page }) => {
+    await composerReady(page);
+    await page.click('.social-card-remove');
+    await setSocialText(page, 'x'.repeat(45));
+    assert.equal(await page.$eval('#social-count', el => el.textContent), '-5 · too long for X');
+    assert.equal(await page.$eval('#social-chip-0', el => el.classList.contains('over')), true);
+    assert.equal(await page.$eval('#social-go', el => el.disabled), true);
+    assert.equal(await page.evaluate(() => sessionStorage.getItem('acquacotta_pending_share')), null, 'removing the card drops the share');
 });
 
-test('Schedule sends the picked time and refuses a past one', SOCIAL_SIGNED_IN, async ({ page }) => {
-    await page.waitForFunction(() => !document.getElementById('social-compose').hidden);
+test('schedule mode relabels the one button and sends the picked time', SOCIAL_SIGNED_IN, async ({ page }) => {
+    await composerReady(page);
     await setSocialText(page, 'Later');
-    await page.click('#social-later-btn');
-    assert.notEqual(await page.$eval('#social-time', el => el.value), '', 'defaults to the next hour');
-    await page.$eval('#social-time', el => { el.value = '2000-01-01T09:00'; });
-    await page.click('#social-schedule-btn');
+    await page.click('#social-mode-link');
+    assert.notEqual(await page.$eval('#social-time', el => el.value), '', 'defaults to the next weekday 9 AM');
+    assert.match(await page.$eval('#social-go', el => el.textContent), /^Schedule 1 channel · /);
+    await page.$eval('#social-time', el => { el.value = '2000-01-01T09:00'; el.dispatchEvent(new Event('change')); });
+    await page.click('#social-go');
     assert.match(await page.$eval('#social-result', el => el.textContent), /passed/);
-
-    await page.$eval('#social-time', el => { el.value = '2999-01-01T09:00'; });
-    await page.click('#social-schedule-btn');
+    await page.$eval('#social-time', el => { el.value = '2999-01-01T09:00'; el.dispatchEvent(new Event('change')); });
+    await page.click('#social-go');
+    await page.click('#social-go');
     await page.waitForFunction(() => window.__storageCalls.some(c => c[0] === 'socialSchedule'));
     const [[, req]] = await socialCalls(page, 'socialSchedule');
     assert.equal(req.mode, 'schedule');
     assert.equal(req.date, new Date('2999-01-01T09:00').toISOString());
-    assert.deepEqual(req.posts, [{ integration_id: 'x1', identifier: 'x', text: 'Later' }]);
+});
+
+test('Draft from link fills the text without repeating the card URL', SOCIAL_SIGNED_IN, async ({ page }) => {
+    await composerReady(page);
+    await page.waitForFunction(() => !document.getElementById('social-draft-btn').hidden);
+    await page.click('#social-draft-btn');
+    await page.waitForFunction(() => document.getElementById('social-text').value === 'A sharp take');
+    const [call] = await socialCalls(page, 'socialDraft');
+    assert.equal(call[1], SHARED);
+    assert.deepEqual(call[2].map(c => [c.id, c.max_length]), [['all', 15]], 'room left for the appended link');
+});
+
+test('a Postiz failure keeps the text and lets you retry', {
+    ...SOCIAL_SIGNED_IN, socialScheduleError: 'Postiz rejected the API key',
+}, async ({ page }) => {
+    await composerReady(page);
+    await setSocialText(page, 'Keep me');
+    await page.click('#social-go');
+    await page.click('#social-go');
+    await page.waitForFunction(() => document.getElementById('social-result').textContent.includes('Failed'));
+    assert.match(await page.$eval('#social-result', el => el.textContent), /rejected the API key/);
+    assert.equal(await page.$eval('#social-text', el => el.value), 'Keep me');
+    assert.equal(await page.$eval('#social-go', el => el.disabled), false);
+});
+
+test('channels render from the device cache before Postiz answers', {
+    ...SOCIAL_SIGNED_IN, path: '/?view=social', socialIntegrationsDelayMs: 3000,
+    localStorage: { acquacotta_social_channels: JSON.stringify({ configured: true, default_channels: [], integrations: [{ id: 'm1', name: 'Me', identifier: 'mastodon', max_length: 500 }] }) },
+}, async ({ page }) => {
+    await page.waitForFunction(() => document.querySelectorAll('.social-chip').length > 0);
+    assert.deepEqual(await page.$$eval('.social-chip', els => els.map(e => e.getAttribute('aria-label'))), ['Mastodon (Me)'],
+        'cached channels while Postiz is still answering');
+    await page.waitForFunction(() => document.querySelectorAll('.social-chip').length === 2, { timeout: 8000 });
+    assert.match(await page.evaluate(() => localStorage.getItem('acquacotta_social_channels')), /Scott on X/, 'cache refreshed');
 });
 
 run(tests);
