@@ -277,7 +277,11 @@ test('schedule mode relabels the one button and sends the picked time', SOCIAL_S
     await composerReady(page);
     await setSocialText(page, 'Later');
     await page.click('#social-mode-link');
-    assert.notEqual(await page.$eval('#social-time', el => el.value), '', 'defaults to the next weekday 9 AM');
+    await page.waitForFunction(() => document.getElementById('social-time').value !== '');
+    const slot = new Date('2999-06-01T14:20:00Z');
+    const local = new Date(slot.getTime() - slot.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    assert.equal(await page.$eval('#social-time', el => el.value), local, "defaults to Postiz's next free slot");
+    assert.deepEqual((await socialCalls(page, 'socialSlot')).map(c => c[1]), ['x1']);
     assert.match(await page.$eval('#social-go', el => el.textContent), /^Schedule 1 channel · /);
     await page.$eval('#social-time', el => { el.value = '2000-01-01T09:00'; el.dispatchEvent(new Event('change')); });
     await page.click('#social-go');
@@ -289,6 +293,15 @@ test('schedule mode relabels the one button and sends the picked time', SOCIAL_S
     const [[, req]] = await socialCalls(page, 'socialSchedule');
     assert.equal(req.mode, 'schedule');
     assert.equal(req.date, new Date('2999-01-01T09:00').toISOString());
+});
+
+test('a failed slot lookup leaves the picker empty', { ...SOCIAL_SIGNED_IN, socialSlotError: 'Postiz down' }, async ({ page }) => {
+    await composerReady(page);
+    await setSocialText(page, 'Later');
+    await page.click('#social-mode-link');
+    await page.waitForFunction(() => /No open slot found/.test(document.getElementById('social-result').textContent));
+    assert.equal(await page.$eval('#social-time', el => el.value), '');
+    assert.equal(await page.$eval('#social-go', el => el.textContent), 'Pick a time');
 });
 
 test('Draft from link fills the text without repeating the card URL', SOCIAL_SIGNED_IN, async ({ page }) => {

@@ -11,6 +11,7 @@
  *   socialDraft  what socialDraft() returns (the call is recorded)
  *   socialScheduleError  when set, socialSchedule() rejects with this message
  *   socialPreview / socialPreviewError  what socialPreview() returns, or its rejection
+ *   socialSlot / socialSlotError  what socialSlot() returns, or its rejection
  *   holdPlugins  when true, /api/plugins waits for window.__releasePlugins()
  *
  * Every saveSettings() call is recorded in window.__storageCalls. Methods the
@@ -65,6 +66,11 @@
             calls.push(['socialPreview', url]);
             if (cfg.socialPreviewError) throw new Error(cfg.socialPreviewError);
             return clone(cfg.socialPreview || { url, title: '', site: 'example.com', image: '' });
+        },
+        socialSlot: async channelId => {
+            calls.push(['socialSlot', channelId]);
+            if (cfg.socialSlotError) throw new Error(cfg.socialSlotError);
+            return clone(cfg.socialSlot || { date: '2999-06-01T14:20:00Z' });
         },
         socialDraft: async (url, channels) => {
             calls.push(['socialDraft', url, clone(channels)]);
