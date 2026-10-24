@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.20.0] - 2026-10-24
+
 ### Added
 - **Social Share** plugin (spec 012). Install Acquacotta on Android and it shows up
   in the share sheet. Share a link and the new Social tab drafts one post per Postiz
