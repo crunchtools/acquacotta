@@ -173,7 +173,14 @@ class TestConfig:
 
     @pytest.mark.parametrize(
         "typed",
-        ["postiz.example.com/api", "https://postiz.example.com/api/", "https://postiz.example.com/api/public/v1"],
+        [
+            "postiz.example.com",
+            "https://postiz.example.com/",
+            "https://postiz.example.com/public/v1",
+            "postiz.example.com/api",
+            "https://postiz.example.com/api/",
+            "https://postiz.example.com/api/public/v1",
+        ],
     )
     def test_base_url_normalized(self, typed):
         clean = social_plugin.validate_config({"postiz_base_url": typed})
@@ -454,6 +461,17 @@ class TestPostiz:
         assert url == "https://postiz.example.com/api/public/v1/is-connected"
         assert kwargs["headers"]["Authorization"] == "pz-key"
         assert kwargs["allow_redirects"] is False
+
+    def test_stored_bare_host_base_is_repaired_on_use(self, http):
+        # Configs saved before bare hosts got /api hold https://host/public/v1.
+        http.handler = lambda m, u, k: FakeResp(json_data={"connected": True} if "is-connected" in u else [])
+        social_plugin.test_connection(_cfg(postiz_base_url="https://postiz.example.com/public/v1"))
+        assert http.calls[0][1] == "https://postiz.example.com/api/public/v1/is-connected"
+
+    def test_redirect_names_the_url_problem(self, http):
+        http.handler = lambda m, u, k: FakeResp(307, headers={"Location": "/public/v1/is-connected"})
+        with pytest.raises(social_plugin.SocialError, match="/api/public/v1"):
+            social_plugin.test_connection(_cfg())
 
     def test_plain_http_postiz_refused_unless_allowlisted(self, http, monkeypatch):
         http.handler = lambda m, u, k: FakeResp(json_data={"connected": True} if "is-connected" in u else [])

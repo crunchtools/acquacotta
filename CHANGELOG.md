@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.20.1] - 2026-10-24
+
+### Fixed
+- Social Share: a bare Postiz address (`https://postiz.example.com`) now resolves
+  to `/api/public/v1`. It used to resolve to `/public/v1`, which the Postiz
+  frontend answers with a redirect, so channels failed to load with a 502.
+  Configs saved that way are repaired on use, and a redirect now reports the
+  URL problem instead of a generic error.
+- The Social settings form marks the Gemini key optional.
+
 ## [2.20.0] - 2026-10-24
 
 ### Added
