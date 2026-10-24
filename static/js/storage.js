@@ -2314,6 +2314,8 @@
             return await res.json();
         },
 
+        // request.mode is 'now', 'schedule' (with date, or Postiz's next free
+        // slot) or 'draft'; see social_plugin.schedule().
         socialSchedule: async function(request) {
             const res = await authenticatedFetch('/api/social/schedule', {
                 method: 'POST',

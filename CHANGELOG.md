@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.21.0] - 2026-10-24
+
+### Changed
+- Social is now a single composer: one text box, channel toggle chips, a count
+  against the tightest selected limit, and Post now / Schedule buttons. It
+  replaces one card per channel. A shared link drops into the text box instead
+  of drafting automatically, and "Draft from link" (Gemini, optional) writes one
+  post sized for every selected channel. Post now takes a confirming second tap.
+- Channel avatars are gone: Acquacotta's CSP blocks Postiz-hosted images, so
+  they rendered broken; channels show as platform-name chips instead.
+
 ## [2.20.1] - 2026-10-24
 
 ### Fixed
