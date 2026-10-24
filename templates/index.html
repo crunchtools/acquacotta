@@ -640,6 +640,9 @@
         .social-links { display: flex; justify-content: space-between; gap: 0.75rem; margin-top: 0.5rem; }
         .social-link { background: none; border: none; color: var(--text-secondary); text-decoration: underline; font-size: 0.875rem; padding: 0.5rem 0; cursor: pointer; }
         #social-time { width: 100%; margin-top: 0.5rem; }
+        .social-when { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+        .social-when button { flex: 1; padding: 0.6rem 0.5rem; border: 1px solid #555; border-radius: 8px; background: transparent; color: var(--text-secondary); font-size: 0.85rem; cursor: pointer; }
+        .social-when button[aria-pressed="true"] { border-color: var(--accent); color: inherit; font-weight: 600; }
         .social-default-channels label { display: block; cursor: pointer; margin: 0.25rem 0; }
     </style>
     <script src="{{ url_for('static', filename='js/utils.js') }}?v=7"></script>
@@ -1063,6 +1066,10 @@
                 <div id="social-card"></div>
                 <div id="social-chips" class="social-chips" role="group" aria-label="Post to"></div>
                 <div class="social-count" id="social-count" aria-live="polite"></div>
+                <div class="social-when" id="social-when" role="group" aria-label="When" hidden>
+                    <button type="button" id="social-when-next" aria-pressed="true" onclick="socialSetPickTime(false)">Next open slot</button>
+                    <button type="button" id="social-when-pick" aria-pressed="false" onclick="socialSetPickTime(true)">Pick a time</button>
+                </div>
                 <input type="datetime-local" id="social-time" aria-label="Post at" hidden onchange="socialChanged()">
                 <button class="primary" id="social-go" onclick="socialGo()">Post</button>
                 <div class="social-links">
@@ -7022,6 +7029,8 @@
         let socialArmed = false;      // primary button waiting for its confirming tap
         let socialScheduling = false; // primary button schedules instead of posting
         let socialSlotPending = false; // asking Postiz for the next free window
+        let socialNextSlot = null; // that window (a Date), shown on the default choice
+        let socialPickTime = false; // schedule at the picker's time, not the next open slot
         const SOCIAL_SECRET_SAVED = '••••••••';
         const SOCIAL_URL_RE = /https?:\/\/\S+/i;
         const SOCIAL_CACHE_KEY = 'acquacotta_social_channels';
@@ -7225,8 +7234,13 @@
         function socialGoLabel(n) {
             const where = n === 1 ? '1 channel' : `${n} channels`;
             if (!socialScheduling) return `Post to ${where}`;
+            if (!socialPickTime) return socialNextSlot ? `Schedule ${where} · ${socialWhen(socialNextSlot)}` : `Schedule ${where} · next open slot`;
             const t = document.getElementById('social-time').value;
-            return t ? `Schedule ${where} · ${new Date(t).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : (socialSlotPending ? 'Finding next open slot…' : 'Pick a time');
+            return t ? `Schedule ${where} · ${socialWhen(new Date(t))}` : 'Pick a time';
+        }
+
+        function socialWhen(d) {
+            return d.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
         }
 
         // ---- the one button: tap to arm, tap again to send ----
@@ -7242,32 +7256,49 @@
             if (socialArmed && !(e.target instanceof Element && e.target.closest('#social-go'))) socialDisarm();
         }, true);
 
-        // Prefill the picker with Postiz's next free posting window, so each
-        // scheduled post takes the next open window instead of piling onto one
-        // time. A failed lookup leaves the picker empty; a manual pick wins.
+        // Scheduling defaults to Postiz's next free posting window: the request
+        // goes without a date and the server asks Postiz at send time, so it
+        // can't go stale. The lookup here only labels that choice.
         async function socialFillSlot() {
-            const time = document.getElementById('social-time');
             const sel = socialSelected();
-            time.value = '';
+            socialNextSlot = null;
             if (!sel.length) return;
             socialSlotPending = true;
+            socialShowNextSlot();
             try {
-                const { date } = await Storage.socialSlot(sel[0].id);
-                const d = new Date(date);
-                if (socialScheduling && !time.value && !isNaN(d)) {
-                    time.value = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-                }
+                const d = new Date((await Storage.socialSlot(sel[0].id)).date);
+                if (!isNaN(d)) socialNextSlot = d;
             } catch (e) {
-                document.getElementById('social-result').textContent = 'No open slot found: ' + (e.message || 'error');
+                document.getElementById('social-result').textContent = 'Could not look up the next open slot: ' + (e.message || 'error');
             }
             socialSlotPending = false;
+            socialShowNextSlot();
+            socialChanged();
+        }
+
+        function socialShowNextSlot() {
+            document.getElementById('social-when-next').textContent = socialSlotPending
+                ? 'Next open slot…'
+                : socialNextSlot ? `Next open slot · ${socialWhen(socialNextSlot)}` : 'Next open slot';
+        }
+
+        function socialSetPickTime(pick) {
+            socialPickTime = pick;
+            document.getElementById('social-when-next').setAttribute('aria-pressed', String(!pick));
+            document.getElementById('social-when-pick').setAttribute('aria-pressed', String(pick));
+            const time = document.getElementById('social-time');
+            time.hidden = !pick;
+            if (pick && !time.value && socialNextSlot) {
+                time.value = new Date(socialNextSlot.getTime() - socialNextSlot.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+            }
             socialChanged();
         }
 
         function socialToggleMode() {
             socialScheduling = !socialScheduling;
-            const time = document.getElementById('social-time');
-            time.hidden = !socialScheduling;
+            document.getElementById('social-when').hidden = !socialScheduling;
+            document.getElementById('social-time').value = '';
+            socialSetPickTime(false);
             if (socialScheduling) socialFillSlot();
             document.getElementById('social-mode-link').textContent = socialScheduling ? 'Post now instead' : 'Schedule for later';
             socialChanged();
@@ -7280,7 +7311,7 @@
             const body = socialBody();
             if (!body || !sel.length) return;
             let date;
-            if (socialScheduling) {
+            if (socialScheduling && socialPickTime) {
                 const local = document.getElementById('social-time').value;
                 if (!local) { resultEl.textContent = 'Pick a date and time.'; return; }
                 date = new Date(local);
@@ -7296,7 +7327,7 @@
             socialArmed = false;
             go.classList.remove('armed');
             const posts = sel.map(c => ({ integration_id: c.id, identifier: c.identifier, text: body }));
-            socialSend(date ? { mode: 'schedule', posts, date: date.toISOString() } : { mode: 'now', posts });
+            socialSend(socialScheduling ? { mode: 'schedule', posts, ...(date ? { date: date.toISOString() } : {}) } : { mode: 'now', posts });
         }
 
         async function socialSend(request) {

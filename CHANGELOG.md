@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.23.0] - 2026-10-24
+
+### Added
+- "Schedule for later" now offers **Next open slot** (the default, labelled
+  with the slot, e.g. "Mon, Oct 26, 10:20 AM") or **Pick a time**. Next open
+  slot sends no time; the server asks Postiz for the free window at send time,
+  so it can't go stale. With crunchtools/postiz v0.6.0 and
+  `POSTIZ_SLOT_WEEKDAYS=1-5`, that slot skips weekends.
+
 ## [2.22.1] - 2026-10-24
 
 ### Fixed
