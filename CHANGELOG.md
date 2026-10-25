@@ -6,6 +6,29 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.25.0] - 2026-10-25
+
+### Changed
+- Social composer redesign (UX spec by Fable). **Post now | Schedule** segment
+  above the button; Post now shows nothing else. Schedule shows the next open
+  slot, and tapping it opens a bottom sheet of Postiz's open slots grouped by
+  day, a week at a time (**Next week ›** for more), with **Set an exact
+  time…** as the escape hatch. Replaces the ‹ › arrows.
+- One tap sends (the two-tap confirm is gone). The button says what will
+  happen: "Post to 6 channels" or "Schedule · Sun 10:20 AM".
+- One status line under the composer; errors in the accent colour. Draft from
+  link sits beside the counter. Channel marks are plain letters, no emoji.
+
+### Added
+- `GET /api/social/slots?channel&start&days`: every open slot for a run of
+  local days in one request (days walked in parallel).
+
+### Fixed
+- Slot controls showed in Post-now mode (`display:flex` overrode `hidden`).
+- Stale JavaScript after a deploy: static scripts are now versioned by a hash
+  of their content instead of a hand-bumped number, which v2.24.0 missed, so
+  phones kept the old slot code for hours behind Cloudflare's cache.
+
 ## [2.24.0] - 2026-10-24
 
 ### Added

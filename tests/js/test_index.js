@@ -189,7 +189,7 @@ test('a share while signed out lands on Social, keeps the link, asks to sign in'
     path: SHARE_PATH,
 }, async ({ page }) => {
     assert.equal(await activeView(page), 'social-view');
-    await page.waitForFunction(() => document.getElementById('social-status-msg').textContent.includes('Sign in'));
+    await page.waitForFunction(() => document.getElementById('social-status').textContent.includes('Sign in'));
     assert.equal(await page.$eval('#social-text', el => el.value), '', 'the link is a card, not text');
     assert.match(await page.$eval('#social-card', el => el.textContent), /example\.com\/a/);
     assert.equal(await page.evaluate(() => sessionStorage.getItem('acquacotta_pending_share')), SHARED);
@@ -236,115 +236,131 @@ test('a shared link becomes a card; untrusted fields render as text', SOCIAL_SIG
     assert.equal(await page.$eval('#social-go', el => el.textContent), 'Post to 1 channel');
 });
 
-test('the card URL is appended on send, after one confirming tap', SOCIAL_SIGNED_IN, async ({ page }) => {
+const visible = (page, sel) => page.$eval(sel, el => el.offsetParent !== null);
+const sent = async page => {
+    await page.waitForFunction(() => window.__storageCalls.some(c => c[0] === 'socialSchedule'));
+    return (await socialCalls(page, 'socialSchedule'))[0][1];
+};
+const scheduleReady = async page => {
+    await page.click('#social-mode-schedule');
+    await page.waitForFunction(() => /^Schedule · /.test(document.getElementById('social-go').textContent)
+        && !document.getElementById('social-go').textContent.includes('next open slot'));
+};
+
+test('one tap posts now, with the card URL appended', SOCIAL_SIGNED_IN, async ({ page }) => {
     await composerReady(page);
     await setSocialText(page, 'Worth a read');
     await page.click('#social-go');
-    assert.match(await page.$eval('#social-go', el => el.textContent), /Tap again to post to 1/);
-    assert.equal((await socialCalls(page, 'socialSchedule')).length, 0, 'first tap only arms');
-    await page.click('#social-go');
-    await page.waitForFunction(() => window.__storageCalls.some(c => c[0] === 'socialSchedule'));
-    const [[, req]] = await socialCalls(page, 'socialSchedule');
-    assert.deepEqual(req, { mode: 'now', posts: [{ integration_id: 'x1', identifier: 'x', text: 'Worth a read\n\n' + SHARED }] });
-    await page.waitForFunction(() => document.getElementById('social-go').textContent.includes('Posted to 1'));
+    assert.deepEqual(await sent(page), { mode: 'now', posts: [{ integration_id: 'x1', identifier: 'x', text: 'Worth a read\n\n' + SHARED }] });
+    await page.waitForFunction(() => document.getElementById('social-go').textContent === 'Posted ✓');
+    assert.match(await page.$eval('#social-status', el => el.textContent), /^Posted /);
     assert.equal(await page.$eval('#social-text', el => el.value), '', 'composer clears');
     assert.equal(await page.$eval('#social-card', el => el.innerHTML), '', 'card clears');
 });
 
-test('an armed button is cancelled by a tap elsewhere or a channel change', SOCIAL_SIGNED_IN, async ({ page }) => {
+test('Post now shows no scheduling UI', SOCIAL_SIGNED_IN, async ({ page }) => {
     await composerReady(page);
-    await setSocialText(page, 'Hi');
-    await page.click('#social-go');
-    await page.click('#social-count');
-    assert.equal(await page.$eval('#social-go', el => el.classList.contains('armed')), false, 'tap outside disarms');
-    await page.click('#social-go');
-    await page.click('#social-chip-1');
-    assert.equal(await page.$eval('#social-go', el => el.textContent), 'Post to 2 channels', 'chip change disarms and relabels');
-    assert.equal((await socialCalls(page, 'socialSchedule')).length, 0);
+    assert.equal(await page.$eval('#social-mode-now', el => el.getAttribute('aria-checked')), 'true');
+    assert.equal(await visible(page, '#social-when'), false, 'no slot row in Post now');
+    assert.equal((await socialCalls(page, 'socialSlots')).length, 0, 'no slot lookup until Schedule');
 });
 
 test('over the limit names the channel and blocks posting', SOCIAL_SIGNED_IN, async ({ page }) => {
     await composerReady(page);
     await page.click('.social-card-remove');
     await setSocialText(page, 'x'.repeat(45));
-    assert.equal(await page.$eval('#social-count', el => el.textContent), '-5 · too long for X');
+    assert.equal(await page.$eval('#social-count', el => el.textContent), '−5 · too long for X');
     assert.equal(await page.$eval('#social-chip-0', el => el.classList.contains('over')), true);
     assert.equal(await page.$eval('#social-go', el => el.disabled), true);
     assert.equal(await page.evaluate(() => sessionStorage.getItem('acquacotta_pending_share')), null, 'removing the card drops the share');
 });
 
-test('scheduling defaults to the next open slot and sends it', SOCIAL_SIGNED_IN, async ({ page }) => {
+test('Schedule defaults to the next open slot and one tap schedules it', SOCIAL_SIGNED_IN, async ({ page }) => {
     await composerReady(page);
     await setSocialText(page, 'Later');
-    await page.click('#social-mode-link');
-    await page.waitForFunction(() => /^Next open slot · /.test(document.getElementById('social-when-next').textContent));
-    assert.deepEqual((await socialCalls(page, 'socialSlot')).map(c => c.slice(1)), [['x1', null]]);
-    assert.equal(await page.$eval('#social-when-next', el => el.getAttribute('aria-pressed')), 'true');
-    assert.equal(await page.$eval('#social-time', el => el.hidden), true, 'no picker unless asked for');
-    assert.equal(await page.$eval('#social-slot-prev', el => el.disabled), true, 'nothing earlier than the first slot');
-    assert.match(await page.$eval('#social-go', el => el.textContent), /^Schedule 1 channel · /);
+    await scheduleReady(page);
+    assert.equal(await visible(page, '#social-when'), true);
+    assert.equal(await page.$eval('#social-when-caption', el => el.textContent), 'Next open slot');
+    const [[, channel, start, end]] = await socialCalls(page, 'socialSlots');
+    assert.equal(channel, 'x1');
+    const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
+    const weekOn = new Date(midnight); weekOn.setDate(weekOn.getDate() + 7);
+    assert.equal(start, midnight.toISOString(), 'the week starts at local midnight');
+    assert.equal(end, weekOn.toISOString(), 'and ends at the local midnight a week on');
+    const first = await page.evaluate(() => socialSlots[0].toISOString());
     await page.click('#social-go');
-    await page.click('#social-go');
-    await page.waitForFunction(() => window.__storageCalls.some(c => c[0] === 'socialSchedule'));
-    const [[, req]] = await socialCalls(page, 'socialSchedule');
+    const req = await sent(page);
     assert.equal(req.mode, 'schedule');
-    assert.equal(req.date, '2999-06-01T14:20:00.000Z', 'what you see is what gets scheduled');
+    assert.equal(req.date, first, 'what the row shows is what gets scheduled');
+    await page.waitForFunction(() => document.getElementById('social-go').textContent === 'Scheduled ✓');
+    assert.match(await page.$eval('#social-status', el => el.textContent), /^Scheduled for /);
+    assert.equal(await page.$eval('#social-mode-now', el => el.getAttribute('aria-checked')), 'true', 'back to Post now');
 });
 
-test('› and ‹ step through open slots', SOCIAL_SIGNED_IN, async ({ page }) => {
+test('the slot sheet lists the week by day; picking a slot schedules it', SOCIAL_SIGNED_IN, async ({ page }) => {
     await composerReady(page);
     await setSocialText(page, 'Later');
-    await page.click('#social-mode-link');
-    await page.waitForFunction(() => !document.getElementById('social-slot-next').disabled);
-    await page.click('#social-slot-next');
-    await page.waitForFunction(() => !document.getElementById('social-slot-prev').disabled);
-    await page.click('#social-slot-next');
-    await page.waitForFunction(() => (window.__storageCalls.filter(c => c[0] === 'socialSlot').length === 3) && !document.getElementById('social-slot-next').disabled);
-    const afters = (await socialCalls(page, 'socialSlot')).map(c => c[2]);
-    assert.deepEqual(afters, [null, '2999-06-01T14:20:00.000Z', '2999-06-01T19:20:00.000Z'], '› asks for the slot after the shown one');
-    await page.click('#social-slot-prev');
-    assert.equal((await socialCalls(page, 'socialSlot')).length, 3, '‹ reuses slots already seen');
+    await scheduleReady(page);
+    await page.click('#social-when');
+    assert.equal(await page.$eval('#social-sheet', el => el.open), true);
+    assert.equal(await page.$$eval('.social-day', els => els.length), 7, 'one row per day');
+    assert.equal(await page.$eval('.social-day-label', el => el.textContent), 'Today');
+    const chips = await page.$$('.social-slot:not(.skeleton)');
+    assert.ok(chips.length >= 18, 'three windows a day');
+    assert.equal(await page.$$eval('.social-slot[aria-pressed="true"]', els => els.length), 1, 'the chosen slot is marked');
+    const target = await page.evaluate(() => socialSlots[socialSlots.length - 1].getTime());
+    await page.click(`.social-slot[onclick="socialPickSlot(${target})"]`);
+    assert.equal(await page.$eval('#social-sheet', el => el.open), false, 'picking closes the sheet');
+    assert.equal(await page.$eval('#social-when-caption', el => el.textContent), 'Open slot');
     await page.click('#social-go');
-    await page.click('#social-go');
-    await page.waitForFunction(() => window.__storageCalls.some(c => c[0] === 'socialSchedule'));
-    const [[, req]] = await socialCalls(page, 'socialSchedule');
-    assert.equal(req.date, '2999-06-01T19:20:00.000Z');
+    assert.equal((await sent(page)).date, new Date(target).toISOString());
 });
 
-test('Pick a time sends the picked time', SOCIAL_SIGNED_IN, async ({ page }) => {
+test('Next week appends seven more days', SOCIAL_SIGNED_IN, async ({ page }) => {
     await composerReady(page);
-    await setSocialText(page, 'Later');
-    await page.click('#social-mode-link');
-    await page.waitForFunction(() => /^Next open slot · /.test(document.getElementById('social-when-next').textContent));
-    await page.click('#social-when-pick');
-    const slot = new Date('2999-06-01T14:20:00Z');
-    const local = new Date(slot.getTime() - slot.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-    assert.equal(await page.$eval('#social-time', el => el.value), local, 'picker starts at the next open slot');
-    await page.$eval('#social-time', el => { el.value = '2000-01-01T09:00'; el.dispatchEvent(new Event('change')); });
-    await page.click('#social-go');
-    assert.match(await page.$eval('#social-result', el => el.textContent), /passed/);
-    await page.$eval('#social-time', el => { el.value = '2999-01-01T09:00'; el.dispatchEvent(new Event('change')); });
-    await page.click('#social-go');
-    await page.click('#social-go');
-    await page.waitForFunction(() => window.__storageCalls.some(c => c[0] === 'socialSchedule'));
-    const [[, req]] = await socialCalls(page, 'socialSchedule');
-    assert.equal(req.mode, 'schedule');
-    assert.equal(req.date, new Date('2999-01-01T09:00').toISOString());
+    await setSocialText(page, 'Much later');
+    await scheduleReady(page);
+    await page.click('#social-when');
+    await page.click('#social-more');
+    await page.waitForFunction(() => document.querySelectorAll('.social-day').length === 14 && !document.querySelector('.social-slot.skeleton'));
+    const calls = await socialCalls(page, 'socialSlots');
+    const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
+    const next = new Date(midnight); next.setDate(next.getDate() + 7);
+    assert.equal(calls[1][2], next.toISOString(), 'the second week starts where the first ended');
+    const target = await page.evaluate(() => socialSlots[socialSlots.length - 1].getTime());
+    await page.click(`.social-slot[onclick="socialPickSlot(${target})"]`);
+    assert.match(await page.$eval('#social-go', el => el.textContent), /^Schedule · \w{3} \d+, /, 'beyond a week the button shows the date');
 });
 
-test('a failed slot lookup still schedules into the next open slot', { ...SOCIAL_SIGNED_IN, socialSlotError: 'Postiz down' }, async ({ page }) => {
+test('an exact time is the escape hatch', SOCIAL_SIGNED_IN, async ({ page }) => {
+    await composerReady(page);
+    await setSocialText(page, 'At four');
+    await scheduleReady(page);
+    await page.click('#social-when');
+    await page.click('#social-exact-toggle');
+    await page.$eval('#social-time', el => { el.value = '2000-01-01T09:00'; });
+    await page.click('#social-exact button.primary');
+    assert.equal(await page.$eval('#social-status', el => el.textContent), 'That time has passed');
+    await page.$eval('#social-time', el => { el.value = '2999-01-01T16:45'; });
+    await page.click('#social-exact button.primary');
+    assert.equal(await page.$eval('#social-when-caption', el => el.textContent), 'Exact time');
+    await page.click('#social-go');
+    assert.equal((await sent(page)).date, new Date('2999-01-01T16:45').toISOString());
+});
+
+test('if Postiz is unreachable, Schedule still works and the row retries', { ...SOCIAL_SIGNED_IN, socialSlotsError: 'Postiz down' }, async ({ page }) => {
     await composerReady(page);
     await setSocialText(page, 'Later');
-    await page.click('#social-mode-link');
-    await page.waitForFunction(() => /Could not look up the next open slot/.test(document.getElementById('social-result').textContent));
-    assert.equal(await page.$eval('#social-when-next', el => el.textContent), 'Next open slot');
-    assert.equal(await page.$eval('#social-go', el => el.textContent), 'Schedule 1 channel · next open slot');
+    await page.click('#social-mode-schedule');
+    await page.waitForFunction(() => document.getElementById('social-when-caption').textContent === 'Couldn’t reach Postiz');
+    assert.equal(await page.$eval('#social-go', el => el.textContent), 'Schedule · next open slot');
+    await page.click('#social-when');
+    await page.waitForFunction(() => window.__storageCalls.filter(c => c[0] === 'socialSlots').length === 2);
+    assert.equal(await page.$eval('#social-sheet', el => el.open), false, 'tapping the row retries');
     await page.click('#social-go');
-    await page.click('#social-go');
-    await page.waitForFunction(() => window.__storageCalls.some(c => c[0] === 'socialSchedule'));
-    const [[, req]] = await socialCalls(page, 'socialSchedule');
+    const req = await sent(page);
     assert.equal(req.mode, 'schedule');
-    assert.equal('date' in req, false, 'the server still asks Postiz at send time');
+    assert.equal('date' in req, false, 'the server asks Postiz at send time');
 });
 
 test('Draft from link fills the text without repeating the card URL', SOCIAL_SIGNED_IN, async ({ page }) => {
@@ -363,9 +379,9 @@ test('a Postiz failure keeps the text and lets you retry', {
     await composerReady(page);
     await setSocialText(page, 'Keep me');
     await page.click('#social-go');
-    await page.click('#social-go');
-    await page.waitForFunction(() => document.getElementById('social-result').textContent.includes('Failed'));
-    assert.match(await page.$eval('#social-result', el => el.textContent), /rejected the API key/);
+    await page.waitForFunction(() => document.getElementById('social-status').textContent.includes('Failed'));
+    assert.match(await page.$eval('#social-status', el => el.textContent), /rejected the API key/);
+    assert.equal(await page.$eval('#social-status', el => el.classList.contains('error')), true);
     assert.equal(await page.$eval('#social-text', el => el.value), 'Keep me');
     assert.equal(await page.$eval('#social-go', el => el.disabled), false);
 });

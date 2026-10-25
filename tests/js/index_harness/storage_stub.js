@@ -11,7 +11,7 @@
  *   socialDraft  what socialDraft() returns (the call is recorded)
  *   socialScheduleError  when set, socialSchedule() rejects with this message
  *   socialPreview / socialPreviewError  what socialPreview() returns, or its rejection
- *   socialSlot / socialSlotError  what socialSlot() returns, or its rejection
+ *   socialSlotsError / socialSlotsDelayMs / socialSlotsTaken  see socialSlots() below
  *   holdPlugins  when true, /api/plugins waits for window.__releasePlugins()
  *
  * Every saveSettings() call is recorded in window.__storageCalls. Methods the
@@ -67,12 +67,25 @@
             if (cfg.socialPreviewError) throw new Error(cfg.socialPreviewError);
             return clone(cfg.socialPreview || { url, title: '', site: 'example.com', image: '' });
         },
-        // With `after`, the next slot is five hours later (a fake posting window).
-        socialSlot: async (channelId, after) => {
-            calls.push(['socialSlot', channelId, after]);
-            if (cfg.socialSlotError) throw new Error(cfg.socialSlotError);
-            if (after) return { date: new Date(new Date(after).getTime() + 5 * 3600e3).toISOString() };
-            return clone(cfg.socialSlot || { date: '2999-06-01T14:20:00Z' });
+        // Three windows a day (10:20, 15:10, 20:00 local) in [startIso, endIso),
+        // minus any listed in cfg.socialSlotsTaken; cfg.socialSlotsError
+        // rejects, cfg.socialSlotsDelayMs holds the answer.
+        socialSlots: async (channelId, startIso, endIso) => {
+            calls.push(['socialSlots', channelId, startIso, endIso]);
+            const days = Math.round((new Date(endIso) - new Date(startIso)) / 86400e3);
+            if (cfg.socialSlotsDelayMs) await new Promise(r => setTimeout(r, cfg.socialSlotsDelayMs));
+            if (cfg.socialSlotsError) throw new Error(cfg.socialSlotsError);
+            const slots = [];
+            const taken = new Set(cfg.socialSlotsTaken || []);
+            for (let i = 0; i < days; i++) {
+                for (const [h, m] of [[10, 20], [15, 10], [20, 0]]) {
+                    const d = new Date(startIso);
+                    d.setDate(d.getDate() + i);
+                    d.setHours(h, m, 0, 0);
+                    if (d.getTime() > Date.now() && !taken.has(d.toISOString())) slots.push(d.toISOString());
+                }
+            }
+            return { slots };
         },
         socialDraft: async (url, channels) => {
             calls.push(['socialDraft', url, clone(channels)]);
