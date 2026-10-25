@@ -278,7 +278,7 @@ test('scheduling defaults to the next open slot and sends it', SOCIAL_SIGNED_IN,
     await setSocialText(page, 'Later');
     await page.click('#social-mode-link');
     await page.waitForFunction(() => /^Next open slot · /.test(document.getElementById('social-when-next').textContent));
-    assert.deepEqual((await socialCalls(page, 'socialSlot')).map(c => c.slice(1)), [['x1', undefined]]);
+    assert.deepEqual((await socialCalls(page, 'socialSlot')).map(c => c.slice(1)), [['x1', null]]);
     assert.equal(await page.$eval('#social-when-next', el => el.getAttribute('aria-pressed')), 'true');
     assert.equal(await page.$eval('#social-time', el => el.hidden), true, 'no picker unless asked for');
     assert.equal(await page.$eval('#social-slot-prev', el => el.disabled), true, 'nothing earlier than the first slot');
@@ -301,7 +301,7 @@ test('› and ‹ step through open slots', SOCIAL_SIGNED_IN, async ({ page }) =
     await page.click('#social-slot-next');
     await page.waitForFunction(() => (window.__storageCalls.filter(c => c[0] === 'socialSlot').length === 3) && !document.getElementById('social-slot-next').disabled);
     const afters = (await socialCalls(page, 'socialSlot')).map(c => c[2]);
-    assert.deepEqual(afters, [undefined, '2999-06-01T14:20:00.000Z', '2999-06-01T19:20:00.000Z'], '› asks for the slot after the shown one');
+    assert.deepEqual(afters, [null, '2999-06-01T14:20:00.000Z', '2999-06-01T19:20:00.000Z'], '› asks for the slot after the shown one');
     await page.click('#social-slot-prev');
     assert.equal((await socialCalls(page, 'socialSlot')).length, 3, '‹ reuses slots already seen');
     await page.click('#social-go');
