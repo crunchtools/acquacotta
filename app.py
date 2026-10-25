@@ -1748,15 +1748,16 @@ def api_social_integrations():
 def api_social_slot():
     """Postiz's next free posting slot for ``?channel=<integration id>``.
 
-    Returns ``{"date": ISO-8601 UTC}``. The composer prefills its schedule picker
-    with it, so successive posts land in successive posting windows.
+    ``&after=<ISO-8601>`` asks for the first free slot after that instant, which
+    is how the composer's ‹ › buttons step through open slots. Returns
+    ``{"date": ISO-8601 UTC}``.
     """
     drive_service, folder_id = _plugin_drive_context()
     if not drive_service:
         return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
     try:
         config = social_plugin.read_config(drive_service, folder_id)
-        date = social_plugin.find_slot(config, request.args.get("channel"))
+        date = social_plugin.find_slot(config, request.args.get("channel"), request.args.get("after") or None)
     except (ValueError, social_plugin.SocialError) as exc:
         return _social_error_response(exc)
     except HttpError as e:

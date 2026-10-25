@@ -867,6 +867,21 @@ class TestSocialEndpoints:
         assert resp.get_json() == {"date": "2026-10-25T14:20:00Z"}
         assert seen == {"method": "GET", "path": "/find-slot/x1"}
 
+    def test_slot_route_forwards_after(self, client, logged_in, monkeypatch):
+        seen = {}
+
+        def fake_request(_config, _method, path, **kw):
+            seen.update(path=path, params=kw.get("params"))
+            return {"date": "2026-10-25T19:10:00"}
+
+        monkeypatch.setattr(social_plugin, "_postiz_request", fake_request)
+        resp = client.get("/api/social/slot?channel=x1&after=2026-10-25T14:20:00.000Z")
+        assert resp.get_json() == {"date": "2026-10-25T19:10:00Z"}
+        assert seen == {"path": "/find-slot/x1", "params": {"after": "2026-10-25T14:20:00.000Z"}}
+
+    def test_slot_route_rejects_bad_after(self, client, logged_in):
+        assert client.get("/api/social/slot?channel=x1&after=tomorrow").status_code == 400
+
     @pytest.mark.parametrize("query", ["", "?channel=", "?channel=../posts"])
     def test_slot_route_rejects_bad_channel(self, client, logged_in, query):
         assert client.get(f"/api/social/slot{query}").status_code == 400

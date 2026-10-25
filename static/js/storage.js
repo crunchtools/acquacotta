@@ -2315,8 +2315,10 @@
         },
 
         // Postiz's next free posting window for a channel: { date } in UTC.
-        socialSlot: async function(channelId) {
-            const res = await authenticatedFetch(`/api/social/slot?channel=${encodeURIComponent(channelId)}`, {
+        // With `after` (ISO-8601), the first free window after that instant.
+        socialSlot: async function(channelId, after) {
+            const q = `channel=${encodeURIComponent(channelId)}` + (after ? `&after=${encodeURIComponent(after)}` : '');
+            const res = await authenticatedFetch(`/api/social/slot?${q}`, {
                 signal: AbortSignal.timeout(SOCIAL_TIMEOUT_MS)
             });
             if (!res.ok) throw new Error(await apiErrorMessage(res));
