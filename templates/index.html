@@ -7374,13 +7374,14 @@
             socialRenderDays();
             socialUpdate();
             try {
-                const { slots } = await Storage.socialSlots(first.id, start.toISOString(), SOCIAL_SLOT_DAYS);
+                const end = socialAddDays(start, SOCIAL_SLOT_DAYS);
+                const { slots } = await Storage.socialSlots(first.id, start.toISOString(), end.toISOString());
                 if (token !== socialSlotsToken) return;
                 const now = Date.now();
                 const fresh = (slots || []).map(s => new Date(s)).filter(d => !isNaN(d) && d.getTime() > now);
                 const seen = new Set(socialSlots.map(d => d.getTime()));
                 socialSlots = socialSlots.concat(fresh.filter(d => !seen.has(d.getTime()))).sort((a, b) => a - b);
-                socialSlotsUntil = socialAddDays(start, SOCIAL_SLOT_DAYS);
+                socialSlotsUntil = end;
                 socialSlotsState = 'ready';
                 if (!socialChosen && socialSlots.length) socialChosen = socialSlots[0];
             } catch (e) {

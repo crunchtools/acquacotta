@@ -1787,19 +1787,18 @@ def api_social_slot():
 def api_social_slots():
     """Open Postiz slots for the composer's slot sheet.
 
-    ``?channel=<integration id>&start=<ISO-8601 local midnight>&days=<1-14>``
-    (days defaults to 7). Returns ``{"slots": [ISO-8601 UTC, ...]}`` ascending.
+    ``?channel=<integration id>&start=<ISO-8601>&end=<ISO-8601>``, normally the
+    browser's local midnights a week apart. Returns ``{"slots": [ISO-8601 UTC,
+    ...]}`` ascending.
     """
     drive_service, folder_id = _plugin_drive_context()
     if not drive_service:
         return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
     try:
-        days = int(request.args.get("days", "7"))
-    except ValueError:
-        return jsonify({"error": "days must be a number"}), HTTPStatus.BAD_REQUEST
-    try:
         config = social_plugin.read_config(drive_service, folder_id)
-        slots = social_plugin.list_slots(config, request.args.get("channel"), request.args.get("start") or "", days)
+        slots = social_plugin.list_slots(
+            config, request.args.get("channel"), request.args.get("start") or "", request.args.get("end") or ""
+        )
     except (ValueError, social_plugin.SocialError) as exc:
         return _social_error_response(exc)
     except HttpError as e:

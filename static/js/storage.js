@@ -2314,10 +2314,10 @@
             return await res.json();
         },
 
-        // Every open Postiz slot for `days` local days from `startIso` (the
-        // caller's local midnight): { slots: [ISO-8601 UTC, ...] } ascending.
-        socialSlots: async function(channelId, startIso, days) {
-            const q = new URLSearchParams({ channel: channelId, start: startIso, days: String(days) });
+        // Every open Postiz slot in [startIso, endIso) (the caller's local
+        // midnights): { slots: [ISO-8601 UTC, ...] } ascending.
+        socialSlots: async function(channelId, startIso, endIso) {
+            const q = new URLSearchParams({ channel: channelId, start: startIso, end: endIso });
             const res = await authenticatedFetch(`/api/social/slots?${q}`, {
                 signal: AbortSignal.timeout(SOCIAL_TIMEOUT_MS)
             });

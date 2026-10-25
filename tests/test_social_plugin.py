@@ -842,7 +842,7 @@ class TestListSlots:
         return SimpleNamespace(taken=taken, calls=calls)
 
     def test_lists_every_window_in_the_range(self, postiz):
-        slots = social_plugin.list_slots({}, "x1", "2026-10-26T00:00:00Z", 2)
+        slots = social_plugin.list_slots({}, "x1", "2026-10-26T00:00:00Z", "2026-10-28T00:00:00Z")
         # Midnight belongs to the day it starts; the range end is exclusive.
         assert slots == [
             "2026-10-26T00:00:00.000Z",
@@ -855,25 +855,39 @@ class TestListSlots:
 
     def test_days_follow_the_callers_midnight(self, postiz):
         # Local midnight in New York (UTC-4): the 00:00 UTC window is 8 PM that day.
-        slots = social_plugin.list_slots({}, "x1", "2026-10-26T04:00:00Z", 1)
+        slots = social_plugin.list_slots({}, "x1", "2026-10-26T04:00:00Z", "2026-10-27T04:00:00Z")
         assert slots == ["2026-10-26T14:20:00.000Z", "2026-10-26T19:10:00.000Z", "2026-10-27T00:00:00.000Z"]
 
     def test_taken_slots_are_skipped(self, postiz):
         postiz.taken.add(datetime(2026, 10, 26, 19, 10, tzinfo=timezone.utc))
-        slots = social_plugin.list_slots({}, "x1", "2026-10-26T00:00:00Z", 1)
+        slots = social_plugin.list_slots({}, "x1", "2026-10-26T00:00:00Z", "2026-10-27T00:00:00Z")
         assert "2026-10-26T19:10:00.000Z" not in slots and len(slots) == 2
 
     def test_stalled_postiz_cannot_loop(self, monkeypatch):
         monkeypatch.setattr(social_plugin, "find_slot", lambda *_a, **_k: "2026-10-26T14:20:00Z")
-        assert social_plugin.list_slots({}, "x1", "2026-10-26T00:00:00Z", 1) == ["2026-10-26T14:20:00.000Z"]
+        assert social_plugin.list_slots({}, "x1", "2026-10-26T00:00:00Z", "2026-10-27T00:00:00Z") == [
+            "2026-10-26T14:20:00.000Z"
+        ]
+
+    def test_range_across_a_dst_change_is_covered_exactly(self, postiz):
+        # US daylight saving ends Nov 1 2026: local midnights are 04:00Z, then 05:00Z.
+        slots = social_plugin.list_slots({}, "x1", "2026-10-31T04:00:00Z", "2026-11-02T05:00:00Z")
+        assert slots[0] == "2026-10-31T14:20:00.000Z"
+        assert slots[-1] == "2026-11-02T00:00:00.000Z"
+        assert len(slots) == 6
 
     @pytest.mark.parametrize(
-        ("start", "days"),
-        [("tomorrow", 7), ("2026-10-26T00:00:00", 7), ("2026-10-26T00:00:00Z", 0), ("2026-10-26T00:00:00Z", 15)],
+        ("start", "end"),
+        [
+            ("tomorrow", "2026-10-27T00:00:00Z"),
+            ("2026-10-26T00:00:00", "2026-10-27T00:00:00Z"),
+            ("2026-10-26T00:00:00Z", "2026-10-26T00:00:00Z"),
+            ("2026-10-26T00:00:00Z", "2026-11-26T00:00:00Z"),
+        ],
     )
-    def test_rejects_bad_arguments(self, start, days):
+    def test_rejects_bad_arguments(self, start, end):
         with pytest.raises(ValueError):
-            social_plugin.list_slots({}, "x1", start, days)
+            social_plugin.list_slots({}, "x1", start, end)
 
 
 class TestSocialEndpoints:
@@ -887,7 +901,7 @@ class TestSocialEndpoints:
             ("post", "/api/social/draft"),
             ("post", "/api/social/preview"),
             ("get", "/api/social/slot?channel=x1"),
-            ("get", "/api/social/slots?channel=x1&start=2026-10-26T00:00:00Z"),
+            ("get", "/api/social/slots?channel=x1&start=2026-10-26T00:00:00Z&end=2026-10-27T00:00:00Z"),
             ("post", "/api/social/schedule"),
         ],
     )
@@ -969,18 +983,22 @@ class TestSocialEndpoints:
     def test_slots_route(self, client, logged_in, monkeypatch):
         seen = {}
 
-        def fake_list(config, channel, start, days):
-            seen.update(channel=channel, start=start, days=days)
+        def fake_list(config, channel, start, end):
+            seen.update(channel=channel, start=start, end=end)
             return ["2026-10-26T14:20:00.000Z"]
 
         monkeypatch.setattr(social_plugin, "list_slots", fake_list)
-        resp = client.get("/api/social/slots?channel=x1&start=2026-10-26T04:00:00.000Z&days=7")
+        resp = client.get("/api/social/slots?channel=x1&start=2026-10-26T04:00:00.000Z&end=2026-11-02T05:00:00.000Z")
         assert resp.get_json() == {"slots": ["2026-10-26T14:20:00.000Z"]}
-        assert seen == {"channel": "x1", "start": "2026-10-26T04:00:00.000Z", "days": 7}
+        assert seen == {"channel": "x1", "start": "2026-10-26T04:00:00.000Z", "end": "2026-11-02T05:00:00.000Z"}
 
     @pytest.mark.parametrize(
         "query",
-        ["channel=x1&start=nope", "channel=x1&start=2026-10-26T00:00:00Z&days=lots", "start=2026-10-26T00:00:00Z"],
+        [
+            "channel=x1&start=nope&end=2026-10-27T00:00:00Z",
+            "channel=x1&start=2026-10-26T00:00:00Z",
+            "start=2026-10-26T00:00:00Z&end=2026-10-27T00:00:00Z",
+        ],
     )
     def test_slots_route_rejects_bad_query(self, client, logged_in, query):
         assert client.get(f"/api/social/slots?{query}").status_code == 400

@@ -67,11 +67,12 @@
             if (cfg.socialPreviewError) throw new Error(cfg.socialPreviewError);
             return clone(cfg.socialPreview || { url, title: '', site: 'example.com', image: '' });
         },
-        // Three windows a day (10:20, 15:10, 20:00 local) for `days` days from
-        // `startIso`, minus any listed in cfg.socialSlotsTaken; cfg.socialSlotsError
+        // Three windows a day (10:20, 15:10, 20:00 local) in [startIso, endIso),
+        // minus any listed in cfg.socialSlotsTaken; cfg.socialSlotsError
         // rejects, cfg.socialSlotsDelayMs holds the answer.
-        socialSlots: async (channelId, startIso, days) => {
-            calls.push(['socialSlots', channelId, startIso, days]);
+        socialSlots: async (channelId, startIso, endIso) => {
+            calls.push(['socialSlots', channelId, startIso, endIso]);
+            const days = Math.round((new Date(endIso) - new Date(startIso)) / 86400e3);
             if (cfg.socialSlotsDelayMs) await new Promise(r => setTimeout(r, cfg.socialSlotsDelayMs));
             if (cfg.socialSlotsError) throw new Error(cfg.socialSlotsError);
             const slots = [];

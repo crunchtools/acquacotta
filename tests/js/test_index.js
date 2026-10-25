@@ -281,11 +281,12 @@ test('Schedule defaults to the next open slot and one tap schedules it', SOCIAL_
     await scheduleReady(page);
     assert.equal(await visible(page, '#social-when'), true);
     assert.equal(await page.$eval('#social-when-caption', el => el.textContent), 'Next open slot');
-    const [[, channel, start, days]] = await socialCalls(page, 'socialSlots');
+    const [[, channel, start, end]] = await socialCalls(page, 'socialSlots');
     assert.equal(channel, 'x1');
-    assert.equal(days, 7);
     const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
+    const weekOn = new Date(midnight); weekOn.setDate(weekOn.getDate() + 7);
     assert.equal(start, midnight.toISOString(), 'the week starts at local midnight');
+    assert.equal(end, weekOn.toISOString(), 'and ends at the local midnight a week on');
     const first = await page.evaluate(() => socialSlots[0].toISOString());
     await page.click('#social-go');
     const req = await sent(page);
