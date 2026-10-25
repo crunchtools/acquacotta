@@ -31,7 +31,8 @@ const PLUGINS = {
 
 function renderIndex() {
     return fs.readFileSync(path.join(ROOT, 'templates', 'index.html'), 'utf8')
-        .replace(/\{\{\s*url_for\('static',\s*filename='([^']+)'\)\s*\}\}/g, '/static/$1');
+        .replace(/\{\{\s*url_for\('static',\s*filename='([^']+)'\)\s*\}\}/g, '/static/$1')
+        .replace(/\{\{\s*asset_url\('([^']+)'\)\s*\}\}/g, '/static/$1');
 }
 
 function startServer() {

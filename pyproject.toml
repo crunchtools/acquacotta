@@ -1,6 +1,6 @@
 [project]
 name = "acquacotta"
-version = "2.24.0"
+version = "2.25.0"
 description = "Pomodoro time tracking web application"
 requires-python = ">=3.10"
 

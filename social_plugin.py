@@ -23,7 +23,7 @@ import json
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from html.parser import HTMLParser
 from http import HTTPStatus
 from urllib.parse import urljoin, urlparse
@@ -106,6 +106,10 @@ _GEMINI_TIMEOUT = 45
 _MAX_CHANNELS = 20
 _MAX_POST_CHARS = 70000
 _SETTINGS_WORKERS = 5
+# Open-slot listing for the composer's slot sheet: days per request, and the
+# most windows looked up in one day (Postiz posting times are a handful a day).
+_SLOT_MAX_DAYS = 14
+_SLOT_MAX_PER_DAY = 8
 _USER_AGENT = "Mozilla/5.0 (compatible; Acquacotta/1.0; +https://github.com/crunchtools/acquacotta)"
 
 _SECRET_CONFIG_FIELDS = ("postiz_api_key", "gemini_api_key")
@@ -548,6 +552,60 @@ def find_slot(config, integration_id, after=None):
         raise SocialError("Postiz returned no free slot")
     # Postiz formats the slot in UTC without an offset ("YYYY-MM-DDTHH:mm:00").
     return slot if slot.endswith("Z") or "+" in slot[10:] else slot + "Z"
+
+
+def _parse_iso(value):
+    return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+
+
+def _iso_z(when):
+    return when.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+
+def list_slots(config, integration_id, start, days=7):
+    """Every open Postiz slot from ``start`` for ``days`` days.
+
+    Each day is walked with ``find_slot(after=...)`` until a slot falls past the
+    day's end; the days run in parallel, so a week costs about as long as one day.
+
+    Args:
+        config: the user's social config (Postiz URL and key).
+        integration_id: the Postiz channel whose posting times to use.
+        start: the caller's local midnight, ISO-8601 with an offset or Z, so the
+            days line up with what the user sees.
+        days: how many days to cover, 1 to ``_SLOT_MAX_DAYS``.
+
+    Returns:
+        list[str]: the open slots as ISO-8601 UTC strings, ascending, no repeats.
+
+    Raises:
+        ValueError: bad channel id, ``start`` not ISO-8601, or ``days`` out of range.
+        SocialError: Postiz unreachable or erroring.
+    """
+    _require_id(integration_id)
+    try:
+        day0 = _parse_iso(start)
+    except ValueError as exc:
+        raise ValueError("start must be an ISO-8601 string") from exc
+    if day0.tzinfo is None:
+        raise ValueError("start needs a UTC offset")
+    if not isinstance(days, int) or not 1 <= days <= _SLOT_MAX_DAYS:
+        raise ValueError(f"days must be 1 to {_SLOT_MAX_DAYS}")
+
+    def walk(day):
+        begin, end = day0 + timedelta(days=day), day0 + timedelta(days=day + 1)
+        found, after = [], begin - timedelta(seconds=1)
+        for _ in range(_SLOT_MAX_PER_DAY):
+            slot = _parse_iso(find_slot(config, integration_id, _iso_z(after)))
+            if slot >= end or slot <= after:
+                break
+            found.append(slot)
+            after = slot
+        return found
+
+    with ThreadPoolExecutor(max_workers=days) as pool:
+        per_day = list(pool.map(walk, range(days)))
+    return [_iso_z(slot) for slot in sorted({s for day in per_day for s in day})]
 
 
 def _require_id(value):

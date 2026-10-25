@@ -27,6 +27,7 @@
             --accent: #e94560;
             --accent-hover: #ff6b6b;
             --success: #4ecca3;
+            --warn: #ffb020;
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -617,7 +618,7 @@
             clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
         }
         /* Social Share */
-        #social-text { width: 100%; resize: none; font-size: 1rem; min-height: 6rem; }
+        #social-text { width: 100%; resize: none; font-family: inherit; font-size: 1rem; line-height: 1.4; min-height: 6rem; }
         .social-card { display: flex; gap: 0.75rem; align-items: center; background: var(--bg-secondary); border-radius: 8px; padding: 0.5rem; margin-top: 0.5rem; }
         .social-card-thumb { width: 64px; height: 64px; border-radius: 6px; object-fit: cover; flex-shrink: 0; background: var(--bg-primary); }
         .social-card-body { flex: 1; min-width: 0; }
@@ -627,28 +628,50 @@
         .social-card.loading .social-card-thumb, .social-card.loading .social-card-title, .social-card.loading .social-card-site { background: var(--bg-primary); border-radius: 4px; color: transparent; }
         .social-card.loading .social-card-title { height: 1rem; width: 80%; margin-bottom: 0.4rem; }
         .social-card.loading .social-card-site { height: 0.75rem; width: 40%; }
-        .social-chips { display: flex; gap: 0.5rem; margin: 0.75rem 0 0.25rem; flex-wrap: wrap; }
-        .social-chip { width: 44px; height: 44px; border-radius: 50%; border: 1px solid #555; background: transparent; color: var(--text-secondary); font-size: 1rem; font-weight: 700; cursor: pointer; padding: 0; opacity: 0.6; }
-        .social-chip[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: #fff; opacity: 1; }
-        .social-chip.over { box-shadow: 0 0 0 2px #ffb020; }
-        .social-count { text-align: right; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.75rem; }
-        .social-count.warn { color: #ffb020; }
+        #social-view [hidden] { display: none !important; }
+        .social-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; min-height: 44px; margin-top: 0.5rem; }
+        .social-ghost { background: none; border: 1px solid var(--bg-tertiary); border-radius: 8px; color: var(--text-primary); font-size: 0.875rem; min-height: 44px; padding: 0 0.875rem; cursor: pointer; }
+        .social-ghost:disabled { color: var(--text-secondary); cursor: default; }
+        .social-count { margin-left: auto; font-size: 0.8rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+        .social-count.warn { color: var(--warn); }
         .social-count.over { color: var(--accent); font-weight: 600; }
-        #social-go { width: 100%; padding: 0.875rem; font-size: 1rem; }
-        #social-go.armed { background: var(--bg-secondary); color: #fff; outline: 2px solid var(--accent); }
-        #social-go.done { background: #2e7d32; color: #fff; }
-        .social-links { display: flex; justify-content: space-between; gap: 0.75rem; margin-top: 0.5rem; }
-        .social-link { background: none; border: none; color: var(--text-secondary); text-decoration: underline; font-size: 0.875rem; padding: 0.5rem 0; cursor: pointer; }
-        #social-time { width: 100%; margin-top: 0.5rem; }
-        .social-when { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
-        .social-when button { flex: 1; padding: 0.6rem 0.5rem; border: 1px solid #555; border-radius: 8px; background: transparent; color: var(--text-secondary); font-size: 0.85rem; cursor: pointer; }
-        .social-when button[aria-pressed="true"] { border-color: var(--accent); color: inherit; font-weight: 600; }
-        .social-when button.social-step { flex: 0 0 44px; font-size: 1.1rem; padding: 0.6rem 0; }
-        .social-when button.social-step:disabled { opacity: 0.35; cursor: default; }
+        .social-chips { display: flex; gap: 0.5rem; margin: 0.5rem 0 0.75rem; flex-wrap: wrap; }
+        .social-chip { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--bg-tertiary); background: transparent; color: var(--text-secondary); font-size: 0.95rem; font-weight: 700; cursor: pointer; padding: 0; }
+        .social-chip[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: #fff; }
+        .social-chip.over { box-shadow: 0 0 0 2px var(--warn); }
+        .social-segment { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; padding: 3px; height: 44px; box-sizing: border-box; background: var(--bg-secondary); border-radius: 8px; margin-bottom: 0.5rem; }
+        .social-segment button { border: none; border-radius: 6px; background: transparent; color: var(--text-secondary); font-size: 0.9rem; cursor: pointer; padding: 0; }
+        .social-segment button[aria-checked="true"] { background: var(--bg-tertiary); color: var(--text-primary); font-weight: 600; }
+        .social-when { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 48px; padding: 0.375rem 1rem; margin-bottom: 0.5rem; background: var(--bg-secondary); border: none; border-radius: 8px; color: var(--text-primary); text-align: left; cursor: pointer; font-size: 0.95rem; }
+        .social-when-caption { display: block; font-size: 0.75rem; color: var(--text-secondary); }
+        .social-when-chevron { font-size: 1.25rem; color: var(--text-secondary); }
+        #social-go { width: 100%; min-height: 48px; font-size: 1rem; }
+        #social-go.done { background: var(--success); color: var(--bg-primary); }
+        .social-status { min-height: 1.25rem; margin-top: 0.75rem; font-size: 0.875rem; color: var(--text-secondary); }
+        .social-status.error { color: var(--accent); }
+        .social-status a { color: var(--text-primary); }
+        .social-status .primary { min-height: 44px; margin-left: 0.5rem; }
+        dialog.social-sheet { margin: auto auto 0; width: 100%; max-width: 520px; max-height: 70vh; box-sizing: border-box; border: none; border-radius: 16px 16px 0 0; padding: 0.5rem 1rem calc(1rem + env(safe-area-inset-bottom)); background: var(--bg-secondary); color: var(--text-primary); }
+        dialog.social-sheet[open] { display: flex; flex-direction: column; overflow: hidden; }
+        #social-days { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+        dialog.social-sheet::backdrop { background: rgba(0, 0, 0, 0.55); }
+        .social-sheet-handle { width: 36px; height: 4px; border-radius: 2px; background: var(--bg-tertiary); margin: 0 auto 0.75rem; }
+        .social-sheet h3 { margin: 0 0 0.5rem; font-size: 1rem; }
+        .social-day { padding: 0.5rem 0; border-top: 1px solid var(--bg-tertiary); }
+        .social-day-label { font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.375rem; }
+        .social-day-slots { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+        .social-slot { min-width: 88px; height: 44px; padding: 0 0.75rem; border: 1px solid var(--bg-tertiary); border-radius: 8px; background: transparent; color: var(--text-primary); font-size: 0.9rem; cursor: pointer; font-variant-numeric: tabular-nums; }
+        .social-slot[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: #fff; }
+        .social-slot.skeleton { background: var(--bg-tertiary); border-color: transparent; color: transparent; cursor: default; }
+        .social-day-none { font-size: 0.85rem; color: var(--text-secondary); line-height: 44px; }
+        .social-sheet-foot { display: flex; justify-content: space-between; gap: 0.5rem; margin-top: 0.75rem; }
+        .social-exact { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
+        .social-exact input { flex: 1; min-width: 0; min-height: 44px; }
+        .social-exact button { white-space: nowrap; min-height: 44px; }
         .social-default-channels label { display: block; cursor: pointer; margin: 0.25rem 0; }
     </style>
-    <script src="{{ url_for('static', filename='js/utils.js') }}?v=7"></script>
-    <script src="{{ url_for('static', filename='js/storage.js') }}?v=14"></script>
+    <script src="{{ asset_url('js/utils.js') }}"></script>
+    <script src="{{ asset_url('js/storage.js') }}"></script>
     <script>
         // Pass-through worker (caches nothing): required for Chrome to install the
         // app, and only an installed app is offered in Android's share sheet.
@@ -1062,26 +1085,38 @@
 
         <!-- Social Share View -->
         <div id="social-view" class="view" role="tabpanel" aria-labelledby="tab-social">
-            <div id="social-status-msg" style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 0.5rem;"></div>
             <div id="social-compose" hidden>
-                <textarea id="social-text" rows="4" aria-label="Post text" placeholder="What's on your mind?" oninput="socialChanged()"></textarea>
+                <textarea id="social-text" rows="4" aria-label="Post text" placeholder="What do you want to post?" oninput="socialChanged()"></textarea>
                 <div id="social-card"></div>
+                <div class="social-toolbar">
+                    <button type="button" class="social-ghost" id="social-draft-btn" onclick="socialDraft()" hidden>Draft from link</button>
+                    <div class="social-count" id="social-count" aria-live="polite"></div>
+                </div>
                 <div id="social-chips" class="social-chips" role="group" aria-label="Post to"></div>
-                <div class="social-count" id="social-count" aria-live="polite"></div>
-                <div class="social-when" id="social-when" role="group" aria-label="When" hidden>
-                    <button type="button" class="social-step" id="social-slot-prev" aria-label="Earlier open slot" onclick="socialStepSlot(-1)" disabled>‹</button>
-                    <button type="button" id="social-when-next" aria-pressed="true" onclick="socialSetPickTime(false)">Next open slot</button>
-                    <button type="button" class="social-step" id="social-slot-next" aria-label="Later open slot" onclick="socialStepSlot(1)" disabled>›</button>
-                    <button type="button" id="social-when-pick" aria-pressed="false" onclick="socialSetPickTime(true)">Pick a time</button>
+                <div class="social-segment" role="radiogroup" aria-label="When to post">
+                    <button type="button" role="radio" id="social-mode-now" aria-checked="true" onclick="socialSetMode(false)">Post now</button>
+                    <button type="button" role="radio" id="social-mode-schedule" aria-checked="false" onclick="socialSetMode(true)">Schedule</button>
                 </div>
-                <input type="datetime-local" id="social-time" aria-label="Post at" hidden onchange="socialChanged()">
+                <button type="button" class="social-when" id="social-when" hidden onclick="socialWhenTapped()">
+                    <span><span class="social-when-caption" id="social-when-caption"></span><span id="social-when-label"></span></span>
+                    <span class="social-when-chevron" aria-hidden="true">›</span>
+                </button>
                 <button class="primary" id="social-go" onclick="socialGo()">Post</button>
-                <div class="social-links">
-                    <button type="button" class="social-link" id="social-mode-link" onclick="socialToggleMode()">Schedule for later</button>
-                    <button type="button" class="social-link" id="social-draft-btn" onclick="socialDraft()" hidden>Draft from link</button>
-                </div>
-                <div id="social-result" role="status" style="margin-top: 0.75rem; font-size: 0.875rem;"></div>
             </div>
+            <div id="social-status" class="social-status" role="status"></div>
+            <dialog id="social-sheet" class="social-sheet" aria-labelledby="social-sheet-title" onclick="if (event.target === this) this.close()">
+                <div class="social-sheet-handle" aria-hidden="true"></div>
+                <h3 id="social-sheet-title">Pick an open slot</h3>
+                <div id="social-days"></div>
+                <div class="social-sheet-foot">
+                    <button type="button" class="social-ghost" id="social-more" onclick="socialLoadSlots(true)">Next week ›</button>
+                    <button type="button" class="social-ghost" id="social-exact-toggle" onclick="socialShowExact()">Set an exact time…</button>
+                </div>
+                <div class="social-exact" id="social-exact" hidden>
+                    <input type="datetime-local" id="social-time" aria-label="Exact time">
+                    <button type="button" class="primary" onclick="socialUseExact()">Use this time</button>
+                </div>
+            </dialog>
         </div>
 
         <!-- Settings View -->
@@ -7018,11 +7053,14 @@
 
         // ===== Social Share =====
         // One composer for quick posts: text, an optional link card, channel
-        // chips, one primary button. A link shared from Android (manifest
-        // share_target -> /share -> /?view=social&share=...) becomes the card; its
-        // URL stays out of the text and is appended on send, and each platform
-        // builds its own card from it (the preview image is display-only).
-        // Channels render from a per-device cache and refresh in the background.
+        // chips, Post now | Schedule, one primary button that sends on one tap.
+        // A link shared from Android (manifest share_target -> /share ->
+        // /?view=social&share=...) becomes the card; its URL stays out of the
+        // text and is appended on send, and each platform builds its own card.
+        // Schedule offers Postiz's open slots: the next one by default, the rest
+        // in a bottom sheet grouped by day (a week at a time), plus an exact
+        // time as the rare escape hatch. Channels render from a per-device
+        // cache and refresh in the background.
         // Names, page metadata and drafts are untrusted: escapeHtml or .textContent.
         let socialChannels = [];      // active Postiz channels, with max_length
         let socialIncluded = new Set();
@@ -7030,25 +7068,40 @@
         let socialChannelsLoaded = false;
         let socialSavedConfig = null;
         let socialLink = null;        // { url, title, site, image } for the card, or null
-        let socialArmed = false;      // primary button waiting for its confirming tap
-        let socialScheduling = false; // primary button schedules instead of posting
-        let socialSlotPending = false; // asking Postiz for the next free window
-        let socialSlots = []; // open slots seen so far (Dates), in order, for ‹ ›
-        let socialSlotIdx = -1; // the one shown; see socialShownSlot()
-        let socialPickTime = false; // schedule at the picker's time, not the next open slot
+        let socialScheduling = false; // Schedule segment selected
+        let socialSending = false;
+        let socialSlots = [];         // open slots loaded so far (Dates, ascending)
+        let socialSlotsFrom = null;   // local midnight the sheet starts at
+        let socialSlotsUntil = null;  // end of the loaded range
+        let socialSlotsChannel = '';  // channel the slots were looked up for
+        let socialSlotsState = 'idle'; // idle | loading | ready | error
+        let socialSlotsError = '';    // why the last lookup failed, shown in the sheet
+        let socialSlotsToken = 0;     // bumps to drop answers from a stale request
+        let socialChosen = null;      // the time the button will schedule at (Date)
+        let socialChosenExact = false; // chosen from the exact-time input, not a slot
         const SOCIAL_SECRET_SAVED = '••••••••';
         const SOCIAL_URL_RE = /https?:\/\/\S+/i;
         const SOCIAL_CACHE_KEY = 'acquacotta_social_channels';
         const SOCIAL_PICK_KEY = 'acquacotta_social_selection';
         const SOCIAL_URL_WEIGHT = { x: 23, mastodon: 23 };  // these count any link as 23 chars
+        const SOCIAL_SLOT_DAYS = 7;
         const SOCIAL_PLATFORMS = {
-            x: ['𝕏', 'X'], linkedin: ['in', 'LinkedIn'], 'linkedin-page': ['in', 'LinkedIn Page'],
-            mastodon: ['M', 'Mastodon'], threads: ['@', 'Threads'], bluesky: ['🦋', 'Bluesky'],
+            x: ['X', 'X'], linkedin: ['in', 'LinkedIn'], 'linkedin-page': ['in', 'LinkedIn Page'],
+            mastodon: ['M', 'Mastodon'], threads: ['@', 'Threads'], bluesky: ['B', 'Bluesky'],
             facebook: ['f', 'Facebook'], instagram: ['IG', 'Instagram'],
         };
 
-        function socialSetMsg(text) {
-            document.getElementById('social-status-msg').textContent = text;
+        // The one status line under the composer: text, optional nodes (a
+        // button or link), and an error tint.
+        function socialStatus(text, { error = false, nodes = [] } = {}) {
+            const el = document.getElementById('social-status');
+            el.textContent = text;
+            el.classList.toggle('error', error);
+            for (const n of nodes) el.appendChild(n);
+        }
+
+        function socialStatusButton(label, onClick) {
+            return Object.assign(document.createElement('button'), { className: 'primary', textContent: label, onclick: onClick });
         }
 
         function socialRememberShare(url) {
@@ -7079,13 +7132,8 @@
             const pending = socialStoredShare();
             if (pending && (!socialLink || socialLink.url !== pending)) socialSetLink(pending);
             if (!authStatus || !authStatus.logged_in) {
-                socialSetMsg('Sign in with Google to post. The link is kept through sign-in.');
-                const btn = document.createElement('button');
-                btn.className = 'primary';
-                btn.textContent = 'Sign in with Google';
-                btn.style.cssText = 'padding: 0.375rem 0.75rem; font-size: 0.875rem; margin-left: 0.25rem;';
-                btn.addEventListener('click', () => loginWithGoogle());
-                document.getElementById('social-status-msg').appendChild(btn);
+                socialStatus('Sign in with Google to post. The link is kept through sign-in.',
+                    { nodes: [socialStatusButton('Sign in with Google', () => loginWithGoogle())] });
                 return;
             }
             if (!socialChannelsLoaded) {
@@ -7105,31 +7153,25 @@
             socialIncluded = new Set(picked.length ? picked : defaults.length ? defaults : [...ids]);
             socialHasGemini = !!data.has_gemini_api_key;
             document.getElementById('social-compose').hidden = !socialChannels.length;
-            socialSetMsg(socialChannels.length ? '' : 'No active channels in Postiz.');
+            socialStatus(socialChannels.length ? '' : 'No active channels in Postiz.');
             socialRenderChips();
             socialUpdate();
         }
 
         async function socialLoadChannels() {
-            if (!socialChannels.length) socialSetMsg('Loading channels from Postiz…');
+            if (!socialChannels.length) socialStatus('Loading channels from Postiz…');
             try {
                 const data = await Storage.getSocialIntegrations();
                 if (!data.configured) {
                     document.getElementById('social-compose').hidden = true;
-                    socialSetMsg('Postiz isn’t connected yet. ');
-                    const btn = document.createElement('button');
-                    btn.className = 'primary';
-                    btn.textContent = 'Connect Postiz';
-                    btn.style.cssText = 'padding: 0.375rem 0.75rem; font-size: 0.875rem; margin-left: 0.25rem;';
-                    btn.addEventListener('click', () => openPluginSettings('social'));
-                    document.getElementById('social-status-msg').appendChild(btn);
+                    socialStatus('Postiz isn’t connected yet.', { nodes: [socialStatusButton('Connect Postiz', () => openPluginSettings('social'))] });
                     return;
                 }
                 socialLocal(SOCIAL_CACHE_KEY, data);
                 socialChannelsLoaded = true;
                 socialApplyChannels(data);
             } catch (e) {
-                if (!socialChannels.length) socialSetMsg('Could not load channels: ' + (e.message || 'error'));
+                if (!socialChannels.length) socialStatus('Could not load channels: ' + (e.message || 'error'), { error: true });
             }
         }
 
@@ -7179,6 +7221,7 @@
         function socialRenderCard() {
             const el = document.getElementById('social-card');
             const link = socialLink;
+            document.getElementById('social-text').placeholder = link ? 'Say something about this link' : 'What do you want to post?';
             if (!link) { el.innerHTML = ''; return; }
             const img = /^data:image\/(png|jpeg|gif|webp);base64,/.test(link.image || '') ? link.image : '';
             el.innerHTML = `<div class="social-card${link.loading ? ' loading' : ''}">
@@ -7205,7 +7248,9 @@
         }
 
         function socialChanged() {
-            socialDisarm();
+            // Slots are looked up for the first selected channel; follow it.
+            const first = socialSelected()[0];
+            if (socialScheduling && first && first.id !== socialSlotsChannel) socialLoadSlots(false);
             socialUpdate();
         }
 
@@ -7223,179 +7268,256 @@
             if (!sel.length) {
                 count.textContent = 'Pick a channel';
             } else if (over.length) {
-                count.textContent = `${Math.min(...over.map(x => x.left))} · too long for ${over.map(x => socialPlatform(x.c)[1]).join(', ')}`;
+                count.textContent = `−${-Math.min(...over.map(x => x.left))} · too long for ${over.map(x => socialPlatform(x.c)[1]).join(', ')}`;
             } else {
                 const tight = left.reduce((a, b) => (b.left < a.left ? b : a));
                 count.textContent = `${tight.left} left · ${socialPlatform(tight.c)[1]}`;
             }
             count.classList.toggle('over', over.length > 0);
             count.classList.toggle('warn', !over.length && sel.length > 0 && Math.min(...left.map(x => x.left)) <= 20);
-            go.disabled = !body || !sel.length || over.length > 0;
-            if (!socialArmed && !go.classList.contains('done')) go.textContent = socialGoLabel(sel.length);
+            go.disabled = socialSending || !body || !sel.length || over.length > 0;
+            if (!socialSending && !go.classList.contains('done')) go.textContent = socialGoLabel(sel.length);
             document.getElementById('social-draft-btn').hidden =
                 !(socialHasGemini && sel.length && (socialLink || SOCIAL_URL_RE.test(body)));
+            socialRenderWhen();
         }
 
         function socialGoLabel(n) {
-            const where = n === 1 ? '1 channel' : `${n} channels`;
-            if (!socialScheduling) return `Post to ${where}`;
-            const slot = socialShownSlot();
-            if (!socialPickTime) return slot ? `Schedule ${where} · ${socialWhen(slot)}` : `Schedule ${where} · next open slot`;
-            const t = document.getElementById('social-time').value;
-            return t ? `Schedule ${where} · ${socialWhen(new Date(t))}` : 'Pick a time';
+            if (!socialScheduling) return n === 1 ? 'Post to 1 channel' : `Post to ${n} channels`;
+            return socialChosen ? `Schedule · ${socialShortWhen(socialChosen)}` : 'Schedule · next open slot';
         }
 
-        function socialWhen(d) {
-            return d.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+        // "Sun 10:20 AM" within a week, "Nov 2, 10:20 AM" beyond it.
+        function socialShortWhen(d) {
+            const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+            const soon = d.getTime() - Date.now() < 6.5 * 86400e3;
+            return soon
+                ? `${d.toLocaleDateString([], { weekday: 'short' })} ${time}`
+                : `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${time}`;
         }
 
-        // ---- the one button: tap to arm, tap again to send ----
-        function socialDisarm() {
-            if (!socialArmed) return;
-            socialArmed = false;
-            document.getElementById('social-go').classList.remove('armed');
+        function socialLongWhen(d) {
+            return `${d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })} · ${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+        }
+
+        function socialDayStart(d) {
+            const day = new Date(d);
+            day.setHours(0, 0, 0, 0);
+            return day;
+        }
+
+        function socialAddDays(d, n) {
+            const day = new Date(d);
+            day.setDate(day.getDate() + n);
+            return day;
+        }
+
+        // ---- Post now | Schedule ----
+        function socialSetMode(scheduling) {
+            socialScheduling = scheduling;
+            document.getElementById('social-mode-now').setAttribute('aria-checked', String(!scheduling));
+            document.getElementById('social-mode-schedule').setAttribute('aria-checked', String(scheduling));
+            document.getElementById('social-when').hidden = !scheduling;
+            if (scheduling && (socialSlotsState === 'idle' || socialSlotsState === 'error')) socialLoadSlots(false);
+            socialChanged();
+        }
+
+        // The row between the segment and the button: what Schedule will use.
+        function socialRenderWhen() {
+            if (!socialScheduling) return;
+            const caption = document.getElementById('social-when-caption');
+            const label = document.getElementById('social-when-label');
+            let cap = '', text;
+            if (socialChosen) {
+                cap = socialChosenExact ? 'Exact time' : (socialChosen.getTime() === (socialSlots[0] && socialSlots[0].getTime()) ? 'Next open slot' : 'Open slot');
+                text = socialLongWhen(socialChosen);
+            } else if (socialSlotsState === 'loading') {
+                cap = 'Next open slot';
+                text = 'Finding an open slot…';
+            } else if (socialSlotsState === 'error') {
+                cap = 'Couldn’t reach Postiz';
+                text = 'Retry';
+            } else {
+                cap = 'Next open slot';
+                text = 'None in the next week · pick a time';
+            }
+            caption.textContent = cap;
+            caption.hidden = !cap;
+            label.textContent = text;
+        }
+
+        function socialWhenTapped() {
+            if (socialSlotsState === 'error' && !socialChosen) {
+                socialStatus('Couldn’t reach Postiz: ' + socialSlotsError, { error: true });
+                socialLoadSlots(false);
+                return;
+            }
+            socialOpenSheet();
+        }
+
+        // ---- open slots ----
+        // One request returns every open slot for a week of local days; "Next
+        // week" appends the following week. The first slot is chosen by default.
+        async function socialLoadSlots(more) {
+            const first = socialSelected()[0];
+            if (!first) return;
+            if (!more) {
+                socialSlots = [];
+                socialSlotsFrom = socialDayStart(new Date());
+                socialSlotsUntil = socialSlotsFrom;
+                if (!socialChosenExact) socialChosen = null;
+            }
+            const token = ++socialSlotsToken;
+            const start = socialSlotsUntil;
+            socialSlotsChannel = first.id;
+            socialSlotsState = 'loading';
+            socialRenderDays();
+            socialUpdate();
+            try {
+                const { slots } = await Storage.socialSlots(first.id, start.toISOString(), SOCIAL_SLOT_DAYS);
+                if (token !== socialSlotsToken) return;
+                const now = Date.now();
+                const fresh = (slots || []).map(s => new Date(s)).filter(d => !isNaN(d) && d.getTime() > now);
+                const seen = new Set(socialSlots.map(d => d.getTime()));
+                socialSlots = socialSlots.concat(fresh.filter(d => !seen.has(d.getTime()))).sort((a, b) => a - b);
+                socialSlotsUntil = socialAddDays(start, SOCIAL_SLOT_DAYS);
+                socialSlotsState = 'ready';
+                if (!socialChosen && socialSlots.length) socialChosen = socialSlots[0];
+            } catch (e) {
+                if (token !== socialSlotsToken) return;
+                socialSlotsState = 'error';
+                socialSlotsError = e.message || 'error';
+            }
+            socialRenderDays();
             socialUpdate();
         }
 
-        // Any tap outside the armed button cancels the confirmation.
-        document.addEventListener('click', e => {
-            if (socialArmed && !(e.target instanceof Element && e.target.closest('#social-go'))) socialDisarm();
-        }, true);
-
-        // Scheduling defaults to Postiz's next free posting window. ‹ › step
-        // through open slots: › asks Postiz for the first free one after the
-        // shown slot, ‹ goes back through the ones already seen. The shown
-        // slot is what gets sent; if the lookup failed, no date is sent and
-        // the server asks Postiz at send time.
-        async function socialFillSlot() {
-            socialSlots = [];
-            socialSlotIdx = -1;
-            await socialFetchSlot();
+        function socialOpenSheet() {
+            const sheet = document.getElementById('social-sheet');
+            document.getElementById('social-exact').hidden = true;
+            socialRenderDays();
+            if (!sheet.open) sheet.showModal();
+            const picked = sheet.querySelector('.social-slot[aria-pressed="true"]');
+            if (picked) picked.scrollIntoView({ block: 'center' });
         }
 
-        function socialShownSlot() {
-            return socialSlots[socialSlotIdx] || null;
+        function socialDayLabel(day) {
+            const today = socialDayStart(new Date());
+            if (day.getTime() === today.getTime()) return 'Today';
+            if (day.getTime() === socialAddDays(today, 1).getTime()) return 'Tomorrow';
+            return day.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
         }
 
-        async function socialFetchSlot() {
-            const sel = socialSelected();
-            if (!sel.length) return;
-            const after = socialShownSlot();
-            socialSlotPending = true;
-            socialShowNextSlot();
-            try {
-                const d = new Date((await Storage.socialSlot(sel[0].id, after ? after.toISOString() : undefined)).date);
-                if (isNaN(d)) throw new Error('Postiz returned no date');
-                if (after && d <= after) throw new Error('no later open slot');
-                socialSlots.push(d);
-                socialSlotIdx = socialSlots.length - 1;
-            } catch (e) {
-                document.getElementById('social-result').textContent = 'Could not look up the next open slot: ' + (e.message || 'error');
+        function socialRenderDays() {
+            const box = document.getElementById('social-days');
+            const more = document.getElementById('social-more');
+            more.disabled = socialSlotsState === 'loading';
+            if (!socialSlotsFrom) { box.innerHTML = ''; return; }
+            const rows = [];
+            const loadingUntil = socialSlotsState === 'loading' ? socialAddDays(socialSlotsUntil, SOCIAL_SLOT_DAYS) : socialSlotsUntil;
+            for (let day = socialSlotsFrom; day < loadingUntil; day = socialAddDays(day, 1)) {
+                const next = socialAddDays(day, 1);
+                let slots;
+                if (day >= socialSlotsUntil) {
+                    slots = '<button type="button" class="social-slot skeleton" tabindex="-1" aria-hidden="true">00:00</button>';
+                } else {
+                    const mine = socialSlots.filter(d => d >= day && d < next);
+                    slots = mine.length
+                        ? mine.map(d => {
+                            const on = !!socialChosen && !socialChosenExact && socialChosen.getTime() === d.getTime();
+                            return `<button type="button" class="social-slot" aria-pressed="${on}" onclick="socialPickSlot(${d.getTime()})">${escapeHtml(d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))}</button>`;
+                        }).join('')
+                        : '<span class="social-day-none">No open slot</span>';
+                }
+                rows.push(`<div class="social-day"><div class="social-day-label">${escapeHtml(socialDayLabel(day))}</div><div class="social-day-slots">${slots}</div></div>`);
             }
-            socialSlotPending = false;
-            socialShowNextSlot();
-            socialChanged();
+            if (socialSlotsState === 'error') {
+                rows.push(`<div class="social-day"><span class="social-day-none">Couldn’t reach Postiz: ${escapeHtml(socialSlotsError)}</span> <button type="button" class="social-ghost" onclick="socialLoadSlots(socialSlots.length > 0)">Retry</button></div>`);
+            } else if (socialSlotsState === 'ready' && !socialSlots.some(d => d >= socialAddDays(socialSlotsUntil, -SOCIAL_SLOT_DAYS))) {
+                rows.push('<div class="social-day"><span class="social-day-none">No open slots this week</span></div>');
+            }
+            box.innerHTML = rows.join('');
         }
 
-        function socialStepSlot(dir) {
-            if (socialSlotPending) return;
-            document.getElementById('social-result').textContent = '';
-            if (dir < 0 || socialSlotIdx < socialSlots.length - 1) {
-                socialSlotIdx = Math.max(0, socialSlotIdx + dir);
-                socialShowNextSlot();
-                socialChanged();
+        function socialPickSlot(ms) {
+            socialChosen = new Date(ms);
+            socialChosenExact = false;
+            document.getElementById('social-sheet').close();
+            socialUpdate();
+        }
+
+        function socialShowExact() {
+            const input = document.getElementById('social-time');
+            const base = socialChosen || new Date(Date.now() + 3600e3);
+            input.value = new Date(base.getTime() - base.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+            document.getElementById('social-exact').hidden = false;
+            input.focus();
+        }
+
+        function socialUseExact() {
+            const local = document.getElementById('social-time').value;
+            const d = local ? new Date(local) : null;
+            if (!d || isNaN(d) || d.getTime() <= Date.now()) {
+                socialStatus('That time has passed', { error: true });
                 return;
             }
-            socialFetchSlot();
+            socialChosen = d;
+            socialChosenExact = true;
+            socialStatus('');
+            document.getElementById('social-sheet').close();
+            socialUpdate();
         }
 
-        function socialShowNextSlot() {
-            const slot = socialShownSlot();
-            document.getElementById('social-when-next').textContent = socialSlotPending
-                ? 'Finding open slot…'
-                : slot ? (socialSlotIdx === 0 ? `Next open slot · ${socialWhen(slot)}` : socialWhen(slot)) : 'Next open slot';
-            document.getElementById('social-slot-prev').disabled = socialSlotPending || socialSlotIdx <= 0;
-            document.getElementById('social-slot-next').disabled = socialSlotPending || !slot;
-        }
-
-        function socialSetPickTime(pick) {
-            socialPickTime = pick;
-            document.getElementById('social-when-next').setAttribute('aria-pressed', String(!pick));
-            document.getElementById('social-when-pick').setAttribute('aria-pressed', String(pick));
-            const time = document.getElementById('social-time');
-            time.hidden = !pick;
-            const slot = socialShownSlot();
-            if (pick && !time.value && slot) {
-                time.value = new Date(slot.getTime() - slot.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-            }
-            socialChanged();
-        }
-
-        function socialToggleMode() {
-            socialScheduling = !socialScheduling;
-            document.getElementById('social-when').hidden = !socialScheduling;
-            document.getElementById('social-time').value = '';
-            socialSetPickTime(false);
-            if (socialScheduling) socialFillSlot();
-            document.getElementById('social-mode-link').textContent = socialScheduling ? 'Post now instead' : 'Schedule for later';
-            socialChanged();
-        }
-
+        // ---- send: one tap ----
         function socialGo() {
-            const go = document.getElementById('social-go');
-            const resultEl = document.getElementById('social-result');
             const sel = socialSelected();
             const body = socialBody();
-            if (!body || !sel.length) return;
-            let date = socialScheduling && !socialPickTime ? socialShownSlot() : null;
-            if (socialScheduling && socialPickTime) {
-                const local = document.getElementById('social-time').value;
-                if (!local) { resultEl.textContent = 'Pick a date and time.'; return; }
-                date = new Date(local);
-                if (date.getTime() <= Date.now()) { resultEl.textContent = 'That time has passed; post now instead.'; return; }
-            }
-            if (date && date.getTime() <= Date.now()) { resultEl.textContent = 'That slot has passed; tap › for the next one.'; return; }
-            if (!socialArmed) {
-                socialArmed = true;
-                go.classList.add('armed');
-                go.textContent = socialScheduling ? `Tap again to schedule ${sel.length}` : `Tap again to post to ${sel.length}`;
-                resultEl.textContent = '';
+            if (socialSending || !body || !sel.length) return;
+            const posts = sel.map(c => ({ integration_id: c.id, identifier: c.identifier, text: body }));
+            if (!socialScheduling) { socialSend({ mode: 'now', posts }); return; }
+            if (socialChosen && socialChosen.getTime() <= Date.now()) {
+                socialStatus('That time has passed', { error: true });
+                socialChosen = null;
+                socialChosenExact = false;
+                socialLoadSlots(false);
                 return;
             }
-            socialArmed = false;
-            go.classList.remove('armed');
-            const posts = sel.map(c => ({ integration_id: c.id, identifier: c.identifier, text: body }));
-            socialSend(socialScheduling ? { mode: 'schedule', posts, ...(date ? { date: date.toISOString() } : {}) } : { mode: 'now', posts });
+            socialSend({ mode: 'schedule', posts, ...(socialChosen ? { date: socialChosen.toISOString() } : {}) });
         }
 
         async function socialSend(request) {
             const go = document.getElementById('social-go');
-            const resultEl = document.getElementById('social-result');
+            socialSending = true;
             go.disabled = true;
             go.textContent = 'Sending…';
-            resultEl.textContent = '';
+            socialStatus('');
             try {
                 const r = await Storage.socialSchedule(request);
-                const n = request.posts.length;
+                socialSending = false;
                 go.classList.add('done');
-                go.textContent = request.mode === 'now' ? `Posted to ${n} ✓` : `Scheduled ${n} ✓`;
-                const when = request.mode === 'now'
-                    ? `Posted ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
-                    : `Scheduled for ${new Date(r.date || request.date).toLocaleString()}`;
-                resultEl.textContent = when;
-                for (const w of r.warnings || []) resultEl.appendChild(Object.assign(document.createElement('div'), { textContent: w }));
+                go.textContent = request.mode === 'now' ? 'Posted ✓' : 'Scheduled ✓';
+                const nodes = [];
+                for (const w of r.warnings || []) nodes.push(Object.assign(document.createElement('div'), { textContent: w }));
                 const link = discussionSafeUrl(r.postiz_url);
                 if (link) {
-                    resultEl.appendChild(document.createTextNode(' · '));
-                    resultEl.appendChild(Object.assign(document.createElement('a'), { href: link, target: '_blank', rel: 'noopener', textContent: 'View in Postiz' }));
+                    nodes.push(document.createTextNode(' · '));
+                    nodes.push(Object.assign(document.createElement('a'), { href: link, target: '_blank', rel: 'noopener', textContent: 'View in Postiz' }));
                 }
+                socialStatus(request.mode === 'now'
+                    ? `Posted ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
+                    : `Scheduled for ${socialLongWhen(new Date(r.date || request.date))}`, { nodes });
                 document.getElementById('social-text').value = '';
                 socialRememberShare('');
                 socialSetLink(null);
-                if (socialScheduling) socialToggleMode();
+                // The slot is taken now; the next Schedule looks them up afresh.
+                socialSlotsState = 'idle';
+                socialChosen = null;
+                socialChosenExact = false;
+                socialSetMode(false);
                 setTimeout(() => { go.classList.remove('done'); socialUpdate(); }, 2000);
             } catch (e) {
-                resultEl.textContent = 'Failed: ' + (e.message || 'error');
+                socialSending = false;
+                socialStatus('Failed: ' + (e.message || 'error'), { error: true });
                 socialUpdate();
             }
         }
@@ -7404,24 +7526,23 @@
         // Rewrites the text as one post about the link, sized for the tightest
         // selected channel. The selection goes to the server as one pseudo-channel,
         // so Gemini returns exactly one draft. The composer is locked meanwhile so
-        // a late reply can't overwrite newer text or slip under an armed button.
+        // a late reply can't overwrite newer text.
         async function socialDraft() {
             const textEl = document.getElementById('social-text');
             const sel = socialSelected();
             const inText = textEl.value.match(SOCIAL_URL_RE);
             const url = socialLink ? socialLink.url : inText && inText[0];
             if (!url || !sel.length) {
-                document.getElementById('social-result').textContent = sel.length ? 'Add a link to draft from.' : 'Pick at least one channel.';
+                socialStatus(sel.length ? 'Add a link to draft from.' : 'Pick at least one channel.', { error: true });
                 return;
             }
-            socialDisarm();
             const btn = document.getElementById('social-draft-btn');
             const go = document.getElementById('social-go');
             btn.disabled = true;
             btn.textContent = 'Drafting…';
             textEl.readOnly = true;
             go.disabled = true;
-            document.getElementById('social-result').textContent = '';
+            socialStatus('');
             try {
                 const max = Math.min(...sel.map(c => c.max_length)) - (socialLink ? 25 : 0);
                 const ids = sel.map(c => c.identifier).join(', ');
@@ -7429,7 +7550,7 @@
                 const draft = (data.drafts || [])[0];
                 if (draft && draft.text) textEl.value = socialLink ? draft.text.split(url).join('').trim() : draft.text;
             } catch (e) {
-                document.getElementById('social-result').textContent = 'Drafting failed: ' + (e.message || 'error');
+                socialStatus('Drafting failed: ' + (e.message || 'error'), { error: true });
             } finally {
                 btn.disabled = false;
                 btn.textContent = 'Draft from link';

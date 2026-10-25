@@ -6,6 +6,7 @@ fakes on ``requests``, DNS by a fake resolver, and Drive by an in-memory transpo
 
 import ipaddress
 import json
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 from urllib.parse import parse_qs, urlparse
@@ -797,6 +798,84 @@ class TestPWAAssets:
         assert b'data-view="social"' in page
 
 
+class TestAssetUrls:
+    def test_index_scripts_carry_a_content_hash(self, client):
+        page = client.get("/").data.decode()
+        for name in ("js/utils.js", "js/storage.js"):
+            assert f"/static/{name}?v={app_module._asset_version(name)}" in page
+        assert "?v=14" not in page
+
+    def test_hash_follows_file_content(self, tmp_path, monkeypatch):
+        (tmp_path / "a.js").write_text("one")
+        monkeypatch.setattr(app_module, "STATIC_DIR", tmp_path)
+        app_module._asset_version.cache_clear()
+        first = app_module._asset_version("a.js")
+        (tmp_path / "a.js").write_text("two")
+        app_module._asset_version.cache_clear()
+        assert app_module._asset_version("a.js") != first
+        app_module._asset_version.cache_clear()
+
+
+class TestListSlots:
+    """Three posting windows a day (14:20, 19:10, 00:00 UTC), some already taken."""
+
+    WINDOWS = (860, 1150, 1440)
+
+    @pytest.fixture
+    def postiz(self, monkeypatch):
+        taken = set()
+        calls = []
+
+        def fake_find_slot(_config, integration_id, after=None):
+            calls.append(after)
+            after_dt = datetime.fromisoformat(after.replace("Z", "+00:00"))
+            day = after_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+            for _ in range(60):
+                for minutes in self.WINDOWS:
+                    slot = day + timedelta(minutes=minutes)
+                    if slot > after_dt and slot not in taken:
+                        return slot.strftime("%Y-%m-%dT%H:%M:%SZ")
+                day += timedelta(days=1)
+            raise AssertionError("no slot")
+
+        monkeypatch.setattr(social_plugin, "find_slot", fake_find_slot)
+        return SimpleNamespace(taken=taken, calls=calls)
+
+    def test_lists_every_window_in_the_range(self, postiz):
+        slots = social_plugin.list_slots({}, "x1", "2026-10-26T00:00:00Z", 2)
+        # Midnight belongs to the day it starts; the range end is exclusive.
+        assert slots == [
+            "2026-10-26T00:00:00.000Z",
+            "2026-10-26T14:20:00.000Z",
+            "2026-10-26T19:10:00.000Z",
+            "2026-10-27T00:00:00.000Z",
+            "2026-10-27T14:20:00.000Z",
+            "2026-10-27T19:10:00.000Z",
+        ]
+
+    def test_days_follow_the_callers_midnight(self, postiz):
+        # Local midnight in New York (UTC-4): the 00:00 UTC window is 8 PM that day.
+        slots = social_plugin.list_slots({}, "x1", "2026-10-26T04:00:00Z", 1)
+        assert slots == ["2026-10-26T14:20:00.000Z", "2026-10-26T19:10:00.000Z", "2026-10-27T00:00:00.000Z"]
+
+    def test_taken_slots_are_skipped(self, postiz):
+        postiz.taken.add(datetime(2026, 10, 26, 19, 10, tzinfo=timezone.utc))
+        slots = social_plugin.list_slots({}, "x1", "2026-10-26T00:00:00Z", 1)
+        assert "2026-10-26T19:10:00.000Z" not in slots and len(slots) == 2
+
+    def test_stalled_postiz_cannot_loop(self, monkeypatch):
+        monkeypatch.setattr(social_plugin, "find_slot", lambda *_a, **_k: "2026-10-26T14:20:00Z")
+        assert social_plugin.list_slots({}, "x1", "2026-10-26T00:00:00Z", 1) == ["2026-10-26T14:20:00.000Z"]
+
+    @pytest.mark.parametrize(
+        ("start", "days"),
+        [("tomorrow", 7), ("2026-10-26T00:00:00", 7), ("2026-10-26T00:00:00Z", 0), ("2026-10-26T00:00:00Z", 15)],
+    )
+    def test_rejects_bad_arguments(self, start, days):
+        with pytest.raises(ValueError):
+            social_plugin.list_slots({}, "x1", start, days)
+
+
 class TestSocialEndpoints:
     @pytest.mark.parametrize(
         ("method", "path"),
@@ -808,6 +887,7 @@ class TestSocialEndpoints:
             ("post", "/api/social/draft"),
             ("post", "/api/social/preview"),
             ("get", "/api/social/slot?channel=x1"),
+            ("get", "/api/social/slots?channel=x1&start=2026-10-26T00:00:00Z"),
             ("post", "/api/social/schedule"),
         ],
     )
@@ -885,6 +965,25 @@ class TestSocialEndpoints:
     @pytest.mark.parametrize("query", ["", "?channel=", "?channel=../posts"])
     def test_slot_route_rejects_bad_channel(self, client, logged_in, query):
         assert client.get(f"/api/social/slot{query}").status_code == 400
+
+    def test_slots_route(self, client, logged_in, monkeypatch):
+        seen = {}
+
+        def fake_list(config, channel, start, days):
+            seen.update(channel=channel, start=start, days=days)
+            return ["2026-10-26T14:20:00.000Z"]
+
+        monkeypatch.setattr(social_plugin, "list_slots", fake_list)
+        resp = client.get("/api/social/slots?channel=x1&start=2026-10-26T04:00:00.000Z&days=7")
+        assert resp.get_json() == {"slots": ["2026-10-26T14:20:00.000Z"]}
+        assert seen == {"channel": "x1", "start": "2026-10-26T04:00:00.000Z", "days": 7}
+
+    @pytest.mark.parametrize(
+        "query",
+        ["channel=x1&start=nope", "channel=x1&start=2026-10-26T00:00:00Z&days=lots", "start=2026-10-26T00:00:00Z"],
+    )
+    def test_slots_route_rejects_bad_query(self, client, logged_in, query):
+        assert client.get(f"/api/social/slots?{query}").status_code == 400
 
     def test_draft_url_must_be_a_string(self, client, logged_in):
         assert client.post("/api/social/draft", json={"url": 5, "channels": CHANNELS}).status_code == 400

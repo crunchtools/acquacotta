@@ -14,10 +14,12 @@ Credit: kirkjerk (localStorage approach idea, extended to IndexedDB)
 """
 
 import base64
+import hashlib
 import json
 import os
 import time
 import traceback
+from functools import cache
 from http import HTTPStatus
 from pathlib import Path
 from types import SimpleNamespace
@@ -27,7 +29,7 @@ from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"
 
 import requests
-from flask import Flask, Response, jsonify, redirect, render_template, request, send_from_directory, session
+from flask import Flask, Response, jsonify, redirect, render_template, request, send_from_directory, session, url_for
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
@@ -482,6 +484,22 @@ def terms():
 # installability. Both are served from the root so the worker's scope is "/".
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 SHARED_URL_MAX_LENGTH = 2048
+
+
+@cache
+def _asset_version(filename):
+    """First 10 hex of the file's SHA-256, computed once per process."""
+    return hashlib.sha256((STATIC_DIR / filename).read_bytes()).hexdigest()[:10]
+
+
+@app.context_processor
+def _asset_url_helper():
+    """``asset_url('js/storage.js')`` -> ``/static/js/storage.js?v=<content hash>``.
+
+    The hash changes whenever the file does, so a deploy can't leave browsers
+    (or Cloudflare, which caches /static for hours) running stale JS.
+    """
+    return {"asset_url": lambda filename: f"{url_for('static', filename=filename)}?v={_asset_version(filename)}"}
 
 
 @app.route("/manifest.webmanifest")
@@ -1763,6 +1781,30 @@ def api_social_slot():
     except HttpError as e:
         return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
     return jsonify({"date": date})
+
+
+@app.route("/api/social/slots", methods=["GET"])
+def api_social_slots():
+    """Open Postiz slots for the composer's slot sheet.
+
+    ``?channel=<integration id>&start=<ISO-8601 local midnight>&days=<1-14>``
+    (days defaults to 7). Returns ``{"slots": [ISO-8601 UTC, ...]}`` ascending.
+    """
+    drive_service, folder_id = _plugin_drive_context()
+    if not drive_service:
+        return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
+    try:
+        days = int(request.args.get("days", "7"))
+    except ValueError:
+        return jsonify({"error": "days must be a number"}), HTTPStatus.BAD_REQUEST
+    try:
+        config = social_plugin.read_config(drive_service, folder_id)
+        slots = social_plugin.list_slots(config, request.args.get("channel"), request.args.get("start") or "", days)
+    except (ValueError, social_plugin.SocialError) as exc:
+        return _social_error_response(exc)
+    except HttpError as e:
+        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+    return jsonify({"slots": slots})
 
 
 @app.route("/api/social/draft", methods=["POST"])
