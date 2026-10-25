@@ -643,6 +643,8 @@
         .social-when { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
         .social-when button { flex: 1; padding: 0.6rem 0.5rem; border: 1px solid #555; border-radius: 8px; background: transparent; color: var(--text-secondary); font-size: 0.85rem; cursor: pointer; }
         .social-when button[aria-pressed="true"] { border-color: var(--accent); color: inherit; font-weight: 600; }
+        .social-when button.social-step { flex: 0 0 44px; font-size: 1.1rem; padding: 0.6rem 0; }
+        .social-when button.social-step:disabled { opacity: 0.35; cursor: default; }
         .social-default-channels label { display: block; cursor: pointer; margin: 0.25rem 0; }
     </style>
     <script src="{{ url_for('static', filename='js/utils.js') }}?v=7"></script>
@@ -1067,7 +1069,9 @@
                 <div id="social-chips" class="social-chips" role="group" aria-label="Post to"></div>
                 <div class="social-count" id="social-count" aria-live="polite"></div>
                 <div class="social-when" id="social-when" role="group" aria-label="When" hidden>
+                    <button type="button" class="social-step" id="social-slot-prev" aria-label="Earlier open slot" onclick="socialStepSlot(-1)" disabled>‹</button>
                     <button type="button" id="social-when-next" aria-pressed="true" onclick="socialSetPickTime(false)">Next open slot</button>
+                    <button type="button" class="social-step" id="social-slot-next" aria-label="Later open slot" onclick="socialStepSlot(1)" disabled>›</button>
                     <button type="button" id="social-when-pick" aria-pressed="false" onclick="socialSetPickTime(true)">Pick a time</button>
                 </div>
                 <input type="datetime-local" id="social-time" aria-label="Post at" hidden onchange="socialChanged()">
@@ -7029,7 +7033,8 @@
         let socialArmed = false;      // primary button waiting for its confirming tap
         let socialScheduling = false; // primary button schedules instead of posting
         let socialSlotPending = false; // asking Postiz for the next free window
-        let socialNextSlot = null; // that window (a Date), shown on the default choice
+        let socialSlots = []; // open slots seen so far (Dates), in order, for ‹ ›
+        let socialSlotIdx = -1; // the one shown; see socialShownSlot()
         let socialPickTime = false; // schedule at the picker's time, not the next open slot
         const SOCIAL_SECRET_SAVED = '••••••••';
         const SOCIAL_URL_RE = /https?:\/\/\S+/i;
@@ -7234,7 +7239,8 @@
         function socialGoLabel(n) {
             const where = n === 1 ? '1 channel' : `${n} channels`;
             if (!socialScheduling) return `Post to ${where}`;
-            if (!socialPickTime) return socialNextSlot ? `Schedule ${where} · ${socialWhen(socialNextSlot)}` : `Schedule ${where} · next open slot`;
+            const slot = socialShownSlot();
+            if (!socialPickTime) return slot ? `Schedule ${where} · ${socialWhen(slot)}` : `Schedule ${where} · next open slot`;
             const t = document.getElementById('social-time').value;
             return t ? `Schedule ${where} · ${socialWhen(new Date(t))}` : 'Pick a time';
         }
@@ -7256,18 +7262,33 @@
             if (socialArmed && !(e.target instanceof Element && e.target.closest('#social-go'))) socialDisarm();
         }, true);
 
-        // Scheduling defaults to Postiz's next free posting window: the request
-        // goes without a date and the server asks Postiz at send time, so it
-        // can't go stale. The lookup here only labels that choice.
+        // Scheduling defaults to Postiz's next free posting window. ‹ › step
+        // through open slots: › asks Postiz for the first free one after the
+        // shown slot, ‹ goes back through the ones already seen. The shown
+        // slot is what gets sent; if the lookup failed, no date is sent and
+        // the server asks Postiz at send time.
         async function socialFillSlot() {
+            socialSlots = [];
+            socialSlotIdx = -1;
+            await socialFetchSlot();
+        }
+
+        function socialShownSlot() {
+            return socialSlots[socialSlotIdx] || null;
+        }
+
+        async function socialFetchSlot() {
             const sel = socialSelected();
-            socialNextSlot = null;
             if (!sel.length) return;
+            const after = socialShownSlot();
             socialSlotPending = true;
             socialShowNextSlot();
             try {
-                const d = new Date((await Storage.socialSlot(sel[0].id)).date);
-                if (!isNaN(d)) socialNextSlot = d;
+                const d = new Date((await Storage.socialSlot(sel[0].id, after ? after.toISOString() : undefined)).date);
+                if (isNaN(d)) throw new Error('Postiz returned no date');
+                if (after && d <= after) throw new Error('no later open slot');
+                socialSlots.push(d);
+                socialSlotIdx = socialSlots.length - 1;
             } catch (e) {
                 document.getElementById('social-result').textContent = 'Could not look up the next open slot: ' + (e.message || 'error');
             }
@@ -7276,10 +7297,25 @@
             socialChanged();
         }
 
+        function socialStepSlot(dir) {
+            if (socialSlotPending) return;
+            document.getElementById('social-result').textContent = '';
+            if (dir < 0 || socialSlotIdx < socialSlots.length - 1) {
+                socialSlotIdx = Math.max(0, socialSlotIdx + dir);
+                socialShowNextSlot();
+                socialChanged();
+                return;
+            }
+            socialFetchSlot();
+        }
+
         function socialShowNextSlot() {
+            const slot = socialShownSlot();
             document.getElementById('social-when-next').textContent = socialSlotPending
-                ? 'Next open slot…'
-                : socialNextSlot ? `Next open slot · ${socialWhen(socialNextSlot)}` : 'Next open slot';
+                ? 'Finding open slot…'
+                : slot ? (socialSlotIdx === 0 ? `Next open slot · ${socialWhen(slot)}` : socialWhen(slot)) : 'Next open slot';
+            document.getElementById('social-slot-prev').disabled = socialSlotPending || socialSlotIdx <= 0;
+            document.getElementById('social-slot-next').disabled = socialSlotPending || !slot;
         }
 
         function socialSetPickTime(pick) {
@@ -7288,8 +7324,9 @@
             document.getElementById('social-when-pick').setAttribute('aria-pressed', String(pick));
             const time = document.getElementById('social-time');
             time.hidden = !pick;
-            if (pick && !time.value && socialNextSlot) {
-                time.value = new Date(socialNextSlot.getTime() - socialNextSlot.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+            const slot = socialShownSlot();
+            if (pick && !time.value && slot) {
+                time.value = new Date(slot.getTime() - slot.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
             }
             socialChanged();
         }
@@ -7310,13 +7347,14 @@
             const sel = socialSelected();
             const body = socialBody();
             if (!body || !sel.length) return;
-            let date;
+            let date = socialScheduling && !socialPickTime ? socialShownSlot() : null;
             if (socialScheduling && socialPickTime) {
                 const local = document.getElementById('social-time').value;
                 if (!local) { resultEl.textContent = 'Pick a date and time.'; return; }
                 date = new Date(local);
                 if (date.getTime() <= Date.now()) { resultEl.textContent = 'That time has passed; post now instead.'; return; }
             }
+            if (date && date.getTime() <= Date.now()) { resultEl.textContent = 'That slot has passed; tap › for the next one.'; return; }
             if (!socialArmed) {
                 socialArmed = true;
                 go.classList.add('armed');

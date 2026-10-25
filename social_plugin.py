@@ -532,10 +532,18 @@ def list_integrations(config, with_limits=True):
     return channels
 
 
-def find_slot(config, integration_id):
-    """Postiz's next free posting slot for a channel, as an ISO-8601 UTC string."""
+def find_slot(config, integration_id, after=None):
+    """Postiz's next free posting slot for a channel, as an ISO-8601 UTC string.
+
+    With ``after`` (ISO-8601), the first free slot strictly after that instant,
+    so the composer can step through open slots (crunchtools/postiz >= 0.7.0).
+    """
     _require_id(integration_id)
-    slot = str(_postiz_request(config, "GET", f"/find-slot/{integration_id}").get("date") or "")
+    params = None
+    if after:
+        _require_iso_date(after)
+        params = {"after": after}
+    slot = str(_postiz_request(config, "GET", f"/find-slot/{integration_id}", params=params).get("date") or "")
     if not slot:
         raise SocialError("Postiz returned no free slot")
     # Postiz formats the slot in UTC without an offset ("YYYY-MM-DDTHH:mm:00").

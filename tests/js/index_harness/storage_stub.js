@@ -67,9 +67,11 @@
             if (cfg.socialPreviewError) throw new Error(cfg.socialPreviewError);
             return clone(cfg.socialPreview || { url, title: '', site: 'example.com', image: '' });
         },
-        socialSlot: async channelId => {
-            calls.push(['socialSlot', channelId]);
+        // With `after`, the next slot is five hours later (a fake posting window).
+        socialSlot: async (channelId, after) => {
+            calls.push(['socialSlot', channelId, after]);
             if (cfg.socialSlotError) throw new Error(cfg.socialSlotError);
+            if (after) return { date: new Date(new Date(after).getTime() + 5 * 3600e3).toISOString() };
             return clone(cfg.socialSlot || { date: '2999-06-01T14:20:00Z' });
         },
         socialDraft: async (url, channels) => {

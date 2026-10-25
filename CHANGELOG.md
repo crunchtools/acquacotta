@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.24.0] - 2026-10-24
+
+### Added
+- ‹ › beside the scheduled slot step through Postiz's open slots: › asks for
+  the first free slot after the one shown (needs crunchtools/postiz >= 0.7.0,
+  `find-slot?after=`), ‹ steps back. The slot shown is the one scheduled.
+
 ## [2.23.0] - 2026-10-24
 
 ### Added

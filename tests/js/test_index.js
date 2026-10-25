@@ -273,21 +273,42 @@ test('over the limit names the channel and blocks posting', SOCIAL_SIGNED_IN, as
     assert.equal(await page.evaluate(() => sessionStorage.getItem('acquacotta_pending_share')), null, 'removing the card drops the share');
 });
 
-test('scheduling defaults to the next open slot and sends no date', SOCIAL_SIGNED_IN, async ({ page }) => {
+test('scheduling defaults to the next open slot and sends it', SOCIAL_SIGNED_IN, async ({ page }) => {
     await composerReady(page);
     await setSocialText(page, 'Later');
     await page.click('#social-mode-link');
     await page.waitForFunction(() => /^Next open slot · /.test(document.getElementById('social-when-next').textContent));
-    assert.deepEqual((await socialCalls(page, 'socialSlot')).map(c => c[1]), ['x1']);
+    assert.deepEqual((await socialCalls(page, 'socialSlot')).map(c => c.slice(1)), [['x1', null]]);
     assert.equal(await page.$eval('#social-when-next', el => el.getAttribute('aria-pressed')), 'true');
     assert.equal(await page.$eval('#social-time', el => el.hidden), true, 'no picker unless asked for');
+    assert.equal(await page.$eval('#social-slot-prev', el => el.disabled), true, 'nothing earlier than the first slot');
     assert.match(await page.$eval('#social-go', el => el.textContent), /^Schedule 1 channel · /);
     await page.click('#social-go');
     await page.click('#social-go');
     await page.waitForFunction(() => window.__storageCalls.some(c => c[0] === 'socialSchedule'));
     const [[, req]] = await socialCalls(page, 'socialSchedule');
     assert.equal(req.mode, 'schedule');
-    assert.equal('date' in req, false, 'the server picks the slot at send time');
+    assert.equal(req.date, '2999-06-01T14:20:00.000Z', 'what you see is what gets scheduled');
+});
+
+test('› and ‹ step through open slots', SOCIAL_SIGNED_IN, async ({ page }) => {
+    await composerReady(page);
+    await setSocialText(page, 'Later');
+    await page.click('#social-mode-link');
+    await page.waitForFunction(() => !document.getElementById('social-slot-next').disabled);
+    await page.click('#social-slot-next');
+    await page.waitForFunction(() => !document.getElementById('social-slot-prev').disabled);
+    await page.click('#social-slot-next');
+    await page.waitForFunction(() => (window.__storageCalls.filter(c => c[0] === 'socialSlot').length === 3) && !document.getElementById('social-slot-next').disabled);
+    const afters = (await socialCalls(page, 'socialSlot')).map(c => c[2]);
+    assert.deepEqual(afters, [null, '2999-06-01T14:20:00.000Z', '2999-06-01T19:20:00.000Z'], '› asks for the slot after the shown one');
+    await page.click('#social-slot-prev');
+    assert.equal((await socialCalls(page, 'socialSlot')).length, 3, '‹ reuses slots already seen');
+    await page.click('#social-go');
+    await page.click('#social-go');
+    await page.waitForFunction(() => window.__storageCalls.some(c => c[0] === 'socialSchedule'));
+    const [[, req]] = await socialCalls(page, 'socialSchedule');
+    assert.equal(req.date, '2999-06-01T19:20:00.000Z');
 });
 
 test('Pick a time sends the picked time', SOCIAL_SIGNED_IN, async ({ page }) => {
