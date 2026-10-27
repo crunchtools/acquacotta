@@ -6,7 +6,7 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [2.27.0] - 2026-10-27
+## [2.26.1] - 2026-10-27
 
 ### Changed
 - Shared-link images are now attached per platform instead of to every channel.
