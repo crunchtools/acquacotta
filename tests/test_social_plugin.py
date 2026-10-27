@@ -654,7 +654,9 @@ class TestLinkPreview:
         monkeypatch.setattr(social_plugin, "_fetch_image", lambda u: (big, "image/jpeg", "jpg"))
         card = social_plugin.link_preview("https://www.example.com/a")
         assert card["image"] == "" and card["site"] == "Example"
-        assert card["image_url"] == "https://cdn.example.com/i.png", "raw og:image kept even when the preview thumbnail is dropped"
+        assert card["image_url"] == "https://cdn.example.com/i.png", (
+            "raw og:image kept even when the preview thumbnail is dropped"
+        )
 
     def test_image_failure_keeps_card(self, monkeypatch):
         self._page(monkeypatch)
