@@ -548,16 +548,60 @@ class TestPostiz:
         x_post, li_post = body["posts"]
         assert x_post["integration"] == {"id": "x1"}
         assert x_post["value"][0]["content"] == "<p>Line one</p><p>Line &lt;two&gt; &amp; more</p>"
-        assert x_post["value"][0]["image"] == [{"id": "m1", "path": "https://postiz.example.com/uploads/c.png"}]
+        # x auto-unfurls a bare link, so it gets no photo; LinkedIn can't, so it does.
+        assert x_post["value"][0]["image"] == []
+        assert li_post["value"][0]["image"] == [{"id": "m1", "path": "https://postiz.example.com/uploads/c.png"}]
         assert x_post["settings"] == {"who_can_reply_post": "everyone"}
         assert li_post["settings"] == {}
+
+    def test_image_attaches_only_to_cardless_platforms(self, http):
+        def handler(m, u, k):
+            if u == "https://example.com/cover":
+                return FakeResp(200, headers={"Content-Type": "image/png"}, body=b"\x89PNG")
+            if u.endswith("/upload"):
+                return FakeResp(json_data={"id": "m1", "path": "https://postiz.example.com/uploads/c.png"})
+            if u.endswith("/posts"):
+                return FakeResp(json_data=[])
+            raise AssertionError(u)
+
+        http.handler = handler
+        posts = [
+            {"integration_id": "li1", "identifier": "linkedin", "text": "t"},
+            {"integration_id": "bs1", "identifier": "bluesky", "text": "t"},
+            {"integration_id": "fb1", "identifier": "facebook", "text": "t"},
+            {"integration_id": "x1", "identifier": "x", "text": "t"},
+            {"integration_id": "ma1", "identifier": "mastodon", "text": "t"},
+            {"integration_id": "th1", "identifier": "threads", "text": "t"},
+        ]
+        social_plugin.schedule(_cfg(), "now", posts, image_url="https://example.com/cover")
+        body = next(c for c in http.calls if c[1].endswith("/posts"))[2]["json"]
+        media = {"id": "m1", "path": "https://postiz.example.com/uploads/c.png"}
+        got = {p["integration"]["id"]: p["value"][0]["image"] for p in body["posts"]}
+        assert got == {"li1": [media], "bs1": [media], "fb1": [media], "x1": [], "ma1": [], "th1": []}
+
+    def test_link_only_group_skips_image_upload(self, http):
+        http.handler = lambda m, u, k: FakeResp(json_data=[])
+        result = social_plugin.schedule(
+            _cfg(),
+            "now",
+            [
+                {"integration_id": "x1", "identifier": "x", "text": "t"},
+                {"integration_id": "ma1", "identifier": "mastodon", "text": "t"},
+            ],
+            image_url="https://example.com/cover",
+        )
+        # No selected channel needs a photo, so the image is never fetched or uploaded.
+        assert [c[1] for c in http.calls] == ["https://postiz.example.com/api/public/v1/posts"]
+        body = http.calls[-1][2]["json"]
+        assert all(post["value"][0]["image"] == [] for post in body["posts"])
+        assert result["warnings"] == []
 
     def test_schedule_draft_with_date_skips_slot_and_bad_image(self, http):
         http.handler = lambda m, u, k: FakeResp(json_data=[{"postId": "p1", "integration": "x1"}])
         result = social_plugin.schedule(
             _cfg(),
             "draft",
-            [{"integration_id": "x1", "identifier": "x", "text": "hi"}],
+            [{"integration_id": "li1", "identifier": "linkedin", "text": "hi"}],
             date="2026-11-01T09:30:00.000Z",
             image_url="https://example.com/og-image",
         )
@@ -573,7 +617,7 @@ class TestPostiz:
     def test_non_string_image_is_a_warning(self, http):
         http.handler = lambda m, u, k: FakeResp(json_data=[])
         result = social_plugin.schedule(
-            _cfg(), "now", [{"integration_id": "x1", "identifier": "x", "text": "hi"}], image_url=["x"]
+            _cfg(), "now", [{"integration_id": "li1", "identifier": "linkedin", "text": "hi"}], image_url=["x"]
         )
         assert "must be a string" in result["warnings"][0]
 
@@ -589,7 +633,7 @@ class TestPostiz:
         result = social_plugin.schedule(
             _cfg(),
             "now",
-            [{"integration_id": "x1", "identifier": "x", "text": "hi"}],
+            [{"integration_id": "li1", "identifier": "linkedin", "text": "hi"}],
             image_url="https://example.com/i.jpg",
         )
         assert "larger than" in result["warnings"][0]
@@ -600,7 +644,7 @@ class TestPostiz:
         result = social_plugin.schedule(
             _cfg(),
             "now",
-            [{"integration_id": "x1", "identifier": "x", "text": "hi"}],
+            [{"integration_id": "li1", "identifier": "linkedin", "text": "hi"}],
             image_url="http://169.254.169.254/latest.png",
         )
         assert not any(c[1].endswith("/upload") for c in http.calls)

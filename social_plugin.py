@@ -72,6 +72,16 @@ _DEFAULT_LIMIT = 3000
 # per provider for anything but a draft; X refuses a post with no reply policy.
 _PROVIDER_DEFAULT_SETTINGS = {"x": {"who_can_reply_post": "everyone"}}
 
+# Platforms that auto-unfurl a bare link into their own native card. A photo
+# attachment would suppress that card and look worse, so these get the URL alone
+# and no photo. Every other platform gets the shared article's image as a native
+# photo: LinkedIn and Bluesky never unfurl via their APIs, Facebook unfurls a
+# URL-in-text unreliably, and media-first platforms (Instagram, Pinterest,
+# TikTok) require an image to post at all. Defaulting unlisted platforms to "get
+# the photo" fails safe, since a missing required image means a post that won't
+# publish.
+_LINK_UNFURL_PROVIDERS = frozenset({"x", "mastodon", "threads"})
+
 # Image types Postiz accepts as post media, and the extension each is stored with.
 _IMAGE_TYPES = {"image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp"}
 _IMAGE_MAX_BYTES = 5_000_000
@@ -729,7 +739,9 @@ def build_post_payload(mode, date, posts, media=None):
         date: ISO-8601 time for the whole group; Postiz keeps one date per request.
         posts: [{"integration_id", "identifier", "text"}], validated by ``_clean_posts``.
             ``identifier`` (the Postiz provider, e.g. "x") selects default settings.
-        media: optional {"id", "path"} from a Postiz upload, attached to every post.
+        media: optional {"id", "path"} from a Postiz upload. Attached to every
+            post except those on link-unfurling platforms (``_LINK_UNFURL_PROVIDERS``:
+            x, mastodon, threads), which get the bare URL and no photo.
 
     Returns:
         {"type", "shortLink": False, "date", "tags": [], "posts": [{"integration":
@@ -743,12 +755,19 @@ def build_post_payload(mode, date, posts, media=None):
         "posts": [
             {
                 "integration": {"id": post["integration_id"]},
-                "value": [{"content": text_to_postiz_html(post["text"]), "image": [media] if media else []}],
+                "value": [
+                    {"content": text_to_postiz_html(post["text"]), "image": _post_image(media, post["identifier"])}
+                ],
                 "settings": dict(_PROVIDER_DEFAULT_SETTINGS.get(post["identifier"], {})),
             }
             for post in posts
         ],
     }
+
+
+def _post_image(media, identifier):
+    """The image list for one post: the media unless the platform unfurls the link itself."""
+    return [media] if media and identifier not in _LINK_UNFURL_PROVIDERS else []
 
 
 def _utc_now_iso():
@@ -785,7 +804,10 @@ def schedule(config, mode, posts, date=None, image_url=None):
             no date is given), "draft" (saved in Postiz, not published) or "now".
         posts: [{"integration_id", "identifier", "text"}], one per channel.
         date: optional ISO-8601 time for schedule/draft.
-        image_url: optional page image, imported into Postiz media first.
+        image_url: optional page image. Imported into Postiz media and attached as
+            a native photo on every channel except the link-unfurling ones
+            (``_LINK_UNFURL_PROVIDERS``), which post the bare URL. Skipped entirely
+            if every selected channel unfurls its own link.
 
     Returns:
         {"date", "posts": [{"postId", "integration"}], "warnings": [...], "postiz_url"}.
@@ -800,7 +822,10 @@ def schedule(config, mode, posts, date=None, image_url=None):
         raise ValueError(f"mode must be one of {', '.join(_POST_MODES)}")
     clean = _clean_posts(posts)
     when = _resolve_date(config, mode, date, clean[0]["integration_id"])
-    media, warning = _upload_image(config, image_url)
+    # Only fetch and upload the image if a selected channel will actually attach
+    # it; a link-only group (x/mastodon/threads) needs no upload and no warning.
+    needs_photo = any(post["identifier"] not in _LINK_UNFURL_PROVIDERS for post in clean)
+    media, warning = _upload_image(config, image_url) if needs_photo else (None, "")
     created = _postiz_request(config, "POST", "/posts", json=build_post_payload(mode, when, clean, media))
     return {
         "date": when,
