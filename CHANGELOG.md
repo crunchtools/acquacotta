@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.26.0] - 2026-10-26
+
+### Changed
+- Shared links now post with the article image. The composer sends the page's
+  og:image URL (already fetched for the preview card) back on post, and the
+  server attaches it to every selected channel as a photo. LinkedIn and Bluesky,
+  which don't unfurl a link posted through their API, now show the image instead
+  of a bare link. Removing the card with ✕ still posts without it.
+
 ## [2.25.0] - 2026-10-25
 
 ### Changed

@@ -7198,7 +7198,7 @@
 
         // ---- link card ----
         function socialSetLink(url) {
-            socialLink = url ? { url, title: '', site: '', image: '' } : null;
+            socialLink = url ? { url, title: '', site: '', image: '', image_url: '' } : null;
             socialRenderCard();
             if (url && authStatus && authStatus.logged_in) socialFetchPreview();
             socialChanged();
@@ -7475,7 +7475,9 @@
             const body = socialBody();
             if (socialSending || !body || !sel.length) return;
             const posts = sel.map(c => ({ integration_id: c.id, identifier: c.identifier, text: body }));
-            if (!socialScheduling) { socialSend({ mode: 'now', posts }); return; }
+            // Attach the shared link's image so every channel posts it as a photo.
+            const img = socialLink && socialLink.image_url ? { image_url: socialLink.image_url } : {};
+            if (!socialScheduling) { socialSend({ mode: 'now', posts, ...img }); return; }
             if (socialChosen && socialChosen.getTime() <= Date.now()) {
                 socialStatus('That time has passed', { error: true });
                 socialChosen = null;
@@ -7483,7 +7485,7 @@
                 socialLoadSlots(false);
                 return;
             }
-            socialSend({ mode: 'schedule', posts, ...(socialChosen ? { date: socialChosen.toISOString() } : {}) });
+            socialSend({ mode: 'schedule', posts, ...img, ...(socialChosen ? { date: socialChosen.toISOString() } : {}) });
         }
 
         async function socialSend(request) {

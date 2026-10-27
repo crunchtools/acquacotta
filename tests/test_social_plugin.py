@@ -644,6 +644,7 @@ class TestLinkPreview:
         monkeypatch.setattr(social_plugin, "_fetch_image", lambda u: (b"\x89PNG", "image/png", "png"))
         card = social_plugin.link_preview("https://www.example.com/a")
         assert card["image"] == "data:image/png;base64,iVBORw=="
+        assert card["image_url"] == "https://cdn.example.com/i.png", "raw og:image URL for the post"
         assert card["site"] == "example.com", "domain without www when there is no og:site_name"
         assert card["title"] == "A title"
 
@@ -653,6 +654,9 @@ class TestLinkPreview:
         monkeypatch.setattr(social_plugin, "_fetch_image", lambda u: (big, "image/jpeg", "jpg"))
         card = social_plugin.link_preview("https://www.example.com/a")
         assert card["image"] == "" and card["site"] == "Example"
+        assert card["image_url"] == "https://cdn.example.com/i.png", (
+            "raw og:image kept even when the preview thumbnail is dropped"
+        )
 
     def test_image_failure_keeps_card(self, monkeypatch):
         self._page(monkeypatch)
@@ -661,12 +665,15 @@ class TestLinkPreview:
             raise social_plugin.SocialError("nope")
 
         monkeypatch.setattr(social_plugin, "_fetch_image", boom)
-        assert social_plugin.link_preview("https://www.example.com/a")["image"] == ""
+        card = social_plugin.link_preview("https://www.example.com/a")
+        assert card["image"] == ""
+        assert card["image_url"] == "https://cdn.example.com/i.png", "raw og:image kept when the fetch fails"
 
     def test_no_image_skips_fetch(self, monkeypatch):
         self._page(monkeypatch, image="")
         monkeypatch.setattr(social_plugin, "_fetch_image", lambda u: pytest.fail("should not fetch"))
-        assert social_plugin.link_preview("https://www.example.com/a")["image"] == ""
+        card = social_plugin.link_preview("https://www.example.com/a")
+        assert card["image"] == "" and card["image_url"] == ""
 
 
 class TestShareRoute:
