@@ -46,3 +46,6 @@ start.sh
 
 # Python coverage
 .coverage
+
+# Claude Code local permissions (per-machine, never shared)
+.claude/settings.local.json

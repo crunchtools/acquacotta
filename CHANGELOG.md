@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.27.0] - 2026-10-27
+
+### Changed
+- Shared-link images are now attached per platform instead of to every channel.
+  X, Mastodon, and Threads get the bare URL so they keep auto-unfurling their own
+  native card, which a photo attachment would otherwise suppress. Every other
+  channel (LinkedIn, Bluesky, Facebook, and media-first platforms like Instagram)
+  gets the article photo, since it can't make a good card from a bare URL. This
+  fixes the v2.26.0 regression where attaching the photo everywhere replaced
+  those native cards with a lone image. When every selected channel unfurls its
+  own link, the image is not fetched or uploaded at all.
+
 ## [2.26.0] - 2026-10-26
 
 ### Changed
