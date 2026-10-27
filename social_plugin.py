@@ -650,11 +650,13 @@ def _fetch_image(image_url):
 
 
 def link_preview(url):
-    """A link card for the composer: url, title, site (name or domain) and image.
+    """A link card for the composer: url, title, site (name or domain), image, image_url.
 
-    ``image`` is a data: URI of the page's og:image, or "" when there is none, it
-    fails, or it is over the preview cap. The preview is display-only: the posts
-    carry just the URL and each platform builds its own card from it.
+    ``image`` is a data: URI of the page's og:image for display, or "" when there
+    is none, it fails, or it is over the preview cap. ``image_url`` is the page's
+    raw og:image URL (or ""), which the composer sends back on post so the server
+    attaches it to every channel as a photo. ``image_url`` is set whenever the page
+    has an og:image, even when ``image`` is dropped for being too big to inline.
 
     Raises:
         ValueError / SocialError: as ``fetch_page`` (the page itself failed).
@@ -673,6 +675,7 @@ def link_preview(url):
         "title": page["title"],
         "site": page["site_name"] or (urlparse(page["url"]).hostname or "").removeprefix("www."),
         "image": image,
+        "image_url": page.get("image") or "",
     }
 
 

@@ -258,6 +258,31 @@ test('one tap posts now, with the card URL appended', SOCIAL_SIGNED_IN, async ({
     assert.equal(await page.$eval('#social-card', el => el.innerHTML), '', 'card clears');
 });
 
+test("a shared link's image is sent so every channel posts it as a photo", {
+    ...SOCIAL_SIGNED_IN,
+    socialPreview: { url: SHARED, title: 'T', site: 'example.com', image: '', image_url: 'https://cdn.example.com/i.png' },
+}, async ({ page }) => {
+    await composerReady(page);
+    await page.waitForFunction(() => !document.querySelector('.social-card.loading'));
+    await setSocialText(page, 'Worth a read');
+    await page.click('#social-go');
+    assert.equal((await sent(page)).image_url, 'https://cdn.example.com/i.png', 'the og image rides along on post');
+});
+
+test('removing the card drops the image from the post', {
+    ...SOCIAL_SIGNED_IN,
+    socialPreview: { url: SHARED, title: 'T', site: 'example.com', image: '', image_url: 'https://cdn.example.com/i.png' },
+}, async ({ page }) => {
+    await composerReady(page);
+    await page.waitForFunction(() => !document.querySelector('.social-card.loading'));
+    await page.click('.social-card-remove');
+    await setSocialText(page, 'Just text');
+    await page.click('#social-go');
+    const req = await sent(page);
+    assert.equal(req.image_url, undefined, 'no image once the card is removed');
+    assert.equal(req.posts[0].text, 'Just text', 'and no URL appended either');
+});
+
 test('Post now shows no scheduling UI', SOCIAL_SIGNED_IN, async ({ page }) => {
     await composerReady(page);
     assert.equal(await page.$eval('#social-mode-now', el => el.getAttribute('aria-checked')), 'true');
