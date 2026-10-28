@@ -519,8 +519,6 @@ class TestPostiz:
                 return FakeResp(json_data={"date": "2026-10-25T14:00:00"})
             if u == "https://example.com/cover":
                 return FakeResp(200, headers={"Content-Type": "image/png"}, body=b"\x89PNG fake")
-            if u.endswith("/upload"):
-                return FakeResp(json_data={"id": "m1", "path": "https://postiz.example.com/uploads/c.png"})
             if u.endswith("/posts"):
                 return FakeResp(
                     json_data=[{"postId": "p1", "integration": "x1"}, {"postId": "p2", "integration": "li1"}]
@@ -537,9 +535,10 @@ class TestPostiz:
         assert result["posts"][0]["postId"] == "p1"
         assert result["postiz_url"] == "https://postiz.example.com"
         assert result["warnings"] == []
-        upload = next(c for c in http.calls if c[1].endswith("/upload"))
-        assert upload[2]["files"] == {"file": ("image.png", b"\x89PNG fake", "image/png")}
-        assert "json" not in upload[2], "Postiz is never handed a URL to fetch"
+        # The image is validated by fetching it, but never uploaded to Postiz; the
+        # source URL is handed straight to Postiz as the media path.
+        assert any(c[1] == "https://example.com/cover" for c in http.calls)
+        assert not any(c[1].endswith("/upload") for c in http.calls)
         body = next(c for c in http.calls if c[1].endswith("/posts"))[2]["json"]
         assert body["type"] == "schedule"
         assert body["shortLink"] is False
@@ -550,7 +549,8 @@ class TestPostiz:
         assert x_post["value"][0]["content"] == "<p>Line one</p><p>Line &lt;two&gt; &amp; more</p>"
         # x auto-unfurls a bare link, so it gets no photo; LinkedIn can't, so it does.
         assert x_post["value"][0]["image"] == []
-        assert li_post["value"][0]["image"] == [{"id": "m1", "path": "https://postiz.example.com/uploads/c.png"}]
+        li_img = li_post["value"][0]["image"]
+        assert len(li_img) == 1 and li_img[0]["path"] == "https://example.com/cover" and li_img[0]["id"]
         assert x_post["settings"] == {"who_can_reply_post": "everyone"}
         assert li_post["settings"] == {}
 
@@ -558,8 +558,6 @@ class TestPostiz:
         def handler(m, u, k):
             if u == "https://example.com/cover":
                 return FakeResp(200, headers={"Content-Type": "image/png"}, body=b"\x89PNG")
-            if u.endswith("/upload"):
-                return FakeResp(json_data={"id": "m1", "path": "https://postiz.example.com/uploads/c.png"})
             if u.endswith("/posts"):
                 return FakeResp(json_data=[])
             raise AssertionError(u)
@@ -574,10 +572,13 @@ class TestPostiz:
             {"integration_id": "th1", "identifier": "threads", "text": "t"},
         ]
         social_plugin.schedule(_cfg(), "now", posts, image_url="https://example.com/cover")
+        assert not any(c[1].endswith("/upload") for c in http.calls)
         body = next(c for c in http.calls if c[1].endswith("/posts"))[2]["json"]
-        media = {"id": "m1", "path": "https://postiz.example.com/uploads/c.png"}
         got = {p["integration"]["id"]: p["value"][0]["image"] for p in body["posts"]}
-        assert got == {"li1": [media], "bs1": [media], "fb1": [media], "x1": [], "ma1": [], "th1": []}
+        for card_less in ("li1", "bs1", "fb1"):
+            assert len(got[card_less]) == 1 and got[card_less][0]["path"] == "https://example.com/cover"
+        for unfurls in ("x1", "ma1", "th1"):
+            assert got[unfurls] == []
 
     def test_link_only_group_skips_image_upload(self, http):
         http.handler = lambda m, u, k: FakeResp(json_data=[])
@@ -620,6 +621,19 @@ class TestPostiz:
             _cfg(), "now", [{"integration_id": "li1", "identifier": "linkedin", "text": "hi"}], image_url=["x"]
         )
         assert "must be a string" in result["warnings"][0]
+
+    def test_image_url_with_credentials_is_skipped(self, http):
+        http.handler = lambda m, u, k: FakeResp(json_data=[])
+        result = social_plugin.schedule(
+            _cfg(),
+            "now",
+            [{"integration_id": "li1", "identifier": "linkedin", "text": "hi"}],
+            image_url="https://user:secret@cdn.example.com/i.png",
+        )
+        # A credential-bearing URL is never fetched or forwarded to Postiz.
+        assert not any(c[1].startswith("https://user:") or "cdn.example.com" in c[1] for c in http.calls)
+        assert "must not carry credentials" in result["warnings"][0]
+        assert http.calls[-1][2]["json"]["posts"][0]["value"][0]["image"] == []
 
     def test_oversized_image_is_skipped(self, http, monkeypatch):
         monkeypatch.setattr(social_plugin, "_IMAGE_MAX_BYTES", 10)
