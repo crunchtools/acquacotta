@@ -635,6 +635,18 @@ class TestPostiz:
         assert "must not carry credentials" in result["warnings"][0]
         assert http.calls[-1][2]["json"]["posts"][0]["value"][0]["image"] == []
 
+    def test_malformed_image_url_is_a_warning(self, http):
+        http.handler = lambda m, u, k: FakeResp(json_data=[])
+        result = social_plugin.schedule(
+            _cfg(),
+            "now",
+            [{"integration_id": "li1", "identifier": "linkedin", "text": "hi"}],
+            image_url="https://[oops",  # unmatched bracket -> urlparse raises ValueError
+        )
+        # A malformed URL skips the image with a warning, never aborting the post.
+        assert result["warnings"] and "Image skipped" in result["warnings"][0]
+        assert http.calls[-1][2]["json"]["posts"][0]["value"][0]["image"] == []
+
     def test_oversized_image_is_skipped(self, http, monkeypatch):
         monkeypatch.setattr(social_plugin, "_IMAGE_MAX_BYTES", 10)
 
