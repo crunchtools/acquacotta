@@ -21,6 +21,7 @@ import base64
 import html
 import json
 import re
+import secrets
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
@@ -689,13 +690,18 @@ def link_preview(url):
     }
 
 
-def _upload_image(config, image_url):
-    """Put the page image into Postiz media; returns (media, warning).
+def _prepare_media(image_url):
+    """Validate the page image and return (media, warning) pointing at its source URL.
 
-    The server downloads the image itself, through the same guard as the page
-    (every redirect and the connected address checked), and uploads the bytes.
-    Postiz is never handed a URL to fetch, so it can't be steered at anything
-    on its own network. Any failure drops the image with a warning; the posts
+    acquacotta checks the image is a public, in-bounds image through the same SSRF
+    guard as the page (every redirect and connected address checked) by fetching
+    it, then hands Postiz the SOURCE URL as the media path instead of uploading the
+    bytes. A Postiz-hosted upload URL is not fetchable from inside the Postiz
+    container (its public hostname serves a self-signed cert there, and Postiz's own
+    guard blocks the internal address), so LinkedIn and Bluesky, which download the
+    image themselves, fail on it; the source URL is publicly reachable, so every
+    provider can fetch it. Postiz refetches the URL at publish time, with its own
+    guard as the backstop. Any failure drops the image with a warning; the posts
     still go out.
     """
     if not image_url:
@@ -703,13 +709,16 @@ def _upload_image(config, image_url):
     if not isinstance(image_url, str):
         return None, "Image skipped: image_url must be a string."
     try:
-        body, content_type, ext = _fetch_image(image_url)
-        media = _postiz_request(config, "POST", "/upload", files={"file": (f"image.{ext}", body, content_type)})
+        # The URL is handed to Postiz and the platforms, so never forward one
+        # that carries credentials in its userinfo. urlparse is inside the try so
+        # a malformed URL skips the image rather than aborting the whole post.
+        parsed = urlparse(image_url)
+        if parsed.username or parsed.password:
+            return None, "Image skipped: image URL must not carry credentials."
+        _fetch_image(image_url)
     except (ValueError, SocialError) as exc:
         return None, f"Image skipped: {exc}"
-    if not isinstance(media, dict) or not media.get("id") or not media.get("path"):
-        return None, "Image skipped: Postiz returned no media id."
-    return {"id": str(media["id"]), "path": str(media["path"])}, ""
+    return {"id": secrets.token_hex(8), "path": image_url}, ""
 
 
 def _clean_posts(posts):
@@ -804,7 +813,7 @@ def schedule(config, mode, posts, date=None, image_url=None):
             no date is given), "draft" (saved in Postiz, not published) or "now".
         posts: [{"integration_id", "identifier", "text"}], one per channel.
         date: optional ISO-8601 time for schedule/draft.
-        image_url: optional page image. Imported into Postiz media and attached as
+        image_url: optional page image. Validated, then attached by its source URL as
             a native photo on every channel except the link-unfurling ones
             (``_LINK_UNFURL_PROVIDERS``), which post the bare URL. Skipped entirely
             if every selected channel unfurls its own link.
@@ -822,10 +831,10 @@ def schedule(config, mode, posts, date=None, image_url=None):
         raise ValueError(f"mode must be one of {', '.join(_POST_MODES)}")
     clean = _clean_posts(posts)
     when = _resolve_date(config, mode, date, clean[0]["integration_id"])
-    # Only fetch and upload the image if a selected channel will actually attach
-    # it; a link-only group (x/mastodon/threads) needs no upload and no warning.
+    # Link-only groups (x/mastodon/threads) carry no image, so there is nothing
+    # to fetch for them and no warning to raise.
     needs_photo = any(post["identifier"] not in _LINK_UNFURL_PROVIDERS for post in clean)
-    media, warning = _upload_image(config, image_url) if needs_photo else (None, "")
+    media, warning = _prepare_media(image_url) if needs_photo else (None, "")
     created = _postiz_request(config, "POST", "/posts", json=build_post_payload(mode, when, clean, media))
     return {
         "date": when,

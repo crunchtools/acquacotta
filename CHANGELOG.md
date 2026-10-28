@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.26.2] - 2026-10-28
+
+### Fixed
+- Shared-link images now post reliably on LinkedIn and Bluesky. The image is no
+  longer uploaded to Postiz first; acquacotta validates it (same SSRF guard) and
+  hands Postiz the source image URL as the media path. A Postiz-hosted upload URL
+  is not fetchable from inside the Postiz container (its public hostname serves a
+  self-signed cert there, and Postiz's own guard blocks the internal address), so
+  LinkedIn and Bluesky — which download the image themselves — failed on it, while
+  Facebook (which has its servers fetch the URL) succeeded. The source URL is
+  publicly reachable, so every provider can fetch it.
+
 ## [2.26.1] - 2026-10-27
 
 ### Changed
