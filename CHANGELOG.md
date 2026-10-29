@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.31.1] - 2026-10-29
+
+### Fixed
+- Tickets: the ticket modal no longer scrolls as a whole. The header, comment
+  form and actions stay in place and only the history thread scrolls, filling
+  the height that is left. Modal scrollbars are thin and theme-coloured, and
+  the page behind an open modal no longer scrolls.
+
 ## [2.31.0] - 2026-10-29
 
 ### Changed

@@ -180,11 +180,33 @@
             background: rgba(0,0,0,0.7); align-items: center; justify-content: center; z-index: 100;
         }
         .modal-overlay.active { display: flex; }
+        /* The page behind an open modal does not scroll */
+        body:has(.modal-overlay.active) { overflow: hidden; }
         .modal { background: var(--bg-secondary); border-radius: 8px; padding: 1.5rem; width: 100%; max-width: 400px; margin: 1rem; max-height: calc(100dvh - 2rem); overflow-y: auto; }
         /* The ticket detail modal is a reading surface (long subject, history thread,
            action forms), not a compact form — give it room on desktop. On mobile the
            width:100% cap still holds, so it stays full-width there. */
         #rt-detail-modal .modal { max-width: 720px; }
+        /* The ticket modal never scrolls as a whole: header, forms and actions stay
+           put and only the history thread scrolls, taking whatever height is left.
+           Very short viewports fall back to scrolling the whole modal. */
+        @media (min-height: 560px) {
+            #rt-detail-modal .modal { display: flex; flex-direction: column; overflow: hidden; }
+            #rt-detail-modal .modal > * { flex-shrink: 0; }
+            #rt-detail-modal #rt-detail-history { flex: 1 1 auto; min-height: 6rem; max-height: none; }
+            #rt-detail-modal .modal-actions { position: static; }
+        }
+        #rt-detail-history {
+            max-height: 40vh; overflow-y: auto; overscroll-behavior: contain;
+            margin: 0 -0.5rem 1rem 0; padding-right: 0.5rem;
+        }
+        /* Thin, theme-coloured scrollbars that brighten on hover instead of the
+           bright native ones */
+        .modal, #rt-detail-history {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255,255,255,0.12) transparent;
+        }
+        .modal:hover, #rt-detail-history:hover { scrollbar-color: rgba(255,255,255,0.28) transparent; }
         .modal h2 { margin-bottom: 1.5rem; }
         .modal-actions {
             display: flex; gap: 0.75rem; justify-content: flex-end;
@@ -1102,7 +1124,7 @@
             <div class="modal">
                 <h2 id="rt-detail-title">Ticket</h2>
                 <div id="rt-detail-meta" class="todo-meta" style="margin-bottom: 0.75rem; flex-wrap: wrap;"></div>
-                <div id="rt-detail-history" style="max-height: 40vh; overflow-y: auto; margin-bottom: 1rem;"></div>
+                <div id="rt-detail-history"></div>
                 <div class="form-group">
                     <label for="rt-action-type">Add to ticket</label>
                     <select id="rt-action-type">
