@@ -1185,7 +1185,10 @@ class TestSocialEndpoints:
 
     def test_posts_route_unconfigured(self, client, logged_in):
         logged_in["cfg"] = social_plugin.validate_config({})
-        assert client.get("/api/social/posts?start=a&end=b").get_json() == {"configured": False, "posts": []}
+        ok = "start=2026-10-21T00:00:00Z&end=2026-11-01T00:00:00Z"
+        assert client.get(f"/api/social/posts?{ok}").get_json() == {"configured": False, "posts": []}
+        # The range is checked whether or not Postiz is configured.
+        assert client.get("/api/social/posts?start=a&end=b").status_code == 400
 
     def test_draft_url_must_be_a_string(self, client, logged_in):
         assert client.post("/api/social/draft", json={"url": 5, "channels": CHANNELS}).status_code == 400

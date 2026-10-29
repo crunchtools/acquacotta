@@ -2,9 +2,8 @@
 
 The web app routes on the URL hash (``/#todos/item/<id>``, ``/#rt/ticket/<id>``;
 see ``parseRoute`` in static/js/utils.js), so an agent can give the user a link
-that opens the exact item. The server only learns its public URL from the
-environment: ``ACQUACOTTA_PUBLIC_URL``, else ``OAUTH_REDIRECT_BASE``. With
-neither set, records carry no link.
+that opens the exact item. The server learns its public URL from
+``ACQUACOTTA_PUBLIC_URL``; unset, records carry no link.
 """
 
 import os
@@ -15,7 +14,7 @@ PUBLIC_URL_ENV = "ACQUACOTTA_PUBLIC_URL"
 
 def app_link(view, kind="", item_id=""):
     """The deep link for a view, sub-view or item, or "" without a public URL."""
-    base = (os.environ.get(PUBLIC_URL_ENV) or os.environ.get("OAUTH_REDIRECT_BASE") or "").strip().rstrip("/")
+    base = os.environ.get(PUBLIC_URL_ENV, "").strip().rstrip("/")
     if not base.startswith(("https://", "http://")):
         return ""
     parts = [str(p) for p in (view, kind, item_id)]

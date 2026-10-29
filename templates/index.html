@@ -4224,9 +4224,9 @@
                 };
             });
 
-            // Destroy right before drawing (no await between), via the canvas's own
-            // registry, so overlapping loads can never leave a chart on the canvas.
-            Chart.getChart('chart-daily')?.destroy();
+            // Destroy right before drawing, with no await in between, so overlapping
+            // loads can't leave a chart on the canvas.
+            if (dailyChart) dailyChart.destroy();
             dailyChart = new Chart(document.getElementById('chart-daily'), {
                 type: 'bar',
                 data: {
@@ -7735,6 +7735,9 @@
         const SOCIAL_POSTS_SPAN_DAYS = 35;
         const SOCIAL_POSTS_STEP_DAYS = 14;
         const SOCIAL_STATE_LABELS = { QUEUE: 'Scheduled', PUBLISHED: 'Published', ERROR: 'Failed', DRAFT: 'Draft' };
+        // The last window loaded, like the channel cache: it paints at once and
+        // stays readable offline while the live copy loads.
+        const SOCIAL_POSTS_CACHE_KEY = 'acquacotta_social_posts';
 
         function socialShowPane(pane) {
             socialPane = pane === 'posts' ? 'posts' : 'compose';
@@ -7768,7 +7771,15 @@
             const last = socialAddDays(until, -1);
             document.getElementById('social-posts-range').textContent =
                 `${from.toLocaleDateString([], { month: 'short', day: 'numeric' })} – ${last.toLocaleDateString([], { month: 'short', day: 'numeric' })}`;
-            box.innerHTML = '<div class="empty">Loading posts…</div>';
+            const cached = socialLocal(SOCIAL_POSTS_CACHE_KEY);
+            const fromCache = !!cached && cached.from === from.toISOString();
+            if (fromCache) {
+                socialPosts = cached.posts || [];
+                socialPostizUrl = cached.postiz_url || '';
+                socialRenderPosts();
+            } else {
+                box.innerHTML = '<div class="empty">Loading posts…</div>';
+            }
             try {
                 const r = await Storage.socialPosts(from.toISOString(), until.toISOString());
                 if (token !== socialPostsToken) return;
@@ -7779,10 +7790,14 @@
                 }
                 socialPosts = r.posts || [];
                 socialPostizUrl = r.postiz_url || '';
+                socialLocal(SOCIAL_POSTS_CACHE_KEY, { from: from.toISOString(), posts: socialPosts, postiz_url: socialPostizUrl });
                 socialRenderPosts();
             } catch (e) {
                 if (token !== socialPostsToken) return;
-                box.innerHTML = `<div class="empty">Could not load posts: ${escapeHtml(e.message || 'error')}</div>`;
+                // Keep showing the cached window; say why it may be stale.
+                const msg = `Could not load posts: ${escapeHtml(e.message || 'error')}`;
+                if (fromCache) box.insertAdjacentHTML('afterbegin', `<div class="empty">${msg} Showing the last copy.</div>`);
+                else box.innerHTML = `<div class="empty">${msg}</div>`;
             }
         }
 

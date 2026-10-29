@@ -19,10 +19,14 @@ All notable changes to this project are documented here. The format follows
 - A ticket link opens any ticket, not only those in the Tickets query
   (`GET /api/rt/ticket/<id>`).
 - MCP tools return a `link` on each todo, discussion, ticket and pomodoro when
-  `ACQUACOTTA_PUBLIC_URL` (or `OAUTH_REDIRECT_BASE`) is set.
+  `ACQUACOTTA_PUBLIC_URL` is set.
 - Social → Posts: the Postiz schedule, past and future (last week plus the next
   four), one row per post group with per-channel status; tap for each channel's
   full text, the published post and Postiz (`GET /api/social/posts`). Read-only.
+
+### Security
+- Authlib 1.8.0 → 1.9.1 (CVE-2026-96760 critical, CVE-2026-114615, CVE-2026-114616),
+  oauthlib 3.3.1 → 4.0.0 (CVE-2026-49272), dnspython 2.8.0 → 2.9.0 (CVE-2026-114605).
 
 ### Fixed
 - Reports could draw the daily chart twice when two loads overlapped (fast

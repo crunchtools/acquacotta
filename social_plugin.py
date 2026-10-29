@@ -681,6 +681,14 @@ def _post_record(item):
     }
 
 
+def posts_range(start, end):
+    """Parse and check a posts window: ``(start, end)`` datetimes, or ValueError."""
+    first, last = _parse_bound(start, "start"), _parse_bound(end, "end")
+    if not timedelta(0) < last - first <= timedelta(days=_POSTS_MAX_DAYS):
+        raise ValueError(f"end must be after start and at most {_POSTS_MAX_DAYS} days later")
+    return first, last
+
+
 def list_posts(config, start, end):
     """The user's Postiz posts, past and future, published in ``[start, end]``.
 
@@ -698,9 +706,7 @@ def list_posts(config, start, end):
         ValueError: a bound not ISO-8601, or a range that is empty or too long.
         SocialError: Postiz unreachable or erroring.
     """
-    first, last = _parse_bound(start, "start"), _parse_bound(end, "end")
-    if not timedelta(0) < last - first <= timedelta(days=_POSTS_MAX_DAYS):
-        raise ValueError(f"end must be after start and at most {_POSTS_MAX_DAYS} days later")
+    first, last = posts_range(start, end)
     raw = _postiz_request(config, "GET", "/posts", params={"startDate": _iso_z(first), "endDate": _iso_z(last)})
     items = raw.get("posts") if isinstance(raw, dict) else None
     posts = [p for p in map(_post_record, items if isinstance(items, list) else []) if p]

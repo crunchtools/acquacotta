@@ -2218,6 +2218,7 @@
                 const res = await authenticatedFetch(`/api/rt/ticket/${encodeURIComponent(id)}`);
                 return res.ok ? (await res.json()).ticket || null : null;
             } catch (e) {
+                console.warn('Ticket lookup failed:', e);  // the dialog shows "Ticket #id" instead
                 return null;
             }
         },

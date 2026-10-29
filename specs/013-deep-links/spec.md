@@ -30,7 +30,7 @@ with `history.replaceState` (no new history entries). Each item dialog has a
 Copy link button. A route is kept in sessionStorage across a Google sign-in.
 
 MCP tools add `link` to todo, discussion, ticket and pomodoro records, built
-from `ACQUACOTTA_PUBLIC_URL` (fallback `OAUTH_REDIRECT_BASE`) by `deep_links.py`.
+from `ACQUACOTTA_PUBLIC_URL` by `deep_links.py`.
 
 ## User Scenarios
 

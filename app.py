@@ -1834,11 +1834,13 @@ def api_social_posts():
     drive_service, folder_id = _plugin_drive_context()
     if not drive_service:
         return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
+    start, end = request.args.get("start") or "", request.args.get("end") or ""
     try:
+        social_plugin.posts_range(start, end)
         config = social_plugin.read_config(drive_service, folder_id)
         if not social_plugin.postiz_configured(config):
             return jsonify({"configured": False, "posts": []})
-        posts = social_plugin.list_posts(config, request.args.get("start") or "", request.args.get("end") or "")
+        posts = social_plugin.list_posts(config, start, end)
     except (ValueError, social_plugin.SocialError) as exc:
         return _social_error_response(exc)
     except HttpError as e:

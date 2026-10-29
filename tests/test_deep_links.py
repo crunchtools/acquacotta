@@ -7,7 +7,6 @@ import deep_links
 
 @pytest.fixture
 def public_url(monkeypatch):
-    monkeypatch.delenv("OAUTH_REDIRECT_BASE", raising=False)
     monkeypatch.setenv(deep_links.PUBLIC_URL_ENV, "https://acq.example.com/")
 
 
@@ -22,15 +21,14 @@ def test_segments_are_encoded_and_trailing_blanks_dropped(public_url):
     assert deep_links.app_link("todos") == "https://acq.example.com/#todos"
 
 
-def test_falls_back_to_oauth_base(monkeypatch):
+def test_unset_means_no_link(monkeypatch):
     monkeypatch.delenv(deep_links.PUBLIC_URL_ENV, raising=False)
     monkeypatch.setenv("OAUTH_REDIRECT_BASE", "http://localhost:5000")
-    assert deep_links.app_link("todos", "item", "a") == "http://localhost:5000/#todos/item/a"
+    assert deep_links.app_link("todos", "item", "a") == ""
 
 
 @pytest.mark.parametrize("value", ["", "acq.example.com", "javascript:alert(1)"])
 def test_no_usable_base_means_no_link(monkeypatch, value):
-    monkeypatch.delenv("OAUTH_REDIRECT_BASE", raising=False)
     monkeypatch.setenv(deep_links.PUBLIC_URL_ENV, value)
     assert deep_links.app_link("todos", "item", "a") == ""
     assert deep_links.with_link({"id": "a"}, "todos", "item") == {"id": "a"}

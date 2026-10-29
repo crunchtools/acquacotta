@@ -281,6 +281,7 @@
         try {
             parts = parts.map(decodeURIComponent);
         } catch (e) {
+            console.warn('Ignoring malformed deep link:', e.message);
             return null;
         }
         if (!/^[a-z][a-z0-9_-]*$/.test(parts[0])) return null;
