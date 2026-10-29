@@ -1008,7 +1008,7 @@
                 </div>
                 <div class="modal-actions">
                     <button class="secondary copy-link" id="todo-copy-link" onclick="copyCurrentLink(this)">Copy link</button>
-                    <button class="secondary" onclick="closeTodoEditModal()">Cancel</button>
+                    <button class="secondary" data-cancel onclick="closeTodoEditModal()">Cancel</button>
                     <button class="primary" onclick="saveTodoEdit()">Save</button>
                 </div>
             </div>
@@ -1024,7 +1024,7 @@
                     <button class="primary" onclick="addTodoList()" style="padding: 0.5rem 1rem; font-size: 0.875rem;">Add</button>
                 </div>
                 <div class="modal-actions">
-                    <button class="secondary" onclick="closeListManager()">Done</button>
+                    <button class="secondary" data-cancel onclick="closeListManager()">Done</button>
                 </div>
             </div>
         </div>
@@ -1101,7 +1101,7 @@
                 </div>
                 <div class="modal-actions">
                     <button class="secondary copy-link" id="discussion-copy-link" onclick="copyCurrentLink(this)">Copy link</button>
-                    <button class="secondary" onclick="closeDiscussionEditModal()">Cancel</button>
+                    <button class="secondary" data-cancel onclick="closeDiscussionEditModal()">Cancel</button>
                     <button class="primary" onclick="saveDiscussionEdit()">Save</button>
                 </div>
             </div>
@@ -1142,17 +1142,14 @@
                     <textarea id="rt-action-content" rows="3" style="resize: vertical;" placeholder="Write a comment or reply…"></textarea>
                 </div>
                 <div class="form-group">
-                    <label for="rt-status-input">Change status</label>
-                    <div style="display:flex; gap:0.5rem;">
-                        <input type="text" id="rt-status-input" placeholder="e.g. open, stalled, resolved" style="flex:1;">
-                        <button class="secondary" onclick="applyTicketStatus()">Set status</button>
-                    </div>
+                    <label for="rt-status-input">Status</label>
+                    <select id="rt-status-input"></select>
                 </div>
                 <div id="rt-detail-status" style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.5rem;"></div>
                 <div class="modal-actions">
                     <button class="secondary copy-link" id="rt-copy-link" onclick="copyCurrentLink(this)">Copy link</button>
-                    <button class="secondary" onclick="closeTicketDetail()">Close</button>
-                    <button class="primary" onclick="submitTicketAction()">Send</button>
+                    <button class="secondary" data-cancel onclick="closeTicketDetail()">Cancel</button>
+                    <button class="primary" onclick="saveTicketDetail()">Save</button>
                 </div>
             </div>
         </div>
@@ -1596,8 +1593,8 @@
             <p id="add-preview" style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 1rem;"></p>
             <p id="add-error" style="font-size: 0.75rem; color: var(--accent); margin-bottom: 1rem; display: none;"></p>
             <div class="modal-actions">
-                <button class="secondary" onclick="hideAddModal()">Cancel</button>
-                <button class="primary" onclick="addManualPomodoro()">Add</button>
+                <button class="secondary" data-cancel onclick="hideAddModal()">Cancel</button>
+                <button class="primary" onclick="addManualPomodoro()">Save</button>
             </div>
         </div>
     </div>
@@ -1627,7 +1624,7 @@
                 </div>
             </div>
             <div class="modal-actions">
-                <button class="secondary" onclick="hideMigrateModal()">Cancel</button>
+                <button class="secondary" data-cancel onclick="hideMigrateModal()">Cancel</button>
                 <button class="primary" onclick="runMigration()">Migrate</button>
             </div>
         </div>
@@ -1647,7 +1644,7 @@
                 <p id="migrate-json-step" style="font-size: 0.875rem; color: var(--text-secondary);"></p>
             </div>
             <div id="migrate-json-actions" class="modal-actions">
-                <button class="secondary" onclick="hideMigrateToJsonModal()">Cancel</button>
+                <button class="secondary" data-cancel onclick="hideMigrateToJsonModal()">Cancel</button>
                 <button class="primary" id="migrate-json-confirm-btn" onclick="runMigrateToJson()">Migrate</button>
             </div>
         </div>
@@ -1695,7 +1692,7 @@
                 This action cannot be undone.
             </p>
             <div class="modal-actions">
-                <button class="secondary" onclick="hideClearDataModal()">Cancel</button>
+                <button class="secondary" data-cancel onclick="hideClearDataModal()">Cancel</button>
                 <button class="primary" onclick="clearLocalDataConfirmed()" style="background: #ef4444;">Clear All Data</button>
             </div>
         </div>
@@ -1734,7 +1731,7 @@
             </div>
             <div class="modal-actions">
                 <button class="secondary copy-link" onclick="copyCurrentLink(this)">Copy link</button>
-                <button class="secondary" onclick="hideEditModal()">Cancel</button>
+                <button class="secondary" data-cancel onclick="hideEditModal()">Cancel</button>
                 <button class="primary" onclick="saveEditedPomodoro()">Save</button>
             </div>
         </div>
@@ -6391,13 +6388,13 @@
                 }
             }
 
-            // Only allow Escape to close modals that are safe to dismiss
-            const escapableModals = ['add-modal', 'edit-modal'];
+            // Escape is the open modal's Cancel. A modal without one (a choice the
+            // user has to make) ignores it.
             function handleModalEscape(e) {
                 if (e.key === 'Escape') {
-                    const activeModal = document.querySelector('.modal-overlay.active');
-                    if (activeModal && escapableModals.includes(activeModal.id)) {
-                        activeModal.classList.remove('active');
+                    const cancel = document.querySelector('.modal-overlay.active .modal-actions [data-cancel]');
+                    if (cancel) {
+                        cancel.click();
                         if (lastFocusedElement) {
                             lastFocusedElement.focus();
                             lastFocusedElement = null;
@@ -7132,10 +7129,10 @@
                 const link = discussionSafeUrl(t.url);
                 if (link) parts.push(`<a href="${escapeHtml(link)}" target="_blank" rel="noopener">open in RT</a>`);
                 meta.innerHTML = parts.join('');
-                document.getElementById('rt-status-input').value = t.status || '';
+                fillTicketStatuses(t.status);
             } else {
                 meta.innerHTML = '';
-                document.getElementById('rt-status-input').value = '';
+                fillTicketStatuses('');
             }
             document.getElementById('rt-action-content').value = '';
             document.getElementById('rt-detail-status').textContent = '';
@@ -7166,37 +7163,45 @@
             syncRoute('rt');
         }
 
-        async function submitTicketAction() {
-            if (!rtCurrentTicketId) return;
-            const action = document.getElementById('rt-action-type').value;  // comment | reply
-            const content = document.getElementById('rt-action-content').value.trim();
-            const statusEl = document.getElementById('rt-detail-status');
-            if (!content) { statusEl.textContent = 'Write something first.'; return; }
-            statusEl.textContent = 'Sending…';
-            try {
-                await Storage.rtTicketAction(rtCurrentTicketId, action, { content });
-                document.getElementById('rt-action-content').value = '';
-                statusEl.textContent = (action === 'reply' ? 'Reply' : 'Comment') + ' added.';
-                const history = await Storage.getTicketHistory(rtCurrentTicketId);
-                document.getElementById('rt-detail-history').innerHTML = history.map(renderTxn).join('');
-            } catch (e) {
-                statusEl.textContent = 'Failed: ' + (e.message || 'error');
-            }
+        // RT's default lifecycle. A ticket in a custom status keeps it as an option.
+        const RT_STATUSES = ['new', 'open', 'stalled', 'resolved', 'rejected'];
+        let rtOriginalStatus = '';
+
+        function fillTicketStatuses(current) {
+            rtOriginalStatus = current || '';
+            const options = RT_STATUSES.includes(rtOriginalStatus) || !rtOriginalStatus
+                ? RT_STATUSES : [rtOriginalStatus, ...RT_STATUSES];
+            const select = document.getElementById('rt-status-input');
+            select.innerHTML = options.map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('');
+            select.value = rtOriginalStatus || 'new';
         }
 
-        async function applyTicketStatus() {
+        // Save applies what changed: the comment or reply, then the status.
+        async function saveTicketDetail() {
             if (!rtCurrentTicketId) return;
-            const status = document.getElementById('rt-status-input').value.trim();
+            const id = rtCurrentTicketId;
+            const action = document.getElementById('rt-action-type').value;  // comment | reply
+            const content = document.getElementById('rt-action-content').value.trim();
+            const status = document.getElementById('rt-status-input').value;
+            const statusChanged = status && status !== rtOriginalStatus;
             const statusEl = document.getElementById('rt-detail-status');
-            if (!status) { statusEl.textContent = 'Enter a status.'; return; }
-            statusEl.textContent = 'Updating status…';
+            if (!content && !statusChanged) { closeTicketDetail(); return; }
+            statusEl.textContent = 'Saving…';
             try {
-                await Storage.rtTicketAction(rtCurrentTicketId, 'status', { status });
-                statusEl.textContent = 'Status set to ' + status + '.';
-                await refreshTickets();  // a status change can drop it from the open view
+                if (content) {
+                    await Storage.rtTicketAction(id, action, { content });
+                    document.getElementById('rt-action-content').value = '';
+                }
+                if (statusChanged) {
+                    await Storage.rtTicketAction(id, 'status', { status });
+                    rtOriginalStatus = status;
+                }
             } catch (e) {
                 statusEl.textContent = 'Failed: ' + (e.message || 'error');
+                return;
             }
+            closeTicketDetail();
+            await refreshTickets();  // a status change can drop it from the open view
         }
 
         // The last config read from the server (secrets masked to has_* flags).
