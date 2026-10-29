@@ -6,6 +6,21 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.28.0] - 2026-10-28
+
+### Changed
+- Social → Posts redesigned to match Compose (Fable UX spec): the slot sheet's
+  day blocks starting at Today, a week at a time ("Next week ›" appends);
+  last week is loaded but collapsed behind "‹ Last week", which shows how many
+  of its posts failed. Rows are link-card style with the time, an exception
+  word (Failed, Draft, Not sent yet), state chips and two lines of text; a
+  failed post gets an accent bar. One status line for signed out, Postiz not
+  connected, offline and unreachable, with the matching action button.
+- The post sheet always shows each channel's state as a word.
+- A deep link to a post outside the first two weeks is looked up nine weeks
+  either side.
+- Sending from Compose drops the cached Posts copy so Posts paints fresh.
+
 ## [2.27.0] - 2026-10-28
 
 ### Added

@@ -665,27 +665,39 @@
         .social-sheet-handle { width: 36px; height: 4px; border-radius: 2px; background: var(--bg-tertiary); margin: 0 auto 0.75rem; }
         .social-sheet h3 { margin: 0 0 0.5rem; font-size: 1rem; }
         .social-day { padding: 0.5rem 0; border-top: 1px solid var(--bg-tertiary); }
-        /* Posts: the Postiz schedule, past and future */
+        /* Posts: the Postiz schedule, in the slot sheet's day blocks, rows styled
+           like the composer's link card. */
         .social-panes { margin-bottom: 0.75rem; }
-        .social-posts-nav { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.5rem; }
-        .social-posts-range { font-size: 0.8rem; color: var(--text-secondary); text-align: center; }
-        .social-posts-day { font-size: 0.8rem; color: var(--text-secondary); padding: 0.75rem 0 0.25rem; border-top: 1px solid var(--bg-tertiary); }
-        .social-posts-day.today { color: var(--text-primary); font-weight: 600; }
-        .social-post-row { display: grid; grid-template-columns: 4.5rem auto 1fr; align-items: center; gap: 0.5rem; width: 100%; min-height: 48px; padding: 0.375rem 0; background: none; border: none; color: var(--text-primary); text-align: left; cursor: pointer; font-size: 0.9rem; }
+        #social-posts-status { margin: 0 0 0.5rem; }
+        #social-posts-status:empty { min-height: 0; margin: 0; }  /* reserve no line above the list */
+        .social-status .social-ghost { min-height: 44px; margin-left: 0.5rem; }
+        .social-sheet-foot.social-posts-nav { margin: 0 0 0.25rem; }
+        #social-posts-later { margin-left: auto; }
+        .social-posts-failed { color: var(--accent); font-weight: 600; }
+        .social-day-label.today { color: var(--text-primary); font-weight: 600; }
+        .social-post-row { display: block; width: 100%; min-height: 44px; margin-top: 0.5rem; padding: 0.5rem 0.75rem; background: var(--bg-secondary); border: none; border-radius: 8px; color: var(--text-primary); text-align: left; font-size: 0.9rem; cursor: pointer; }
+        .social-day-label + .social-post-row { margin-top: 0; }
         .social-post-row.past { color: var(--text-secondary); }
+        .social-post-row.failed { box-shadow: inset 3px 0 0 var(--accent); }
+        .social-post-row.skeleton { background: var(--bg-tertiary); color: transparent; min-height: 60px; cursor: default; }
+        .social-post-meta { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem; font-size: 0.8rem; color: var(--text-secondary); }
         .social-post-time { font-variant-numeric: tabular-nums; }
-        .social-post-chips { display: flex; gap: 0.25rem; }
-        .social-post-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .social-post-chip { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--bg-tertiary); font-size: 0.7rem; font-weight: 700; color: var(--text-primary); flex-shrink: 0; }
+        .social-post-chips { display: flex; gap: 0.25rem; margin-left: auto; }
+        .social-post-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; line-height: 1.3; }
+        .social-post-chip { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--bg-tertiary); font-size: 0.75rem; font-weight: 700; color: var(--text-primary); flex-shrink: 0; }
         .social-post-chip.state-published { background: var(--success); border-color: var(--success); color: var(--bg-primary); }
         .social-post-chip.state-error { background: var(--accent); border-color: var(--accent); color: #fff; }
         .social-post-chip.state-draft { border-style: dashed; color: var(--text-secondary); }
+        .social-post-state { font-weight: 600; }
+        .social-post-state.state-error { color: var(--accent); }
+        .social-post-state.state-draft, .social-post-state.state-queue { color: var(--text-secondary); }
+        .social-post-state.state-late { color: var(--warn); }
+        .social-post-state.state-published { color: var(--success); }
         .social-post-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
         .social-post-detail { padding: 0.625rem 0; border-top: 1px solid var(--bg-tertiary); }
-        .social-post-detail-head { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; font-size: 0.85rem; margin-bottom: 0.375rem; }
-        .social-post-detail-head a { color: var(--text-primary); }
-        .social-post-state { color: var(--text-secondary); }
-        .social-post-state.state-error { color: var(--accent); }
+        .social-post-detail-head { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; margin-bottom: 0.375rem; }
+        .social-post-detail-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .social-post-detail-head a { color: var(--text-primary); white-space: nowrap; }
         .social-post-detail-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.9rem; }
         a.social-postiz-link { display: inline-flex; align-items: center; text-decoration: none; }
         .social-day-label { font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.375rem; }
@@ -1123,12 +1135,14 @@
                 <button type="button" role="radio" id="social-pane-posts-btn" aria-checked="false" onclick="socialShowPane('posts')">Posts</button>
             </div>
             <div id="social-pane-posts" hidden>
-                <div class="social-posts-nav">
-                    <button type="button" class="social-ghost" onclick="socialShiftPosts(-1)" aria-label="Earlier posts">‹ Earlier</button>
-                    <span class="social-posts-range" id="social-posts-range"></span>
-                    <button type="button" class="social-ghost" onclick="socialShiftPosts(1)" aria-label="Later posts">Later ›</button>
+                <div id="social-posts-status" class="social-status" role="status"></div>
+                <div class="social-sheet-foot social-posts-nav" id="social-posts-top" hidden>
+                    <button type="button" class="social-ghost" id="social-posts-earlier" onclick="socialPostsMore(-1)">‹ Last week</button>
                 </div>
-                <div id="social-posts"></div>
+                <div id="social-posts" aria-busy="false"></div>
+                <div class="social-sheet-foot" id="social-posts-bottom" hidden>
+                    <button type="button" class="social-ghost" id="social-posts-later" onclick="socialPostsMore(1)">Next week ›</button>
+                </div>
             </div>
             <dialog id="social-post-sheet" class="social-sheet" aria-labelledby="social-post-title" onclick="if (event.target === this) this.close()" onclose="syncRoute('social')">
                 <div class="social-sheet-handle" aria-hidden="true"></div>
@@ -7296,17 +7310,17 @@
             facebook: ['f', 'Facebook'], instagram: ['IG', 'Instagram'],
         };
 
-        // The one status line under the composer: text, optional nodes (a
-        // button or link), and an error tint.
-        function socialStatus(text, { error = false, nodes = [] } = {}) {
-            const el = document.getElementById('social-status');
+        // The one status line under the composer (or, with `el`, over Posts):
+        // text, optional nodes (a button or link), and an error tint.
+        function socialStatus(text, { error = false, nodes = [], el: id = 'social-status' } = {}) {
+            const el = document.getElementById(id);
             el.textContent = text;
             el.classList.toggle('error', error);
             for (const n of nodes) el.appendChild(n);
         }
 
-        function socialStatusButton(label, onClick) {
-            return Object.assign(document.createElement('button'), { className: 'primary', textContent: label, onclick: onClick });
+        function socialStatusButton(label, onClick, className = 'primary') {
+            return Object.assign(document.createElement('button'), { type: 'button', className, textContent: label, onclick: onClick });
         }
 
         function socialRememberShare(url) {
@@ -7612,6 +7626,7 @@
             const today = socialDayStart(new Date());
             if (day.getTime() === today.getTime()) return 'Today';
             if (day.getTime() === socialAddDays(today, 1).getTime()) return 'Tomorrow';
+            if (day.getTime() === socialAddDays(today, -1).getTime()) return 'Yesterday';
             return day.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
         }
 
@@ -7718,8 +7733,10 @@
                 document.getElementById('social-text').value = '';
                 socialRememberShare('');
                 socialSetLink(null);
-                // The slot is taken now; the next Schedule looks them up afresh.
+                // The slot is taken now; the next Schedule looks them up afresh,
+                // and Posts paints from the server rather than the old copy.
                 socialSlotsState = 'idle';
+                socialLocal(SOCIAL_POSTS_CACHE_KEY, null);
                 socialChosen = null;
                 socialChosenExact = false;
                 socialSetMode(false);
@@ -7732,20 +7749,27 @@
         }
 
         // ---- Compose | Posts ----
-        // Posts is the Postiz schedule, read-only: a window of weeks around today,
-        // one row per post group (the posts created together across channels).
+        // Posts is the Postiz schedule, read-only, laid out like the slot sheet:
+        // days from today, a week at a time. Last week is loaded with the first
+        // request but stays collapsed behind "‹ Last week" (which reports its
+        // failures) until asked for. One row per post group (the posts created
+        // together across channels).
         let socialPane = 'compose';
-        let socialPosts = [];
-        let socialPostsFrom = null;   // local midnight the window starts at
+        let socialPosts = [];         // loaded posts, ascending, unique by id|date
+        let socialPostsFrom = null;   // local midnight the loaded range starts at
+        let socialPostsUntil = null;  // local midnight it ends at (exclusive)
+        let socialPostsPastShown = false; // days before today are rendered (kept for the session)
+        let socialPostsState = 'idle'; // idle | loading | ready | error | offline
+        let socialPostsError = '';    // why the first load failed, shown in the list
+        let socialPostsBusy = false;  // a week is being fetched; nav is disabled
         let socialPostsToken = 0;     // bumps to drop answers from a stale request
         let socialPostizUrl = '';
-        const SOCIAL_POSTS_BACK_DAYS = 7;
-        const SOCIAL_POSTS_SPAN_DAYS = 35;
-        const SOCIAL_POSTS_STEP_DAYS = 14;
         const SOCIAL_STATE_LABELS = { QUEUE: 'Scheduled', PUBLISHED: 'Published', ERROR: 'Failed', DRAFT: 'Draft' };
-        // The last window loaded, like the channel cache: it paints at once and
+        // The first window loaded, like the channel cache: it paints at once and
         // stays readable offline while the live copy loads.
         const SOCIAL_POSTS_CACHE_KEY = 'acquacotta_social_posts';
+        // How far a deep link to a post outside the first window is looked for.
+        const SOCIAL_POSTS_LINK_DAYS = 63;
 
         function socialShowPane(pane) {
             socialPane = pane === 'posts' ? 'posts' : 'compose';
@@ -7757,28 +7781,32 @@
             return socialPane === 'posts' ? socialLoadPosts() : Promise.resolve();
         }
 
-        function socialShiftPosts(dir) {
-            socialPostsFrom = socialAddDays(socialPostsFrom || socialDefaultPostsFrom(), dir * SOCIAL_POSTS_STEP_DAYS);
-            socialLoadPosts();
+        function socialPostsStatus(text, opts = {}) {
+            socialStatus(text, { ...opts, el: 'social-posts-status' });
         }
 
-        function socialDefaultPostsFrom() {
-            return socialAddDays(socialDayStart(new Date()), -SOCIAL_POSTS_BACK_DAYS);
+        function socialMergePosts(more) {
+            const seen = new Map(socialPosts.map(p => [`${p.id}|${p.date}`, p]));
+            for (const p of more) seen.set(`${p.id}|${p.date}`, p);
+            socialPosts = [...seen.values()].sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
         }
 
+        // The first window: [today−7, today+7). Cached copy first, then the live one.
         async function socialLoadPosts() {
-            const box = document.getElementById('social-posts');
+            const token = ++socialPostsToken;
+            socialPostsStatus('');
             if (!authStatus || !authStatus.logged_in) {
-                box.innerHTML = '<div class="empty">Sign in with Google to see your posts.</div>';
+                socialPostsState = 'idle';
+                socialPosts = [];
+                socialPostsStatus('Sign in with Google to see your posts.',
+                    { nodes: [socialStatusButton('Sign in with Google', () => loginWithGoogle())] });
+                socialRenderPosts();
                 return;
             }
-            if (!socialPostsFrom) socialPostsFrom = socialDefaultPostsFrom();
-            const from = socialPostsFrom;
-            const until = socialAddDays(from, SOCIAL_POSTS_SPAN_DAYS);
-            const token = ++socialPostsToken;
-            const last = socialAddDays(until, -1);
-            document.getElementById('social-posts-range').textContent =
-                `${from.toLocaleDateString([], { month: 'short', day: 'numeric' })} – ${last.toLocaleDateString([], { month: 'short', day: 'numeric' })}`;
+            const today = socialDayStart(new Date());
+            const from = socialAddDays(today, -SOCIAL_SLOT_DAYS);
+            socialPostsFrom = from;
+            socialPostsUntil = socialAddDays(today, SOCIAL_SLOT_DAYS);
             // Only this account's copy: a shared browser must not show another
             // account's posts (sign-out also clears it).
             const cached = socialLocal(SOCIAL_POSTS_CACHE_KEY);
@@ -7786,29 +7814,79 @@
             if (fromCache) {
                 socialPosts = cached.posts || [];
                 socialPostizUrl = cached.postiz_url || '';
-                socialRenderPosts();
+                socialPostsState = 'ready';
             } else {
-                box.innerHTML = '<div class="empty">Loading posts…</div>';
+                socialPosts = [];
+                socialPostsState = 'loading';
             }
+            if (!navigator.onLine) {
+                if (fromCache) socialPostsStatus('Offline · showing the last copy');
+                else socialPostsState = 'offline';
+                socialRenderPosts();
+                return;
+            }
+            socialPostsBusy = true;
+            socialRenderPosts();
             try {
-                const r = await Storage.socialPosts(from.toISOString(), until.toISOString());
+                const r = await Storage.socialPosts(from.toISOString(), socialPostsUntil.toISOString());
                 if (token !== socialPostsToken) return;
+                socialPostsBusy = false;
                 if (!r.configured) {
-                    box.innerHTML = '<div class="empty">Postiz isn’t connected yet.</div>';
-                    box.firstChild.appendChild(socialStatusButton('Connect Postiz', () => openPluginSettings('social')));
+                    socialPosts = [];
+                    socialPostsState = 'idle';
+                    socialPostsStatus('Postiz isn’t connected yet.',
+                        { nodes: [socialStatusButton('Connect Postiz', () => openPluginSettings('social'))] });
+                    socialRenderPosts();
                     return;
                 }
-                socialPosts = r.posts || [];
+                socialPosts = [];
+                socialMergePosts(r.posts || []);
                 socialPostizUrl = r.postiz_url || '';
+                socialPostsState = 'ready';
                 socialLocal(SOCIAL_POSTS_CACHE_KEY, { email: authStatus.email || '', from: from.toISOString(), posts: socialPosts, postiz_url: socialPostizUrl });
-                socialRenderPosts();
             } catch (e) {
                 if (token !== socialPostsToken) return;
-                // Keep showing the cached window; say why it may be stale.
-                const msg = `Could not load posts: ${escapeHtml(e.message || 'error')}`;
-                if (fromCache) box.insertAdjacentHTML('afterbegin', `<div class="empty">${msg} Showing the last copy.</div>`);
-                else box.innerHTML = `<div class="empty">${msg}</div>`;
+                socialPostsBusy = false;
+                if (fromCache) {
+                    socialPostsStatus('Couldn’t reach Postiz · showing the last copy', {
+                        error: true, nodes: [socialStatusButton('Retry', () => socialLoadPosts(), 'social-ghost')],
+                    });
+                } else {
+                    socialPostsState = 'error';
+                    socialPostsError = e.message || 'error';
+                }
             }
+            socialRenderPosts();
+        }
+        // "‹ Last week" first reveals the loaded past; after that each tap (and
+        // every "Next week ›") fetches another 7 days. Today keeps its place on
+        // screen when days are added above it.
+        async function socialPostsMore(dir) {
+            if (socialPostsBusy || socialPostsState !== 'ready') return;
+            if (dir < 0 && !socialPostsPastShown) {
+                socialPostsPastShown = true;
+                socialRenderPosts({ keepToday: true });
+                return;
+            }
+            const start = dir < 0 ? socialAddDays(socialPostsFrom, -SOCIAL_SLOT_DAYS) : socialPostsUntil;
+            const end = socialAddDays(start, SOCIAL_SLOT_DAYS);
+            const token = socialPostsToken;
+            socialPostsBusy = true;
+            socialRenderPosts({ keepToday: true });
+            try {
+                const r = await Storage.socialPosts(start.toISOString(), end.toISOString());
+                if (token !== socialPostsToken) return;
+                socialMergePosts(r.posts || []);
+                if (dir < 0) socialPostsFrom = start; else socialPostsUntil = end;
+                socialPostsStatus('');
+            } catch (e) {
+                if (token !== socialPostsToken) return;
+                socialPostsStatus(`Couldn’t reach Postiz: ${e.message || 'error'}`, {
+                    error: true, nodes: [socialStatusButton('Retry', () => socialPostsMore(dir), 'social-ghost')],
+                });
+            }
+            socialPostsBusy = false;
+            socialRenderPosts({ keepToday: true });
         }
 
         // Posts created together share a group and a time; show them as one row.
@@ -7828,39 +7906,85 @@
             return `<span class="social-post-chip state-${p.state.toLowerCase()}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">${escapeHtml(glyph)}</span>`;
         }
 
-        function socialRenderPosts() {
+        // The row's state word, shown only when it's an exception to what the
+        // row's place implies (upcoming = scheduled, past = published).
+        function socialGroupState(posts, past) {
+            if (posts.some(p => p.state === 'ERROR')) return ['Failed', 'error'];
+            if (posts.every(p => p.state === 'DRAFT')) return ['Draft', 'draft'];
+            if (past && posts.some(p => p.state === 'QUEUE')) return ['Not sent yet', 'late'];
+            return null;
+        }
+
+        function socialPostRow(posts) {
+            const when = new Date(posts[0].date);
+            const past = when.getTime() < Date.now();
+            const state = socialGroupState(posts, past);
+            const text = (posts.find(p => (p.text || '').trim()) || posts[0]).text || '';
+            const cls = ['social-post-row', past ? 'past' : '', state && state[1] === 'error' ? 'failed' : ''].filter(Boolean).join(' ');
+            return `<button type="button" class="${cls}" aria-haspopup="dialog" onclick="socialOpenPost('${escapeHtml(posts[0].id)}', '${escapeHtml(posts[0].date)}')">
+                <span class="social-post-meta">
+                    <span class="social-post-time">${escapeHtml(when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))}</span>
+                    ${state ? `<span class="social-post-state state-${state[1]}">${state[0]}</span>` : ''}
+                    <span class="social-post-chips">${posts.map(socialPostChip).join('')}</span>
+                </span>
+                <span class="social-post-text">${escapeHtml(text.trim() || '(no text)')}</span>
+            </button>`;
+        }
+
+        function socialRenderPosts({ keepToday = false } = {}) {
             const box = document.getElementById('social-posts');
-            if (!socialPosts.length) {
-                box.innerHTML = '<div class="empty">No posts in these weeks.</div>';
+            const todayLabel = () => box.querySelector('.social-day-label.today');
+            const before = keepToday && todayLabel() ? todayLabel().getBoundingClientRect().top : null;
+            const today = socialDayStart(new Date());
+            const live = socialPostsState === 'ready' || socialPostsState === 'loading';
+            document.getElementById('social-posts-top').hidden = socialPostsState !== 'ready';
+            document.getElementById('social-posts-bottom').hidden = socialPostsState !== 'ready';
+            box.setAttribute('aria-busy', String(socialPostsBusy));
+            for (const id of ['social-posts-earlier', 'social-posts-later']) document.getElementById(id).disabled = socialPostsBusy;
+
+            const groups = socialPostGroups();
+            const earlier = document.getElementById('social-posts-earlier');
+            if (socialPostsPastShown) {
+                earlier.textContent = '‹ Earlier';
+            } else {
+                const failed = groups.filter(g => new Date(g[0].date) < today && g.some(p => p.state === 'ERROR')).length;
+                earlier.innerHTML = '‹ Last week' + (failed ? ` · <span class="social-posts-failed">${failed} failed</span>` : '');
+            }
+
+            if (socialPostsState === 'error' || socialPostsState === 'offline') {
+                const msg = socialPostsState === 'offline'
+                    ? 'Offline. Posts will load when you’re back.'
+                    : `Couldn’t reach Postiz: ${escapeHtml(socialPostsError)}`;
+                box.innerHTML = `<div class="social-day"><span class="social-day-none">${msg}</span> <button type="button" class="social-ghost" onclick="socialLoadPosts()">Retry</button></div>`;
                 return;
             }
-            const now = Date.now();
-            let html = '';
-            let lastDay = null;
-            let nowMarked = false;
-            for (const posts of socialPostGroups()) {
-                const when = new Date(posts[0].date);
-                const day = socialDayStart(when);
-                if (!lastDay || day.getTime() !== lastDay.getTime()) {
-                    const today = day.getTime() === socialDayStart(new Date()).getTime();
-                    html += `<div class="social-posts-day${today ? ' today' : ''}">${escapeHtml(socialDayLabel(day))}</div>`;
-                    lastDay = day;
-                }
-                const past = when.getTime() < now;
-                const marker = !past && !nowMarked ? ' id="social-posts-next"' : '';
-                if (marker) nowMarked = true;
-                const firstLine = (posts[0].text || '').split('\n').find(l => l.trim()) || '(no text)';
-                html += `<button type="button" class="social-post-row${past ? ' past' : ''}"${marker} onclick="socialOpenPost('${escapeHtml(posts[0].id)}', '${escapeHtml(posts[0].date)}')">
-                    <span class="social-post-time">${escapeHtml(when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))}</span>
-                    <span class="social-post-chips">${posts.map(socialPostChip).join('')}</span>
-                    <span class="social-post-text">${escapeHtml(firstLine)}</span>
-                </button>`;
+            if (!live) { box.innerHTML = ''; return; }
+
+            const byDay = new Map();
+            for (const g of groups) {
+                const key = socialDayStart(new Date(g[0].date)).getTime();
+                if (!byDay.has(key)) byDay.set(key, []);
+                byDay.get(key).push(g);
             }
-            box.innerHTML = html;
-            // Land on what's next, with a little of the recent past above it.
-            const next = document.getElementById('social-posts-next');
-            if (next) next.scrollIntoView({ block: 'center' });
+            const start = socialPostsPastShown ? socialPostsFrom : today;
+            const until = socialPostsState === 'loading' ? socialAddDays(today, SOCIAL_SLOT_DAYS) : socialPostsUntil;
+            const days = [];
+            for (let day = start; day < until; day = socialAddDays(day, 1)) {
+                const label = socialDayLabel(day);
+                const isToday = day.getTime() === today.getTime();
+                const rows = socialPostsState === 'loading'
+                    ? '<div class="social-post-row skeleton" aria-hidden="true"></div>'
+                    : (byDay.get(day.getTime()) || []).map(socialPostRow).join('') || '<span class="social-day-none">No posts</span>';
+                days.push(`<div class="social-day" role="group" aria-label="${escapeHtml(label)}"><div class="social-day-label${isToday ? ' today' : ''}">${escapeHtml(label)}</div>${rows}</div>`);
+            }
+            box.innerHTML = days.join('');
+            if (before !== null && todayLabel()) window.scrollBy(0, todayLabel().getBoundingClientRect().top - before);
         }
+
+        // Reload when the connection comes back, if Posts is what's on screen.
+        window.addEventListener('online', () => {
+            if (socialPane === 'posts' && activeView() === 'social') socialLoadPosts();
+        });
 
         // The group's full text per channel, with links out. A repeating post
         // shares its id across occurrences, so `date` picks the occurrence.
@@ -7872,10 +7996,12 @@
             document.getElementById('social-post-body').innerHTML = group.map(p => {
                 const [, label] = socialPlatform(p.channel);
                 const link = discussionSafeUrl(p.release_url);
+                const state = p.state.toLowerCase();
                 return `<div class="social-post-detail">
-                    <div class="social-post-detail-head">${socialPostChip(p)}<span>${escapeHtml(p.channel.name || label)}</span>
-                        <span class="social-post-state state-${p.state.toLowerCase()}">${escapeHtml(SOCIAL_STATE_LABELS[p.state] || p.state)}</span>
-                        ${link ? `<a href="${escapeHtml(link)}" target="_blank" rel="noopener">View post</a>` : ''}</div>
+                    <div class="social-post-detail-head">${socialPostChip(p)}
+                        <span class="social-post-detail-name">${escapeHtml(p.channel.name || label)}</span>
+                        <span class="social-post-state state-${state}">${escapeHtml(SOCIAL_STATE_LABELS[p.state] || p.state)}</span>
+                        ${link ? `<a href="${escapeHtml(link)}" target="_blank" rel="noopener">View post ›</a>` : ''}</div>
                     <div class="social-post-detail-text">${escapeHtml(p.text || '')}</div>
                 </div>`;
             }).join('');
@@ -7890,20 +8016,33 @@
         }
 
         // #social/compose, #social/posts, #social/post/<postizId>. A linked post
-        // outside the default window is looked for a few windows back.
+        // outside the first window is looked for up to nine weeks either side.
         ROUTES.social = {
             current: () => socialPane === 'posts' ? ['posts'] : [],
             compose: () => socialShowPane('compose'),
             posts: () => socialShowPane('posts'),
             post: async (id) => {
                 await socialShowPane('posts');
-                for (let tries = 0; tries < 4; tries++) {
-                    if (socialOpenPost(id)) return;
-                    if (!authStatus || !authStatus.logged_in) return false;
-                    socialPostsFrom = socialAddDays(socialPostsFrom, -SOCIAL_POSTS_SPAN_DAYS);
-                    await socialLoadPosts();
+                if (socialOpenPost(id)) return;
+                if (socialPostsState !== 'ready') return false;
+                const today = socialDayStart(new Date());
+                const back = socialAddDays(today, -SOCIAL_POSTS_LINK_DAYS);
+                const ahead = socialAddDays(today, SOCIAL_POSTS_LINK_DAYS);
+                try {
+                    const [past, future] = await Promise.all([
+                        Storage.socialPosts(back.toISOString(), socialPostsFrom.toISOString()),
+                        Storage.socialPosts(socialPostsUntil.toISOString(), ahead.toISOString()),
+                    ]);
+                    socialMergePosts([...(past.posts || []), ...(future.posts || [])]);
+                    socialPostsFrom = back;
+                    socialPostsUntil = ahead;
+                    socialPostsPastShown = true;
+                    socialRenderPosts();
+                } catch (e) {
+                    console.warn('Post lookup failed:', e);
+                    return false;
                 }
-                return false;
+                if (!socialOpenPost(id)) return false;
             },
         };
 
