@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.31.0] - 2026-10-29
+
+### Changed
+- Social: Bluesky posts carry a link card instead of the article image as a
+  photo. Our Postiz (0.8.0, fork patch 9) builds the card, so Bluesky joins
+  X, Mastodon and Threads in getting the bare link. The composer counts a
+  Bluesky link as bsky.app shows it (`www.xda-developers.com/linus-torval...`,
+  38 characters, not 132), and counts graphemes.
+
 ## [2.30.1] - 2026-10-29
 
 ### Fixed

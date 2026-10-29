@@ -575,9 +575,9 @@ class TestPostiz:
         assert not any(c[1].endswith("/upload") for c in http.calls)
         body = next(c for c in http.calls if c[1].endswith("/posts"))[2]["json"]
         got = {p["integration"]["id"]: p["value"][0]["image"] for p in body["posts"]}
-        for card_less in ("li1", "bs1", "fb1"):
+        for card_less in ("li1", "fb1"):
             assert len(got[card_less]) == 1 and got[card_less][0]["path"] == "https://example.com/cover"
-        for unfurls in ("x1", "ma1", "th1"):
+        for unfurls in ("x1", "ma1", "th1", "bs1"):
             assert got[unfurls] == []
 
     def test_link_only_group_skips_image_upload(self, http):
