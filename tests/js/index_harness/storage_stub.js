@@ -12,6 +12,7 @@
  *   socialScheduleError  when set, socialSchedule() rejects with this message
  *   socialPreview / socialPreviewError  what socialPreview() returns, or its rejection
  *   socialSlotsError / socialSlotsDelayMs / socialSlotsTaken  see socialSlots() below
+ *   socialPosts / socialPostsError / socialPostsConfigured  see socialPosts() below
  *   holdPlugins  when true, /api/plugins waits for window.__releasePlugins()
  *
  * Every saveSettings() call is recorded in window.__storageCalls. Methods the
@@ -86,6 +87,24 @@
                 }
             }
             return { slots };
+        },
+        // Postiz posts placed relative to today: each cfg.socialPosts entry has
+        // `days` (from local midnight today), `hour`, `minute`, and the record
+        // fields (id, group, state, text, channel). Only posts inside
+        // [startIso, endIso) come back. cfg.socialPostsError rejects;
+        // cfg.socialPostsConfigured === false answers "not connected".
+        socialPosts: async (startIso, endIso) => {
+            calls.push(['socialPosts', startIso, endIso]);
+            if (cfg.socialPostsError) throw new Error(cfg.socialPostsError);
+            if (cfg.socialPostsConfigured === false) return { configured: false, posts: [] };
+            const posts = (cfg.socialPosts || []).map(({ days, hour, minute, ...p }) => {
+                const d = new Date();
+                d.setHours(0, 0, 0, 0);
+                d.setDate(d.getDate() + days);
+                d.setHours(hour, minute || 0, 0, 0);
+                return { release_url: '', group: p.id, ...p, date: d.toISOString() };
+            }).filter(p => p.date >= startIso && p.date < endIso);
+            return { configured: true, postiz_url: 'https://postiz.example.com', posts };
         },
         socialDraft: async (url, channels) => {
             calls.push(['socialDraft', url, clone(channels)]);

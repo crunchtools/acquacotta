@@ -7310,10 +7310,10 @@
             facebook: ['f', 'Facebook'], instagram: ['IG', 'Instagram'],
         };
 
-        // The one status line under the composer (or, with `el`, over Posts):
-        // text, optional nodes (a button or link), and an error tint.
-        function socialStatus(text, { error = false, nodes = [], el: id = 'social-status' } = {}) {
-            const el = document.getElementById(id);
+        // The one status line under the composer (or, with `target`, the one
+        // over Posts): text, optional nodes (a button or link), and an error tint.
+        function socialStatus(text, { error = false, nodes = [], target = 'social-status' } = {}) {
+            const el = document.getElementById(target);
             el.textContent = text;
             el.classList.toggle('error', error);
             for (const n of nodes) el.appendChild(n);
@@ -7782,7 +7782,7 @@
         }
 
         function socialPostsStatus(text, opts = {}) {
-            socialStatus(text, { ...opts, el: 'social-posts-status' });
+            socialStatus(text, { ...opts, target: 'social-posts-status' });
         }
 
         function socialMergePosts(more) {
@@ -7876,6 +7876,12 @@
             try {
                 const r = await Storage.socialPosts(start.toISOString(), end.toISOString());
                 if (token !== socialPostsToken) return;
+                if (!r.configured) {
+                    // Disconnected since the first load: show that, not empty weeks.
+                    socialPostsBusy = false;
+                    socialLoadPosts();
+                    return;
+                }
                 socialMergePosts(r.posts || []);
                 if (dir < 0) socialPostsFrom = start; else socialPostsUntil = end;
                 socialPostsStatus('');
@@ -7908,10 +7914,11 @@
 
         // The row's state word, shown only when it's an exception to what the
         // row's place implies (upcoming = scheduled, past = published).
+        // Returns { label, cls } (cls picks the colour), or null when unremarkable.
         function socialGroupState(posts, past) {
-            if (posts.some(p => p.state === 'ERROR')) return ['Failed', 'error'];
-            if (posts.every(p => p.state === 'DRAFT')) return ['Draft', 'draft'];
-            if (past && posts.some(p => p.state === 'QUEUE')) return ['Not sent yet', 'late'];
+            if (posts.some(p => p.state === 'ERROR')) return { label: 'Failed', cls: 'error' };
+            if (posts.every(p => p.state === 'DRAFT')) return { label: 'Draft', cls: 'draft' };
+            if (past && posts.some(p => p.state === 'QUEUE')) return { label: 'Not sent yet', cls: 'late' };
             return null;
         }
 
@@ -7920,11 +7927,11 @@
             const past = when.getTime() < Date.now();
             const state = socialGroupState(posts, past);
             const text = (posts.find(p => (p.text || '').trim()) || posts[0]).text || '';
-            const cls = ['social-post-row', past ? 'past' : '', state && state[1] === 'error' ? 'failed' : ''].filter(Boolean).join(' ');
+            const cls = ['social-post-row', past ? 'past' : '', state && state.cls === 'error' ? 'failed' : ''].filter(Boolean).join(' ');
             return `<button type="button" class="${cls}" aria-haspopup="dialog" onclick="socialOpenPost('${escapeHtml(posts[0].id)}', '${escapeHtml(posts[0].date)}')">
                 <span class="social-post-meta">
                     <span class="social-post-time">${escapeHtml(when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))}</span>
-                    ${state ? `<span class="social-post-state state-${state[1]}">${state[0]}</span>` : ''}
+                    ${state ? `<span class="social-post-state state-${state.cls}">${state.label}</span>` : ''}
                     <span class="social-post-chips">${posts.map(socialPostChip).join('')}</span>
                 </span>
                 <span class="social-post-text">${escapeHtml(text.trim() || '(no text)')}</span>
