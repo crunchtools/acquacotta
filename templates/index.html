@@ -7453,7 +7453,27 @@
             return text ? `${text}\n\n${socialLink.url}` : socialLink.url;
         }
 
+        // Bluesky shows a link as its host and the start of its path (bsky.app's
+        // toShortUrl, which our Postiz publishes) and counts the shown text.
+        function socialBlueskyShortUrl(url) {
+            try {
+                const u = new URL(url);
+                const path = (u.pathname === '/' ? '' : u.pathname) + u.search + u.hash;
+                return u.host + (path.length > 15 ? path.slice(0, 13) + '...' : path);
+            } catch (e) {
+                return url;
+            }
+        }
+
         function socialLength(c, body) {
+            if (c.identifier === 'bluesky') {
+                const shown = body.replace(/(^|\s|\()(https?:\/\/\S+)/gi, (m, lead, link) => {
+                    let url = link.replace(/[.,;:!?]$/, '');
+                    if (url.endsWith(')') && !url.includes('(')) url = url.slice(0, -1);
+                    return lead + socialBlueskyShortUrl(url) + link.slice(url.length);
+                });
+                return Intl.Segmenter ? [...new Intl.Segmenter().segment(shown)].length : [...shown].length;
+            }
             const weight = SOCIAL_URL_WEIGHT[c.identifier];
             return weight ? body.replace(/https?:\/\/\S+/gi, 'x'.repeat(weight)).length : body.length;
         }

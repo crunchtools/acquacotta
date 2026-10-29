@@ -236,6 +236,26 @@ test('a shared link becomes a card; untrusted fields render as text', SOCIAL_SIG
     assert.equal(await page.$eval('#social-go', el => el.textContent), 'Post to 1 channel');
 });
 
+const XDA = 'https://www.xda-developers.com/linus-torvalds-is-using-ai-to-add-to-the-linux-kernel-and-his-approach-to-the-tech-is-the-healthiest/';
+test('Bluesky counts a link as its short form', {
+    ...SOCIAL_SIGNED_IN,
+    path: '/?view=social&share=' + encodeURIComponent(XDA),
+    socialIntegrations: {
+        ...SOCIAL_SIGNED_IN.socialIntegrations,
+        default_channels: ['bs1'],
+        integrations: [{ id: 'bs1', name: 'Me', identifier: 'bluesky', picture: '', max_length: 300 }],
+    },
+    socialPreview: { url: XDA, title: 'T', site: 'xda-developers.com', image: '' },
+}, async ({ page }) => {
+    await composerReady(page);
+    await page.waitForFunction(() => !document.querySelector('.social-card.loading'));
+    // Shown as www.xda-developers.com/linus-torval... (38): 300 - 38 = 262 left.
+    assert.equal(await page.$eval('#social-count', el => el.textContent), '262 left · Bluesky');
+    // Two newlines join the text and the link; the family emoji is one grapheme.
+    await setSocialText(page, 'Read 👨‍👩‍👧');
+    assert.equal(await page.$eval('#social-count', el => el.textContent), '254 left · Bluesky');
+});
+
 const visible = (page, sel) => page.$eval(sel, el => el.offsetParent !== null);
 const sent = async page => {
     await page.waitForFunction(() => window.__storageCalls.some(c => c[0] === 'socialSchedule'));

@@ -73,15 +73,14 @@ _DEFAULT_LIMIT = 3000
 # per provider for anything but a draft; X refuses a post with no reply policy.
 _PROVIDER_DEFAULT_SETTINGS = {"x": {"who_can_reply_post": "everyone"}}
 
-# Platforms that auto-unfurl a bare link into their own native card. A photo
-# attachment would suppress that card and look worse, so these get the URL alone
-# and no photo. Every other platform gets the shared article's image as a native
-# photo: LinkedIn and Bluesky never unfurl via their APIs, Facebook unfurls a
-# URL-in-text unreliably, and media-first platforms (Instagram, Pinterest,
-# TikTok) require an image to post at all. Defaulting unlisted platforms to "get
-# the photo" fails safe, since a missing required image means a post that won't
-# publish.
-_LINK_UNFURL_PROVIDERS = frozenset({"x", "mastodon", "threads"})
+# Platforms that get a native link card, which a photo attachment would
+# suppress, so these get the URL alone. Bluesky's card comes from our Postiz
+# (fork patch 9), which builds one when a post has no media. Everything else
+# gets the article's image as a photo: LinkedIn never unfurls via its API,
+# Facebook unfurls unreliably, and Instagram, Pinterest and TikTok require an
+# image. Unlisted platforms get the photo because a missing required image
+# means a post that won't publish.
+_LINK_UNFURL_PROVIDERS = frozenset({"x", "mastodon", "threads", "bluesky"})
 
 # Image types Postiz accepts as post media, and the extension each is stored with.
 _IMAGE_TYPES = {"image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp"}
