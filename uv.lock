@@ -4,5 +4,5 @@ requires-python = ">=3.10"
 
 [[package]]
 name = "acquacotta"
-version = "2.27.0"
+version = "2.28.0"
 source = { virtual = "." }

@@ -422,4 +422,149 @@ test('channels render from the device cache before Postiz answers', {
     assert.match(await page.evaluate(() => localStorage.getItem('acquacotta_social_channels')), /Scott on X/, 'cache refreshed');
 });
 
+// ---- Social → Posts ----
+const CH = {
+    x: { id: 'x1', name: 'Scott on X', identifier: 'x', picture: '' },
+    li: { id: 'li1', name: 'Scott McCarty', identifier: 'linkedin', picture: '' },
+};
+const POSTS = [
+    { id: 'old', days: -10, hour: 9, state: 'PUBLISHED', text: 'Ten days back', channel: CH.x },
+    { id: 'lw1', group: 'lw', days: -3, hour: 9, state: 'PUBLISHED', text: 'Last week, partly failed', channel: CH.x },
+    { id: 'lw2', group: 'lw', days: -3, hour: 9, state: 'ERROR', text: 'Last week, partly failed', channel: CH.li },
+    { id: 'late', days: -1, hour: 9, state: 'QUEUE', text: 'Should have gone out', channel: CH.x },
+    { id: 'up1', group: 'up', days: 2, hour: 10, minute: 20, state: 'QUEUE', text: 'Upcoming <b>post</b>', channel: CH.x },
+    { id: 'up2', group: 'up', days: 2, hour: 10, minute: 20, state: 'QUEUE', text: 'Upcoming <b>post</b>', channel: CH.li },
+    { id: 'draft', days: 4, hour: 15, state: 'DRAFT', text: 'A draft', channel: CH.li },
+    { id: 'far', days: 9, hour: 9, state: 'QUEUE', text: 'Next week', channel: CH.x },
+];
+const POSTS_SIGNED_IN = { path: '/#social/posts', auth: { logged_in: true, email: 'test@example.com' }, socialPosts: POSTS };
+const postsReady = page => page.waitForFunction(() => document.getElementById('social-posts').getAttribute('aria-busy') === 'false'
+    && !document.querySelector('.social-post-row.skeleton') && !document.getElementById('social-pane-posts').hidden);
+const dayLabels = page => page.$$eval('#social-posts .social-day-label', els => els.map(e => e.textContent));
+const rowStates = page => page.$$eval('#social-posts .social-post-row', els => els.map(e => [e.querySelector('.social-post-text').textContent, e.querySelector('.social-post-state')?.textContent || '', e.classList.contains('failed')]));
+const postsStatus = page => page.$eval('#social-posts-status', el => el.textContent);
+const localDay = n => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + n); return d.toISOString(); };
+
+test('Posts opens on Today, a week of days; last week is collapsed and reports its failures', POSTS_SIGNED_IN, async ({ page }) => {
+    await postsReady(page);
+    const [[, start, end]] = await socialCalls(page, 'socialPosts');
+    assert.equal(start, localDay(-7), 'last week is fetched with the first request');
+    assert.equal(end, localDay(7));
+    const labels = await dayLabels(page);
+    assert.equal(labels.length, 7);
+    assert.deepEqual(labels.slice(0, 2), ['Today', 'Tomorrow']);
+    assert.equal(await page.$eval('#social-posts-earlier', el => el.textContent), '‹ Last week · 1 failed');
+    assert.deepEqual(await rowStates(page), [['Upcoming <b>post</b>', '', false], ['A draft', 'Draft', false]],
+        'upcoming rows say nothing unusual; drafts say so; text renders as text');
+    assert.deepEqual(await page.$eval('#social-posts .social-post-row', row => [...row.querySelectorAll('.social-post-chip')].map(e => e.getAttribute('aria-label'))),
+        ['Scott on X: Scheduled', 'Scott McCarty: Scheduled'], 'one chip per channel, labelled with its state');
+});
+
+test('revealing last week keeps Today in place and flags failed and unsent posts', POSTS_SIGNED_IN, async ({ page }) => {
+    await postsReady(page);
+    const top = () => page.$eval('.social-day-label.today', el => el.getBoundingClientRect().top);
+    const before = await top();
+    await page.click('#social-posts-earlier');
+    assert.ok(Math.abs(await top() - before) < 2, 'Today does not move');
+    assert.equal((await dayLabels(page)).length, 14);
+    assert.equal(await page.$eval('#social-posts-earlier', el => el.textContent), '‹ Earlier');
+    assert.equal((await socialCalls(page, 'socialPosts')).length, 1, 'no new request to show last week');
+    const states = await rowStates(page);
+    assert.deepEqual(states.slice(0, 2), [['Last week, partly failed', 'Failed', true], ['Should have gone out', 'Not sent yet', false]]);
+    await page.click('#social-posts-earlier');
+    await page.waitForFunction(() => document.querySelectorAll('#social-posts .social-day').length === 21);
+    assert.equal((await socialCalls(page, 'socialPosts'))[1][1], localDay(-14), 'Earlier fetches the week before');
+    assert.ok((await rowStates(page)).some(r => r[0] === 'Ten days back'));
+});
+
+test('Next week appends seven days', POSTS_SIGNED_IN, async ({ page }) => {
+    await postsReady(page);
+    await page.click('#social-posts-later');
+    await page.waitForFunction(() => document.querySelectorAll('#social-posts .social-day').length === 14);
+    const calls = await socialCalls(page, 'socialPosts');
+    assert.deepEqual(calls[1].slice(1), [localDay(7), localDay(14)]);
+    assert.ok((await rowStates(page)).some(r => r[0] === 'Next week'));
+});
+
+test('a row opens the post sheet with each channel; closing returns to #social/posts', POSTS_SIGNED_IN, async ({ page }) => {
+    await postsReady(page);
+    await page.click('#social-posts .social-post-row');
+    assert.equal(await page.$eval('#social-post-sheet', el => el.open), true);
+    assert.equal(await page.evaluate(() => location.hash), '#social/post/up1');
+    assert.deepEqual(await page.$$eval('.social-post-detail-head', els => els.map(e => [e.querySelector('.social-post-detail-name').textContent, e.querySelector('.social-post-state').textContent])),
+        [['Scott on X', 'Scheduled'], ['Scott McCarty', 'Scheduled']]);
+    assert.equal(await page.$eval('#social-post-postiz', el => el.href), 'https://postiz.example.com/');
+    await page.evaluate(() => document.getElementById('social-post-sheet').close());
+    await page.waitForFunction(() => location.hash === '#social/posts');
+});
+
+test('a link to a post outside the first two weeks looks further and opens it', { ...POSTS_SIGNED_IN, path: '/#social/post/old' }, async ({ page }) => {
+    await page.waitForFunction(() => document.getElementById('social-post-sheet').open);
+    assert.equal(await page.$eval('.social-post-detail-text', el => el.textContent), 'Ten days back');
+    const ranges = (await socialCalls(page, 'socialPosts')).map(c => c.slice(1));
+    assert.deepEqual(ranges.slice(-2), [[localDay(-63), localDay(-7)], [localDay(7), localDay(63)]]);
+});
+
+test('a link to a post that is gone says so', { ...POSTS_SIGNED_IN, path: '/#social/post/nope' }, async ({ page }) => {
+    await page.waitForFunction(() => !document.getElementById('route-notice').hidden);
+    assert.match(await page.$eval('#route-notice', el => el.textContent), /wasn’t found/);
+    assert.equal(await page.$eval('#social-post-sheet', el => el.open), false);
+});
+
+test('Posts signed out asks to sign in', { path: '/#social/posts' }, async ({ page }) => {
+    await page.waitForFunction(() => document.getElementById('social-posts-status').textContent.includes('Sign in'));
+    assert.equal(await page.$eval('#social-posts-status button', el => el.textContent), 'Sign in with Google');
+    assert.equal(await page.$eval('#social-posts-top', el => el.hidden), true, 'no week navigation');
+});
+
+test('Posts without Postiz offers to connect it', { ...POSTS_SIGNED_IN, socialPostsConfigured: false }, async ({ page }) => {
+    await page.waitForFunction(() => document.getElementById('social-posts-status').textContent.includes('connected'));
+    assert.equal(await postsStatus(page), 'Postiz isn’t connected yet.Connect Postiz');
+    assert.equal(await page.$eval('#social-posts', el => el.innerHTML), '');
+    assert.equal(await page.$eval('#social-posts-bottom', el => el.hidden), true);
+});
+
+test('Postiz unreachable with no copy: the list says so and retries', { ...POSTS_SIGNED_IN, socialPostsError: 'HTTP 502' }, async ({ page }) => {
+    await page.waitForFunction(() => document.getElementById('social-posts').textContent.includes('Couldn’t reach Postiz'));
+    assert.match(await page.$eval('#social-posts', el => el.textContent), /Couldn’t reach Postiz: HTTP 502\s*Retry/);
+    await page.click('#social-posts .social-ghost');
+    await page.waitForFunction(() => window.__storageCalls.filter(c => c[0] === 'socialPosts').length === 2);
+});
+
+test("Postiz unreachable with this account's copy: the copy shows, the status says why", {
+    ...POSTS_SIGNED_IN,
+    socialPostsError: 'HTTP 502',
+    localStorage: {
+        acquacotta_social_posts: JSON.stringify({ email: 'test@example.com', from: localDay(-7), postiz_url: '', posts: [
+            { id: 'c1', group: 'c1', date: localDay(1), state: 'QUEUE', text: 'From the cache', release_url: '', channel: CH.x },
+        ] }),
+    },
+}, async ({ page }) => {
+    await page.waitForFunction(() => document.getElementById('social-posts-status').textContent.includes('last copy'));
+    assert.equal(await postsStatus(page), 'Couldn’t reach Postiz · showing the last copyRetry');
+    assert.equal(await page.$eval('#social-posts-status', el => el.classList.contains('error')), true);
+    assert.deepEqual((await rowStates(page)).map(r => r[0]), ['From the cache']);
+});
+
+test("another account's cached posts never show", {
+    ...POSTS_SIGNED_IN,
+    socialPostsError: 'HTTP 502',
+    localStorage: {
+        acquacotta_social_posts: JSON.stringify({ email: 'someone@else.com', from: localDay(-7), postiz_url: '', posts: [
+            { id: 'c1', group: 'c1', date: localDay(1), state: 'QUEUE', text: 'Not yours', release_url: '', channel: CH.x },
+        ] }),
+    },
+}, async ({ page }) => {
+    await page.waitForFunction(() => document.getElementById('social-posts').textContent.includes('Couldn’t reach Postiz'));
+    assert.equal(await page.$eval('#social-posts', el => el.textContent.includes('Not yours')), false);
+});
+
+test('paging after Postiz is disconnected shows the connect prompt, not empty weeks', POSTS_SIGNED_IN, async ({ page }) => {
+    await postsReady(page);
+    await page.evaluate(() => { window.__TEST__.socialPostsConfigured = false; });
+    await page.click('#social-posts-later');
+    await page.waitForFunction(() => document.getElementById('social-posts-status').textContent.includes('connected'));
+    assert.equal(await page.$eval('#social-posts-bottom', el => el.hidden), true);
+});
+
 run(tests);
