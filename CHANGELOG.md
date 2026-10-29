@@ -6,6 +6,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.29.0] - 2026-10-28
+
+### Changed
+- Social → Posts shows one entry per post, not one per channel (Fable UX
+  revision). Postiz records at the same minute join when they share a group or
+  say the same thing (whitespace and links ignored), so a post made separately
+  in Postiz for each channel is one entry too. Channels with the same text are
+  one version; when they differ the entry says "· 2 versions" and lists each
+  version once, captioned "On X" / "On LinkedIn, Mastodon".
+- Entries expand in place (one at a time) instead of opening a bottom sheet:
+  the text once, then a line per channel with its state and "View post ›",
+  then Copy link and Open in Postiz. `#social/post/<id>` opens the entry for
+  any of its channels' ids.
+- A partly failed post reads "1 of 3 failed".
+- Runs of empty days fold into one line ("Fri, Oct 30 – Sat, Oct 31  No posts").
+
 ## [2.28.0] - 2026-10-28
 
 ### Changed

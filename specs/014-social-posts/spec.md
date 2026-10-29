@@ -16,9 +16,13 @@ loaded with the first request ([today−7, today+7)) but collapsed behind
 ("‹ Earlier") prepend a week. One row per post group (posts created together
 across channels), styled like the link card: time, an exception word (Failed,
 Draft, Not sent yet), a chip per channel (filled = published, red = failed,
-dashed = draft), two lines of text; failed rows get an accent bar. A row opens
-the bottom sheet with each channel's state word, full text, "View post ›" and
-Open in Postiz. One status line carries signed out, not connected, offline and
+dashed = draft), two lines of text; failed rows get an accent bar. Since v2.29.0
+an entry is a post, not a channel: Postiz records at the same minute join when
+they share a group or their text matches (whitespace and links ignored);
+channels with the same text are one version, and an entry with several says
+"· N versions". Entries expand in place, one at a time (`<details>`): each
+version's text once, a line per channel (state word, "View post ›"), Copy link,
+Open in Postiz. Runs of empty days fold into one line. One status line carries signed out, not connected, offline and
 unreachable. Read-only: editing, rescheduling and deleting stay in Postiz.
 
 `GET /api/social/posts?start&end` (≤ 62 days) calls the Postiz public API

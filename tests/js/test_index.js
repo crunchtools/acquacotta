@@ -426,6 +426,7 @@ test('channels render from the device cache before Postiz answers', {
 const CH = {
     x: { id: 'x1', name: 'Scott on X', identifier: 'x', picture: '' },
     li: { id: 'li1', name: 'Scott McCarty', identifier: 'linkedin', picture: '' },
+    m: { id: 'm1', name: '@fatherlinux', identifier: 'mastodon', picture: '' },
 };
 const POSTS = [
     { id: 'old', days: -10, hour: 9, state: 'PUBLISHED', text: 'Ten days back', channel: CH.x },
@@ -439,25 +440,27 @@ const POSTS = [
 ];
 const POSTS_SIGNED_IN = { path: '/#social/posts', auth: { logged_in: true, email: 'test@example.com' }, socialPosts: POSTS };
 const postsReady = page => page.waitForFunction(() => document.getElementById('social-posts').getAttribute('aria-busy') === 'false'
-    && !document.querySelector('.social-post-row.skeleton') && !document.getElementById('social-pane-posts').hidden);
+    && !document.querySelector('.social-post.skeleton') && !document.getElementById('social-pane-posts').hidden);
 const dayLabels = page => page.$$eval('#social-posts .social-day-label', els => els.map(e => e.textContent));
-const rowStates = page => page.$$eval('#social-posts .social-post-row', els => els.map(e => [e.querySelector('.social-post-text').textContent, e.querySelector('.social-post-state')?.textContent || '', e.classList.contains('failed')]));
+const rowStates = page => page.$$eval('#social-posts .social-post', els => els.map(e => [e.querySelector('.social-post-text').textContent, e.querySelector('summary .social-post-state')?.textContent || '', e.classList.contains('failed')]));
 const postsStatus = page => page.$eval('#social-posts-status', el => el.textContent);
 const localDay = n => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + n); return d.toISOString(); };
+const channelLines = page => page.$$eval('.social-post[open] .social-post-ch', els => els.map(e => [e.querySelector('.social-post-ch-name').textContent, e.querySelector('.social-post-state').textContent]));
 
-test('Posts opens on Today, a week of days; last week is collapsed and reports its failures', POSTS_SIGNED_IN, async ({ page }) => {
+test('Posts opens on Today; empty days fold into one line; last week is collapsed and reports its failures', POSTS_SIGNED_IN, async ({ page }) => {
     await postsReady(page);
     const [[, start, end]] = await socialCalls(page, 'socialPosts');
     assert.equal(start, localDay(-7), 'last week is fetched with the first request');
     assert.equal(end, localDay(7));
     const labels = await dayLabels(page);
-    assert.equal(labels.length, 7);
-    assert.deepEqual(labels.slice(0, 2), ['Today', 'Tomorrow']);
+    assert.deepEqual(labels.slice(0, 2), ['Today', 'Tomorrow'], 'Today keeps its own block; a single empty day keeps its name');
+    assert.match(labels[labels.length - 1], / – /, 'a run of empty days is one line');
+    assert.equal(labels.length, 6);
     assert.equal(await page.$eval('#social-posts-earlier', el => el.textContent), '‹ Last week · 1 failed');
     assert.deepEqual(await rowStates(page), [['Upcoming <b>post</b>', '', false], ['A draft', 'Draft', false]],
-        'upcoming rows say nothing unusual; drafts say so; text renders as text');
-    assert.deepEqual(await page.$eval('#social-posts .social-post-row', row => [...row.querySelectorAll('.social-post-chip')].map(e => e.getAttribute('aria-label'))),
-        ['Scott on X: Scheduled', 'Scott McCarty: Scheduled'], 'one chip per channel, labelled with its state');
+        'one entry per post, not per channel; drafts say so; text renders as text');
+    assert.deepEqual(await page.$eval('#social-posts .social-post > summary', row => [...row.querySelectorAll('.social-post-chip')].map(e => e.getAttribute('aria-label'))),
+        ['Scott McCarty: Scheduled', 'Scott on X: Scheduled'], 'one chip per channel, labelled with its state');
 });
 
 test('revealing last week keeps Today in place and flags failed and unsent posts', POSTS_SIGNED_IN, async ({ page }) => {
@@ -466,13 +469,13 @@ test('revealing last week keeps Today in place and flags failed and unsent posts
     const before = await top();
     await page.click('#social-posts-earlier');
     assert.ok(Math.abs(await top() - before) < 2, 'Today does not move');
-    assert.equal((await dayLabels(page)).length, 14);
     assert.equal(await page.$eval('#social-posts-earlier', el => el.textContent), '‹ Earlier');
     assert.equal((await socialCalls(page, 'socialPosts')).length, 1, 'no new request to show last week');
     const states = await rowStates(page);
-    assert.deepEqual(states.slice(0, 2), [['Last week, partly failed', 'Failed', true], ['Should have gone out', 'Not sent yet', false]]);
+    assert.deepEqual(states.slice(0, 2), [['Last week, partly failed', '1 of 2 failed', true], ['Should have gone out', 'Not sent yet', false]]);
     await page.click('#social-posts-earlier');
-    await page.waitForFunction(() => document.querySelectorAll('#social-posts .social-day').length === 21);
+    await page.waitForFunction(() => window.__storageCalls.filter(c => c[0] === 'socialPosts').length === 2
+        && document.getElementById('social-posts').getAttribute('aria-busy') === 'false');
     assert.equal((await socialCalls(page, 'socialPosts'))[1][1], localDay(-14), 'Earlier fetches the week before');
     assert.ok((await rowStates(page)).some(r => r[0] === 'Ten days back'));
 });
@@ -480,27 +483,91 @@ test('revealing last week keeps Today in place and flags failed and unsent posts
 test('Next week appends seven days', POSTS_SIGNED_IN, async ({ page }) => {
     await postsReady(page);
     await page.click('#social-posts-later');
-    await page.waitForFunction(() => document.querySelectorAll('#social-posts .social-day').length === 14);
+    await page.waitForFunction(() => window.__storageCalls.filter(c => c[0] === 'socialPosts').length === 2
+        && document.getElementById('social-posts').getAttribute('aria-busy') === 'false');
     const calls = await socialCalls(page, 'socialPosts');
     assert.deepEqual(calls[1].slice(1), [localDay(7), localDay(14)]);
     assert.ok((await rowStates(page)).some(r => r[0] === 'Next week'));
 });
 
-test('a row opens the post sheet with each channel; closing returns to #social/posts', POSTS_SIGNED_IN, async ({ page }) => {
+test('an entry opens in place: the text once, then each channel; closing returns to #social/posts', POSTS_SIGNED_IN, async ({ page }) => {
     await postsReady(page);
-    await page.click('#social-posts .social-post-row');
-    assert.equal(await page.$eval('#social-post-sheet', el => el.open), true);
-    assert.equal(await page.evaluate(() => location.hash), '#social/post/up1');
-    assert.deepEqual(await page.$$eval('.social-post-detail-head', els => els.map(e => [e.querySelector('.social-post-detail-name').textContent, e.querySelector('.social-post-state').textContent])),
-        [['Scott on X', 'Scheduled'], ['Scott McCarty', 'Scheduled']]);
-    assert.equal(await page.$eval('#social-post-postiz', el => el.href), 'https://postiz.example.com/');
-    await page.evaluate(() => document.getElementById('social-post-sheet').close());
+    await page.click('#social-posts .social-post > summary');
+    await page.waitForFunction(() => location.hash === '#social/post/up2', {}, 'the entry id is its first channel by name');
+    assert.equal(await page.$$eval('.social-post[open] .social-post-full', els => els.length), 1, 'identical text shows once');
+    assert.equal(await page.$$eval('.social-post[open] .social-post-version-cap', els => els.length), 0, 'no version captions when all agree');
+    assert.deepEqual(await channelLines(page), [['Scott McCarty', 'Scheduled'], ['Scott on X', 'Scheduled']]);
+    assert.equal(await page.$eval('.social-post[open] .social-postiz-link', el => el.href), 'https://postiz.example.com/');
+    await page.click('.social-post[open] > summary');
     await page.waitForFunction(() => location.hash === '#social/posts');
+    assert.equal(await page.$('.social-post[open]'), null);
+});
+
+test('posts made separately in Postiz with the same words at the same minute are one entry', {
+    ...POSTS_SIGNED_IN,
+    socialPosts: [
+        { id: 'n1', group: 'g1', days: 1, hour: 12, state: 'QUEUE', text: 'Same words https://a.example/1', channel: CH.x },
+        { id: 'n2', group: 'g2', days: 1, hour: 12, state: 'QUEUE', text: 'Same   words\nhttps://lnkd.in/x', channel: CH.li },
+        { id: 'n3', group: 'g3', days: 1, hour: 12, state: 'QUEUE', text: 'Different words', channel: CH.m },
+    ],
+}, async ({ page }) => {
+    await postsReady(page);
+    const rows = await page.$$eval('#social-posts .social-post', els => els.map(e => [e.querySelector('.social-post-text').textContent, e.querySelectorAll('summary .social-post-chip').length, !!e.querySelector('.social-post-versions')]));
+    assert.deepEqual(rows.map(r => r[1]).sort(), [1, 2], 'same words merge across groups; different words stay apart');
+    assert.ok(rows.every(r => !r[2]), 'a link difference is not a separate version');
+});
+
+test('an entry whose X text differs shows two versions, captioned by channel', {
+    ...POSTS_SIGNED_IN,
+    socialPosts: [
+        { id: 'v1', group: 'v', days: 1, hour: 12, state: 'QUEUE', text: 'Short take', channel: CH.x },
+        { id: 'v2', group: 'v', days: 1, hour: 12, state: 'QUEUE', text: 'The longer take for LinkedIn and Mastodon', channel: CH.li },
+        { id: 'v3', group: 'v', days: 1, hour: 12, state: 'QUEUE', text: 'The longer take for LinkedIn and Mastodon', channel: CH.m },
+    ],
+}, async ({ page }) => {
+    await postsReady(page);
+    assert.equal(await page.$eval('.social-post-versions', el => el.textContent), '· 2 versions');
+    assert.equal(await page.$eval('.social-post-text', el => el.textContent), 'The longer take for LinkedIn and Mastodon', 'the version most channels carry leads');
+    await page.click('#social-posts .social-post > summary');
+    await page.waitForFunction(() => document.querySelector('.social-post[open]'));
+    assert.deepEqual(await page.$$eval('.social-post[open] .social-post-version-cap', els => els.map(e => e.textContent)), ['On Mastodon, LinkedIn', 'On X']);
+    assert.equal(await page.$$eval('.social-post[open] .social-post-full', els => els.length), 2);
+});
+
+test('a record that bridges two entries (one by group, one by text) joins them all', {
+    ...POSTS_SIGNED_IN,
+    socialPosts: [
+        { id: 't1', group: 'g1', days: 1, hour: 12, state: 'QUEUE', text: 'Long version', channel: CH.x },
+        { id: 't2', group: 'g2', days: 1, hour: 12, state: 'QUEUE', text: 'Short version', channel: CH.li },
+        { id: 't3', group: 'g2', days: 1, hour: 12, state: 'QUEUE', text: 'Long version', channel: CH.m },
+    ],
+}, async ({ page }) => {
+    await postsReady(page);
+    assert.equal(await page.$$eval('#social-posts .social-post', els => els.length), 1, 't3 shares a group with t2 and the text of t1');
+    assert.equal(await page.$$eval('#social-posts summary .social-post-chip', els => els.length), 3);
+    assert.equal(await page.$eval('.social-post-versions', el => el.textContent), '· 2 versions');
+});
+
+test('records without a group never merge on that alone', {
+    ...POSTS_SIGNED_IN,
+    socialPosts: [
+        { id: 'a1', group: '', days: 1, hour: 12, state: 'QUEUE', text: 'One thing', channel: CH.x },
+        { id: 'a2', group: '', days: 1, hour: 12, state: 'QUEUE', text: 'Another thing', channel: CH.li },
+    ],
+}, async ({ page }) => {
+    await postsReady(page);
+    assert.equal(await page.$$eval('#social-posts .social-post', els => els.length), 2);
+});
+
+test('a link to any channel of a post opens its entry', { ...POSTS_SIGNED_IN, path: '/#social/post/up1' }, async ({ page }) => {
+    await page.waitForFunction(() => document.querySelector('.social-post[open]'));
+    assert.equal(await page.$eval('.social-post[open] .social-post-full', el => el.textContent), 'Upcoming <b>post</b>');
+    assert.equal(await page.evaluate(() => location.hash), '#social/post/up2', 'the link settles on the entry id');
 });
 
 test('a link to a post outside the first two weeks looks further and opens it', { ...POSTS_SIGNED_IN, path: '/#social/post/old' }, async ({ page }) => {
-    await page.waitForFunction(() => document.getElementById('social-post-sheet').open);
-    assert.equal(await page.$eval('.social-post-detail-text', el => el.textContent), 'Ten days back');
+    await page.waitForFunction(() => document.querySelector('.social-post[open]'));
+    assert.equal(await page.$eval('.social-post[open] .social-post-full', el => el.textContent), 'Ten days back');
     const ranges = (await socialCalls(page, 'socialPosts')).map(c => c.slice(1));
     assert.deepEqual(ranges.slice(-2), [[localDay(-63), localDay(-7)], [localDay(7), localDay(63)]]);
 });
@@ -508,7 +575,7 @@ test('a link to a post outside the first two weeks looks further and opens it', 
 test('a link to a post that is gone says so', { ...POSTS_SIGNED_IN, path: '/#social/post/nope' }, async ({ page }) => {
     await page.waitForFunction(() => !document.getElementById('route-notice').hidden);
     assert.match(await page.$eval('#route-notice', el => el.textContent), /wasn’t found/);
-    assert.equal(await page.$eval('#social-post-sheet', el => el.open), false);
+    assert.equal(await page.$('.social-post[open]'), null);
 });
 
 test('Posts signed out asks to sign in', { path: '/#social/posts' }, async ({ page }) => {
