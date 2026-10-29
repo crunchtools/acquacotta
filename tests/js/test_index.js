@@ -507,6 +507,24 @@ test('ten entries at a time', {
     await settled(page, 3);
     await page.waitForFunction(() => document.querySelectorAll('#social-posts .social-post').length === 13);
     assert.equal(await postsStatus(page), '3 more shown');
+    const ranges = (await socialCalls(page, 'socialPosts')).map(c => c.slice(1));
+    assert.deepEqual(ranges[2], [localDay(56), localDay(112)], 'Upcoming widens after the loaded range');
+    assert.deepEqual(ranges[ranges.length - 1], [localDay(336), localDay(364)], 'and stops at the horizon');
+    assert.deepEqual((await rowStates(page)).map(r => r[0]).slice(-3), ['Post 10', 'Post 11', 'Post 12'], 'still soonest first');
+    assert.equal(await page.$eval('.social-posts-end', el => el.textContent), 'Nothing more scheduled in the next year');
+});
+
+test('a failed Show more keeps the rows and retries', POSTS_SIGNED_IN, async ({ page }) => {
+    await postsReady(page);
+    await page.click('#social-list-past');
+    await page.evaluate(() => { window.__TEST__.socialPostsError = 'HTTP 502'; });
+    await page.click('#social-posts-more');
+    await page.waitForFunction(() => document.getElementById('social-posts-status').textContent.includes('Couldn’t load more'));
+    assert.equal(await postsStatus(page), 'Couldn’t load more: HTTP 502Retry');
+    assert.equal((await rowStates(page)).length, 3, 'the rows already shown stay');
+    await page.evaluate(() => { window.__TEST__.socialPostsError = ''; });
+    await page.click('#social-posts-status .social-ghost');
+    await page.waitForFunction(() => document.getElementById('social-posts').textContent.includes('A hundred days back'));
 });
 
 test('nothing upcoming says how far it looked and offers Compose', { ...POSTS_SIGNED_IN, socialPosts: [] }, async ({ page }) => {
