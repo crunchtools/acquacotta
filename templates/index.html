@@ -193,17 +193,17 @@
         }
         .modal.modal-compact { max-width: 400px; }
         /* A long region (e.g. a ticket's history) marked .modal-scroll scrolls by
-           itself; the header, forms and actions stay put. Very short viewports
-           fall back to scrolling the whole modal. */
+           itself and shrinks to fit; the header, forms and actions stay put. If the
+           rest still doesn't fit (a phone, a long title), the modal scrolls as a
+           whole and the sticky actions stay on screen. Never clip it. */
         .modal-scroll {
             max-height: 40vh; overflow-y: auto; overscroll-behavior: contain;
             margin: 0 -0.5rem 1rem 0; padding-right: 0.5rem;
         }
         @media (min-height: 560px) {
-            .modal:has(> .modal-scroll) { display: flex; flex-direction: column; overflow: hidden; }
+            .modal:has(> .modal-scroll) { display: flex; flex-direction: column; }
             .modal:has(> .modal-scroll) > * { flex-shrink: 0; }
             .modal > .modal-scroll { flex: 1 1 auto; min-height: 6rem; max-height: none; }
-            .modal:has(> .modal-scroll) .modal-actions { position: static; }
         }
         /* Thin, theme-coloured scrollbars that brighten on hover instead of the
            bright native ones */
@@ -213,6 +213,7 @@
         }
         .modal:hover, .modal-scroll:hover { scrollbar-color: rgba(255,255,255,0.28) transparent; }
         .modal h2 { margin-bottom: 1.5rem; }
+        @media (max-width: 480px) { .modal h2 { font-size: 1.125rem; margin-bottom: 1rem; } }
         .modal-actions {
             display: flex; gap: 0.75rem; justify-content: flex-end;
             position: sticky; bottom: -1.5rem;
