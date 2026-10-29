@@ -534,6 +534,31 @@ test('an entry whose X text differs shows two versions, captioned by channel', {
     assert.equal(await page.$$eval('.social-post[open] .social-post-full', els => els.length), 2);
 });
 
+test('a record that bridges two entries (one by group, one by text) joins them all', {
+    ...POSTS_SIGNED_IN,
+    socialPosts: [
+        { id: 't1', group: 'g1', days: 1, hour: 12, state: 'QUEUE', text: 'Long version', channel: CH.x },
+        { id: 't2', group: 'g2', days: 1, hour: 12, state: 'QUEUE', text: 'Short version', channel: CH.li },
+        { id: 't3', group: 'g2', days: 1, hour: 12, state: 'QUEUE', text: 'Long version', channel: CH.m },
+    ],
+}, async ({ page }) => {
+    await postsReady(page);
+    assert.equal(await page.$$eval('#social-posts .social-post', els => els.length), 1, 't3 shares a group with t2 and the text of t1');
+    assert.equal(await page.$$eval('#social-posts summary .social-post-chip', els => els.length), 3);
+    assert.equal(await page.$eval('.social-post-versions', el => el.textContent), '· 2 versions');
+});
+
+test('records without a group never merge on that alone', {
+    ...POSTS_SIGNED_IN,
+    socialPosts: [
+        { id: 'a1', group: '', days: 1, hour: 12, state: 'QUEUE', text: 'One thing', channel: CH.x },
+        { id: 'a2', group: '', days: 1, hour: 12, state: 'QUEUE', text: 'Another thing', channel: CH.li },
+    ],
+}, async ({ page }) => {
+    await postsReady(page);
+    assert.equal(await page.$$eval('#social-posts .social-post', els => els.length), 2);
+});
+
 test('a link to any channel of a post opens its entry', { ...POSTS_SIGNED_IN, path: '/#social/post/up1' }, async ({ page }) => {
     await page.waitForFunction(() => document.querySelector('.social-post[open]'));
     assert.equal(await page.$eval('.social-post[open] .social-post-full', el => el.textContent), 'Upcoming <b>post</b>');

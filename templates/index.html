@@ -7926,7 +7926,8 @@
                 const buckets = [];
                 for (const p of posts) {
                     const key = socialTextKey(p.text);
-                    const hits = buckets.filter(b => b.groups.has(p.group) || b.keys.has(key));
+                    const group = p.group || p.id;  // a record without a group is its own
+                    const hits = buckets.filter(b => b.groups.has(group) || b.keys.has(key));
                     const bucket = hits[0] || { groups: new Set(), keys: new Set(), posts: [] };
                     if (!hits.length) buckets.push(bucket);
                     for (const other of hits.slice(1)) {
@@ -7935,7 +7936,7 @@
                         bucket.posts.push(...other.posts);
                         buckets.splice(buckets.indexOf(other), 1);
                     }
-                    bucket.groups.add(p.group);
+                    bucket.groups.add(group);
                     bucket.keys.add(key);
                     bucket.posts.push(p);
                 }
