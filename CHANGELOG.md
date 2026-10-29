@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.31.2] - 2026-10-29
+
+### Fixed
+- Modals: every view and plugin uses one modal component. Record modals
+  (pomodoros, to-dos, discussions, tickets) are all the same width; only
+  confirmations and system prompts use the compact size. Any modal can mark a
+  long region `.modal-scroll` to get the ticket modal's scrolling. A test
+  fails the build if a modal is sized by id or inline style.
+
 ## [2.31.1] - 2026-10-29
 
 ### Fixed

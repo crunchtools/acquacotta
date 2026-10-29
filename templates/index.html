@@ -182,31 +182,36 @@
         .modal-overlay.active { display: flex; }
         /* The page behind an open modal does not scroll */
         body:has(.modal-overlay.active) { overflow: hidden; }
-        .modal { background: var(--bg-secondary); border-radius: 8px; padding: 1.5rem; width: 100%; max-width: 400px; margin: 1rem; max-height: calc(100dvh - 2rem); overflow-y: auto; }
-        /* The ticket detail modal is a reading surface (long subject, history thread,
-           action forms), not a compact form — give it room on desktop. On mobile the
-           width:100% cap still holds, so it stays full-width there. */
-        #rt-detail-modal .modal { max-width: 720px; }
-        /* The ticket modal never scrolls as a whole: header, forms and actions stay
-           put and only the history thread scrolls, taking whatever height is left.
-           Very short viewports fall back to scrolling the whole modal. */
-        @media (min-height: 560px) {
-            #rt-detail-modal .modal { display: flex; flex-direction: column; overflow: hidden; }
-            #rt-detail-modal .modal > * { flex-shrink: 0; }
-            #rt-detail-modal #rt-detail-history { flex: 1 1 auto; min-height: 6rem; max-height: none; }
-            #rt-detail-modal .modal-actions { position: static; }
+        /* One modal component for every view and plugin. A record modal (viewing or
+           editing a pomodoro, to-do, discussion or ticket) is the default, so a new
+           plugin's modal looks like the rest without doing anything. Confirmations
+           and system prompts add .modal-compact. Don't size a modal by id:
+           tests/test_modals.py fails the build if one does. */
+        .modal {
+            background: var(--bg-secondary); border-radius: 8px; padding: 1.5rem;
+            width: 100%; max-width: 720px; margin: 1rem; max-height: calc(100dvh - 2rem); overflow-y: auto;
         }
-        #rt-detail-history {
+        .modal.modal-compact { max-width: 400px; }
+        /* A long region (e.g. a ticket's history) marked .modal-scroll scrolls by
+           itself; the header, forms and actions stay put. Very short viewports
+           fall back to scrolling the whole modal. */
+        .modal-scroll {
             max-height: 40vh; overflow-y: auto; overscroll-behavior: contain;
             margin: 0 -0.5rem 1rem 0; padding-right: 0.5rem;
         }
+        @media (min-height: 560px) {
+            .modal:has(> .modal-scroll) { display: flex; flex-direction: column; overflow: hidden; }
+            .modal:has(> .modal-scroll) > * { flex-shrink: 0; }
+            .modal > .modal-scroll { flex: 1 1 auto; min-height: 6rem; max-height: none; }
+            .modal:has(> .modal-scroll) .modal-actions { position: static; }
+        }
         /* Thin, theme-coloured scrollbars that brighten on hover instead of the
            bright native ones */
-        .modal, #rt-detail-history {
+        .modal, .modal-scroll {
             scrollbar-width: thin;
             scrollbar-color: rgba(255,255,255,0.12) transparent;
         }
-        .modal:hover, #rt-detail-history:hover { scrollbar-color: rgba(255,255,255,0.28) transparent; }
+        .modal:hover, .modal-scroll:hover { scrollbar-color: rgba(255,255,255,0.28) transparent; }
         .modal h2 { margin-bottom: 1.5rem; }
         .modal-actions {
             display: flex; gap: 0.75rem; justify-content: flex-end;
@@ -1010,7 +1015,7 @@
 
         <!-- List Manager Modal -->
         <div class="modal-overlay" id="list-manager-modal">
-            <div class="modal">
+            <div class="modal modal-compact">
                 <h2>Manage Lists</h2>
                 <div id="list-manager-items"></div>
                 <div style="display:flex; gap:0.5rem; margin-top:1rem;">
@@ -1124,7 +1129,7 @@
             <div class="modal">
                 <h2 id="rt-detail-title">Ticket</h2>
                 <div id="rt-detail-meta" class="todo-meta" style="margin-bottom: 0.75rem; flex-wrap: wrap;"></div>
-                <div id="rt-detail-history"></div>
+                <div id="rt-detail-history" class="modal-scroll"></div>
                 <div class="form-group">
                     <label for="rt-action-type">Add to ticket</label>
                     <select id="rt-action-type">
@@ -1598,7 +1603,7 @@
 
     <!-- Migration Modal (manual trigger from settings) -->
     <div id="migrate-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="migrate-modal-title">
-        <div class="modal">
+        <div class="modal modal-compact">
             <h2 id="migrate-modal-title">Migrate Local Data</h2>
             <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1rem;">
                 This will copy your local pomodoros to Google Sheets. Duplicates will be skipped.
@@ -1629,7 +1634,7 @@
 
     <!-- Sheets-to-JSON Migration Modal -->
     <div id="migrate-json-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="migrate-json-modal-title">
-        <div class="modal">
+        <div class="modal modal-compact">
             <h2 id="migrate-json-modal-title">Migrate to JSON on Drive</h2>
             <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1rem;">
                 This will copy all your pomodoros and settings from Google Sheets to JSON files on Google Drive, then switch to the faster JSON backend.
@@ -1649,7 +1654,7 @@
 
     <!-- Initial Sync Modal (shown on login to choose sync direction) -->
     <div id="initial-sync-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="sync-modal-title">
-        <div class="modal">
+        <div class="modal modal-compact">
             <h2 id="sync-modal-title">Sync Your Data</h2>
             <p id="sync-modal-desc" style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1rem;"></p>
             <p id="sync-counts" style="font-size: 0.875rem; margin-bottom: 1rem;"></p>
@@ -1659,7 +1664,7 @@
 
     <!-- Local Data Migration Modal (shown on login when localStorage has data) -->
     <div id="local-migration-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="local-migration-modal-title">
-        <div class="modal">
+        <div class="modal modal-compact">
             <h2 id="local-migration-modal-title">Upload Local Data?</h2>
             <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1rem;">
                 You have pomodoros stored locally from before you logged in.
@@ -1680,7 +1685,7 @@
 
     <!-- Clear Local Data Confirmation Modal -->
     <div id="clear-data-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="clear-data-modal-title">
-        <div class="modal">
+        <div class="modal modal-compact">
             <h2 id="clear-data-modal-title">Clear All Local Data?</h2>
             <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1rem;">
                 This will permanently delete all your locally stored pomodoros and settings.
