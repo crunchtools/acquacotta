@@ -8079,7 +8079,10 @@
                     <div class="social-post-full">${escapeHtml(v.text.trim() || '(no text)')}</div>
                     ${v.posts.map(p => socialPostChannelLine(p)).join('')}</div>`;
             }).join('');
-            const postiz = discussionSafeUrl(socialPostizUrl);
+            // Postiz can't open one post by URL; its calendar can open the post's day.
+            const base = discussionSafeUrl(socialPostizUrl);
+            const day = `${when.getFullYear()}-${String(when.getMonth() + 1).padStart(2, '0')}-${String(when.getDate()).padStart(2, '0')}`;
+            const postiz = base && `${base.replace(/\/+$/, '')}/launches?startDate=${day}&endDate=${day}&display=day`;
             return `<details class="social-post" role="listitem" name="social-post" data-key="${escapeHtml(entry.key)}" data-id="${escapeHtml(entry.id)}"${entry.key === socialPostOpen ? ' open' : ''} ontoggle="socialPostToggled(this)">
                 <summary aria-label="${escapeHtml(summaryLabel)}">
                     <span class="social-post-meta">

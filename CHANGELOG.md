@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.30.1] - 2026-10-29
+
+### Fixed
+- Social → Posts "Open in Postiz" opens Postiz's calendar on the post's day
+  instead of the Postiz home page. Postiz has no URL that opens a single post
+  in its editor; its calendar takes `startDate`, `endDate` and `display`.
+
 ## [2.30.0] - 2026-10-29
 
 ### Changed

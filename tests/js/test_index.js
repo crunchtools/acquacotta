@@ -543,7 +543,10 @@ test('an entry opens in place: the text once, then each channel; closing returns
     assert.equal(await page.$$eval('.social-post[open] .social-post-version-cap', els => els.length), 0, 'no version captions when all agree');
     assert.deepEqual(await channelLines(page), [['Scott McCarty', 'Scheduled'], ['Scott on X', 'Scheduled']]);
     assert.equal(await page.$eval('.social-post[open] .social-post-ch .social-chip', c => c.getAttribute('aria-label')), 'Scott McCarty: Scheduled');
-    assert.equal(await page.$eval('.social-post[open] .social-postiz-link', el => el.href), 'https://postiz.example.com/');
+    const d = new Date(); d.setDate(d.getDate() + 2);
+    const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    assert.equal(await page.$eval('.social-post[open] .social-postiz-link', el => el.href),
+        `https://postiz.example.com/launches?startDate=${ymd}&endDate=${ymd}&display=day`, "Postiz's calendar, on the post's day");
     await page.click('.social-post[open] > summary');
     await page.waitForFunction(() => location.hash === '#social/posts');
     assert.equal(await page.$('.social-post[open]'), null);
