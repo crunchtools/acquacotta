@@ -2209,6 +2209,20 @@
             return await getFromStore(STORES.TICKETS, id);
         },
 
+        // A cached ticket, else one fetched live by id (a deep link can name a
+        // ticket outside the user's query). Not cached: the next sync would drop it.
+        findTicket: async function(id) {
+            const cached = await getFromStore(STORES.TICKETS, String(id));
+            if (cached || !authStatus || !authStatus.logged_in || !isOnline) return cached || null;
+            try {
+                const res = await authenticatedFetch(`/api/rt/ticket/${encodeURIComponent(id)}`);
+                return res.ok ? (await res.json()).ticket || null : null;
+            } catch (e) {
+                console.warn('Ticket lookup failed:', e);  // the dialog shows "Ticket #id" instead
+                return null;
+            }
+        },
+
         loadTicketsFromCloud: async function() {
             if (!authStatus || !authStatus.logged_in || !isOnline) return { ok: false, configured: true };
             try {
@@ -2319,6 +2333,16 @@
         socialSlots: async function(channelId, startIso, endIso) {
             const q = new URLSearchParams({ channel: channelId, start: startIso, end: endIso });
             const res = await authenticatedFetch(`/api/social/slots?${q}`, {
+                signal: AbortSignal.timeout(SOCIAL_TIMEOUT_MS)
+            });
+            if (!res.ok) throw new Error(await apiErrorMessage(res));
+            return await res.json();
+        },
+
+        // Postiz posts in [startIso, endIso): { configured, posts, postiz_url }.
+        socialPosts: async function(startIso, endIso) {
+            const q = new URLSearchParams({ start: startIso, end: endIso });
+            const res = await authenticatedFetch(`/api/social/posts?${q}`, {
                 signal: AbortSignal.timeout(SOCIAL_TIMEOUT_MS)
             });
             if (!res.ok) throw new Error(await apiErrorMessage(res));

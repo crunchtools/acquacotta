@@ -30,6 +30,7 @@ from http import HTTPStatus
 
 import requests
 
+import deep_links
 import plugin_common
 
 # RT ticket and transaction ids are integers. The sync boundary enforces this so a
@@ -443,6 +444,19 @@ def _hyperlinked_attachments(item):
 _BODY_TYPES = ("Create", "Correspond", "Comment")
 
 
+def fetch_ticket(config, ticket_id):
+    """Return one ticket by id, whether or not the configured query matches it.
+
+    A deep link (#rt/ticket/<id>) can name any ticket the RT user can see, so
+    this queries by id instead of the Tickets tab's query. Returns None when RT
+    has no such ticket. Raises ValueError on a bad id/config, RTError on an
+    RT/network problem.
+    """
+    _require_ticket_id(ticket_id)
+    tickets = fetch_tickets(config, query=f"id = {int(ticket_id)}")
+    return tickets[0] if tickets else None
+
+
 def fetch_ticket_history(config, ticket_id):
     """Return a ticket's recent history thread, newest first (see ``_HISTORY_LIMIT``).
 
@@ -616,11 +630,12 @@ def register_mcp_tools(mcp, require_ctx):
 
         Returns:
             A list of ticket records: id, subject, status, queue, owner, requestors,
-            priority, created, last_updated, due, url.
+            priority, created, last_updated, due, url (the ticket in RT), and link
+            (the ticket in Acquacotta, when the server knows its public URL).
         """
         ctx = require_ctx()
         try:
-            return fetch_tickets(_config(ctx), query=query)
+            return deep_links.with_links(fetch_tickets(_config(ctx), query=query), "rt", "ticket")
         except (ValueError, RTError) as exc:
             raise ToolError(str(exc)) from exc
 
@@ -639,11 +654,11 @@ def register_mcp_tools(mcp, require_ctx):
         ctx = require_ctx()
         cfg = _config(ctx)
         try:
-            tickets = fetch_tickets(cfg, query=f"id = {int(ticket_id)}")
+            ticket = fetch_ticket(cfg, ticket_id)
             history = fetch_ticket_history(cfg, ticket_id)
         except (ValueError, RTError) as exc:
             raise ToolError(str(exc)) from exc
-        return {"ticket": tickets[0] if tickets else None, "history": history}
+        return {"ticket": deep_links.with_link(ticket, "rt", "ticket"), "history": history}
 
     @mcp.tool()
     def reply_ticket(ticket_id: str, content: str) -> dict:

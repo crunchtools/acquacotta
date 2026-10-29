@@ -267,6 +267,55 @@
     }
 
     /**
+     * Parse a deep-link hash: "#view", "#view/arg" or "#view/kind/id".
+     * Segments are URI-decoded; a malformed escape makes the whole route invalid.
+     *
+     * @param {string} hash - location.hash, with or without the leading "#"
+     * @returns {object|null} - { view, kind, id } (missing parts are ''), or null
+     */
+    function parseRoute(hash) {
+        var raw = String(hash || '').replace(/^#?\/?/, '');
+        if (!raw) return null;
+        var parts = raw.split('/');
+        if (parts.length > 3) parts = parts.slice(0, 2).concat([parts.slice(2).join('/')]);
+        try {
+            parts = parts.map(decodeURIComponent);
+        } catch (e) {
+            console.warn('Ignoring malformed deep link:', e.message);
+            return null;
+        }
+        if (!/^[a-z][a-z0-9_-]*$/.test(parts[0])) return null;
+        return { view: parts[0], kind: parts[1] || '', id: parts[2] || '' };
+    }
+
+    /**
+     * Build a deep-link hash; the inverse of parseRoute. Empty trailing parts are dropped.
+     *
+     * @param {string} view - Tab id (e.g. 'todos')
+     * @param {string} [kind] - Sub-route (e.g. 'item', 'list', 'week')
+     * @param {string} [id] - Item id or name
+     * @returns {string} - e.g. "#todos/item/0f3c…"
+     */
+    function formatRoute(view, kind, id) {
+        var parts = [view, kind, id].map(function(p) { return p === undefined || p === null ? '' : String(p); });
+        while (parts.length > 1 && !parts[parts.length - 1]) parts.pop();
+        return '#' + parts.map(encodeURIComponent).join('/');
+    }
+
+    /**
+     * Whether a cached Social posts window may be shown: it must belong to the
+     * signed-in account and be the same window. No account, no cache.
+     *
+     * @param {object|null} cached - { email, from, posts } from localStorage
+     * @param {string} email - The signed-in account's email
+     * @param {string} from - The window start, ISO-8601
+     * @returns {boolean}
+     */
+    function socialPostsCacheUsable(cached, email, from) {
+        return !!cached && !!email && cached.email === email && cached.from === from;
+    }
+
+    /**
      * Build the RT settings save payload from the form, or explain what's missing.
      * A blank secret input keeps the saved one (secrets are never read back).
      * Choosing the token clears basic_user, because a saved username wins over it.
@@ -310,6 +359,9 @@
         syncRetryDelay: syncRetryDelay,
         weekSwipeTarget: weekSwipeTarget,
         resolveTabOrder: resolveTabOrder,
+        parseRoute: parseRoute,
+        formatRoute: formatRoute,
+        socialPostsCacheUsable: socialPostsCacheUsable,
         buildRTConfigPayload: buildRTConfigPayload
     };
 

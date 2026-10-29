@@ -413,6 +413,66 @@ describe('resolveTabOrder', function() {
     });
 });
 
+describe('parseRoute / formatRoute', function() {
+    it('should parse a bare tab', function() {
+        expect(utils.parseRoute('#todos')).toEqual({ view: 'todos', kind: '', id: '' });
+    });
+
+    it('should parse a tab with a sub-route', function() {
+        expect(utils.parseRoute('#reports/month')).toEqual({ view: 'reports', kind: 'month', id: '' });
+    });
+
+    it('should parse an item and decode it', function() {
+        expect(utils.parseRoute('#discussions/person/Jane%20Doe')).toEqual({ view: 'discussions', kind: 'person', id: 'Jane Doe' });
+    });
+
+    it('should keep extra slashes in the id', function() {
+        expect(utils.parseRoute('#rt/queue/a/b').id).toBe('a/b');
+    });
+
+    it('should accept a leading slash and no hash', function() {
+        expect(utils.parseRoute('/rt/ticket/1529')).toEqual({ view: 'rt', kind: 'ticket', id: '1529' });
+    });
+
+    it('should reject empty, malformed and odd views', function() {
+        expect(utils.parseRoute('')).toBe(null);
+        expect(utils.parseRoute('#')).toBe(null);
+        expect(utils.parseRoute('#todos/item/%E0%A4%A')).toBe(null);
+        expect(utils.parseRoute('#<script>')).toBe(null);
+    });
+
+    it('should format and round-trip', function() {
+        expect(utils.formatRoute('todos')).toBe('#todos');
+        expect(utils.formatRoute('todos', 'list', '')).toBe('#todos/list');
+        var hash = utils.formatRoute('discussions', 'person', 'Jane Doe/Ops');
+        expect(hash).toBe('#discussions/person/Jane%20Doe%2FOps');
+        expect(utils.parseRoute(hash).id).toBe('Jane Doe/Ops');
+    });
+});
+
+describe('socialPostsCacheUsable', function() {
+    var from = '2026-10-21T04:00:00.000Z';
+    var cached = { email: 'a@example.com', from: from, posts: [] };
+
+    it('should use the cache for the same account and window', function() {
+        expect(utils.socialPostsCacheUsable(cached, 'a@example.com', from)).toBe(true);
+    });
+
+    it('should never show another account its cache', function() {
+        expect(utils.socialPostsCacheUsable(cached, 'b@example.com', from)).toBe(false);
+    });
+
+    it('should not use a cache without an account on either side', function() {
+        expect(utils.socialPostsCacheUsable(cached, '', from)).toBe(false);
+        expect(utils.socialPostsCacheUsable({ from: from, posts: [] }, undefined, from)).toBe(false);
+    });
+
+    it('should not use another window or a missing cache', function() {
+        expect(utils.socialPostsCacheUsable(cached, 'a@example.com', '2026-11-04T05:00:00.000Z')).toBe(false);
+        expect(utils.socialPostsCacheUsable(null, 'a@example.com', from)).toBe(false);
+    });
+});
+
 describe('buildRTConfigPayload', function() {
     var base = { baseUrl: 'https://rt', publicUrl: 'https://rt', query: 'q' };
     function form(extra) {

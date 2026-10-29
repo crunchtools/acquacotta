@@ -8,6 +8,7 @@ tools are always registered when the MCP server is running.
 import uuid
 from datetime import datetime, timedelta, timezone
 
+import deep_links
 import json_google_drive_storage as drive_storage
 
 # Mandatory feature plugin — always registered; its MCP tools (below) are always available.
@@ -146,9 +147,13 @@ def register_mcp_tools(mcp, require_ctx):
             start_date: Inclusive ISO start (YYYY-MM-DD or full timestamp).
             end_date: Inclusive ISO end.
             type: Optional category filter (e.g. 'Product', 'Content').
+
+        Each record carries ``link``, a URL that opens it in Acquacotta's History,
+        when the server knows its public URL.
         """
         ctx = require_ctx()
-        return query_pomodoros(ctx["service"], ctx["folder_id"], start_date, end_date, type)
+        pomodoros = query_pomodoros(ctx["service"], ctx["folder_id"], start_date, end_date, type)
+        return deep_links.with_links(pomodoros, "history", "pomodoro")
 
     @mcp.tool()
     def get_time_summary(
@@ -202,9 +207,10 @@ def register_mcp_tools(mcp, require_ctx):
         """
         ctx = require_ctx()
         try:
-            return record_pomodoro(
+            pomodoro = record_pomodoro(
                 ctx["service"], ctx["folder_id"], name, type, duration_minutes, notes, end_time, linked_todo_id
             )
+            return deep_links.with_link(pomodoro, "history", "pomodoro")
         except ValueError as exc:
             raise ToolError(str(exc)) from exc
 

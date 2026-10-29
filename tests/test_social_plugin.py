@@ -967,6 +967,89 @@ class TestListSlots:
             social_plugin.list_slots({}, "x1", start, end)
 
 
+def _postiz_post(**over):
+    post = {
+        "id": "p1",
+        "group": "g1",
+        "content": "<p>Read this &amp; that</p><p>https://example.com/a</p>",
+        "publishDate": "2026-10-26T14:20:00.000Z",
+        "state": "PUBLISHED",
+        "releaseURL": "https://x.com/s/1",
+        "integration": {"id": "x1", "providerIdentifier": "x", "name": "Scott on X", "picture": "https://cdn/p.png"},
+    }
+    post.update(over)
+    return post
+
+
+class TestListPosts:
+    @pytest.fixture
+    def postiz(self, monkeypatch):
+        seen = SimpleNamespace(calls=[], posts=[])
+
+        def fake_request(_config, method, path, **kwargs):
+            seen.calls.append((method, path, kwargs.get("params")))
+            return {"posts": seen.posts}
+
+        monkeypatch.setattr(social_plugin, "_postiz_request", fake_request)
+        return seen
+
+    def test_normalizes_a_post(self, postiz):
+        postiz.posts = [_postiz_post()]
+        posts = social_plugin.list_posts({}, "2026-10-21T04:00:00Z", "2026-11-25T05:00:00Z")
+        assert posts == [
+            {
+                "id": "p1",
+                "group": "g1",
+                "date": "2026-10-26T14:20:00.000Z",
+                "state": "PUBLISHED",
+                "text": "Read this & that\nhttps://example.com/a",
+                "release_url": "https://x.com/s/1",
+                "channel": {"id": "x1", "name": "Scott on X", "identifier": "x", "picture": "https://cdn/p.png"},
+            }
+        ]
+        assert postiz.calls == [
+            ("GET", "/posts", {"startDate": "2026-10-21T04:00:00.000Z", "endDate": "2026-11-25T05:00:00.000Z"})
+        ]
+
+    def test_sorts_by_date_and_drops_malformed(self, postiz):
+        postiz.posts = [
+            _postiz_post(id="late", publishDate="2026-10-28T00:00:00Z", state="QUEUE", releaseURL=None),
+            _postiz_post(id="early", publishDate="2026-10-25T00:00:00Z"),
+            _postiz_post(id="../evil"),
+            _postiz_post(id="nodate", publishDate="soon"),
+            _postiz_post(id="nochan", integration={"id": "<x>"}),
+            "junk",
+        ]
+        posts = social_plugin.list_posts({}, "2026-10-21T00:00:00Z", "2026-11-01T00:00:00Z")
+        assert [p["id"] for p in posts] == ["early", "late"]
+        assert posts[1]["release_url"] == ""
+
+    def test_unsafe_release_url_and_unknown_state(self, postiz):
+        postiz.posts = [_postiz_post(releaseURL="javascript:alert(1)", state="WEIRD", group=None)]
+        post = social_plugin.list_posts({}, "2026-10-21T00:00:00Z", "2026-11-01T00:00:00Z")[0]
+        assert post["release_url"] == ""
+        assert post["state"] == "QUEUE"
+        assert post["group"] == "p1"
+
+    @pytest.mark.parametrize(
+        ("start", "end"),
+        [
+            ("nope", "2026-11-01T00:00:00Z"),
+            ("2026-10-21T00:00:00", "2026-11-01T00:00:00Z"),
+            ("2026-11-01T00:00:00Z", "2026-10-21T00:00:00Z"),
+            ("2026-08-01T00:00:00Z", "2026-11-01T00:00:00Z"),
+        ],
+    )
+    def test_rejects_bad_range(self, postiz, start, end):
+        with pytest.raises(ValueError):
+            social_plugin.list_posts({}, start, end)
+        assert postiz.calls == []
+
+    def test_html_to_text(self):
+        assert social_plugin.postiz_html_to_text("<p>a<br/>b</p><p>&lt;c&gt;</p>") == "a\nb\n<c>"
+        assert social_plugin.postiz_html_to_text(None) == ""
+
+
 class TestSocialEndpoints:
     @pytest.mark.parametrize(
         ("method", "path"),
@@ -979,6 +1062,7 @@ class TestSocialEndpoints:
             ("post", "/api/social/preview"),
             ("get", "/api/social/slot?channel=x1"),
             ("get", "/api/social/slots?channel=x1&start=2026-10-26T00:00:00Z&end=2026-10-27T00:00:00Z"),
+            ("get", "/api/social/posts?start=2026-10-26T00:00:00Z&end=2026-10-27T00:00:00Z"),
             ("post", "/api/social/schedule"),
         ],
     )
@@ -1079,6 +1163,32 @@ class TestSocialEndpoints:
     )
     def test_slots_route_rejects_bad_query(self, client, logged_in, query):
         assert client.get(f"/api/social/slots?{query}").status_code == 400
+
+    def test_posts_route(self, client, logged_in, monkeypatch):
+        seen = {}
+
+        def fake_list(config, start, end):
+            seen.update(start=start, end=end)
+            return [{"id": "p1"}]
+
+        monkeypatch.setattr(social_plugin, "list_posts", fake_list)
+        resp = client.get("/api/social/posts?start=2026-10-21T04:00:00.000Z&end=2026-11-25T05:00:00.000Z")
+        assert resp.get_json() == {
+            "configured": True,
+            "posts": [{"id": "p1"}],
+            "postiz_url": social_plugin.postiz_app_url(logged_in["cfg"]),
+        }
+        assert seen == {"start": "2026-10-21T04:00:00.000Z", "end": "2026-11-25T05:00:00.000Z"}
+
+    def test_posts_route_rejects_bad_range(self, client, logged_in):
+        assert client.get("/api/social/posts?start=nope&end=2026-10-27T00:00:00Z").status_code == 400
+
+    def test_posts_route_unconfigured(self, client, logged_in):
+        logged_in["cfg"] = social_plugin.validate_config({})
+        ok = "start=2026-10-21T00:00:00Z&end=2026-11-01T00:00:00Z"
+        assert client.get(f"/api/social/posts?{ok}").get_json() == {"configured": False, "posts": []}
+        # The range is checked whether or not Postiz is configured.
+        assert client.get("/api/social/posts?start=a&end=b").status_code == 400
 
     def test_draft_url_must_be_a_string(self, client, logged_in):
         assert client.post("/api/social/draft", json={"url": 5, "channels": CHANNELS}).status_code == 400

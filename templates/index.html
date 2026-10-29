@@ -617,6 +617,13 @@
             padding: 0; margin: -1px; overflow: hidden;
             clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
         }
+        /* Deep links: "Copy link" sits at the start of a dialog's actions */
+        .modal-actions .copy-link { margin-right: auto; }
+        .route-notice {
+            position: fixed; left: 50%; bottom: calc(1.5rem + env(safe-area-inset-bottom)); transform: translateX(-50%);
+            max-width: calc(100% - 2rem); padding: 0.625rem 1rem; border-radius: 8px; z-index: 200;
+            background: var(--bg-tertiary); color: var(--text-primary); font-size: 0.875rem;
+        }
         /* Social Share */
         #social-text { width: 100%; resize: none; font-family: inherit; font-size: 1rem; line-height: 1.4; min-height: 6rem; }
         .social-card { display: flex; gap: 0.75rem; align-items: center; background: var(--bg-secondary); border-radius: 8px; padding: 0.5rem; margin-top: 0.5rem; }
@@ -658,6 +665,29 @@
         .social-sheet-handle { width: 36px; height: 4px; border-radius: 2px; background: var(--bg-tertiary); margin: 0 auto 0.75rem; }
         .social-sheet h3 { margin: 0 0 0.5rem; font-size: 1rem; }
         .social-day { padding: 0.5rem 0; border-top: 1px solid var(--bg-tertiary); }
+        /* Posts: the Postiz schedule, past and future */
+        .social-panes { margin-bottom: 0.75rem; }
+        .social-posts-nav { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.5rem; }
+        .social-posts-range { font-size: 0.8rem; color: var(--text-secondary); text-align: center; }
+        .social-posts-day { font-size: 0.8rem; color: var(--text-secondary); padding: 0.75rem 0 0.25rem; border-top: 1px solid var(--bg-tertiary); }
+        .social-posts-day.today { color: var(--text-primary); font-weight: 600; }
+        .social-post-row { display: grid; grid-template-columns: 4.5rem auto 1fr; align-items: center; gap: 0.5rem; width: 100%; min-height: 48px; padding: 0.375rem 0; background: none; border: none; color: var(--text-primary); text-align: left; cursor: pointer; font-size: 0.9rem; }
+        .social-post-row.past { color: var(--text-secondary); }
+        .social-post-time { font-variant-numeric: tabular-nums; }
+        .social-post-chips { display: flex; gap: 0.25rem; }
+        .social-post-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .social-post-chip { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--bg-tertiary); font-size: 0.7rem; font-weight: 700; color: var(--text-primary); flex-shrink: 0; }
+        .social-post-chip.state-published { background: var(--success); border-color: var(--success); color: var(--bg-primary); }
+        .social-post-chip.state-error { background: var(--accent); border-color: var(--accent); color: #fff; }
+        .social-post-chip.state-draft { border-style: dashed; color: var(--text-secondary); }
+        .social-post-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+        .social-post-detail { padding: 0.625rem 0; border-top: 1px solid var(--bg-tertiary); }
+        .social-post-detail-head { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; font-size: 0.85rem; margin-bottom: 0.375rem; }
+        .social-post-detail-head a { color: var(--text-primary); }
+        .social-post-state { color: var(--text-secondary); }
+        .social-post-state.state-error { color: var(--accent); }
+        .social-post-detail-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.9rem; }
+        a.social-postiz-link { display: inline-flex; align-items: center; text-decoration: none; }
         .social-day-label { font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.375rem; }
         .social-day-slots { display: flex; flex-wrap: wrap; gap: 0.5rem; }
         .social-slot { min-width: 88px; height: 44px; padding: 0 0.75rem; border: 1px solid var(--bg-tertiary); border-radius: 8px; background: transparent; color: var(--text-primary); font-size: 0.9rem; cursor: pointer; font-variant-numeric: tabular-nums; }
@@ -936,6 +966,7 @@
                     <select id="todo-edit-list"></select>
                 </div>
                 <div class="modal-actions">
+                    <button class="secondary copy-link" id="todo-copy-link" onclick="copyCurrentLink(this)">Copy link</button>
                     <button class="secondary" onclick="closeTodoEditModal()">Cancel</button>
                     <button class="primary" onclick="saveTodoEdit()">Save</button>
                 </div>
@@ -1028,6 +1059,7 @@
                     <textarea id="discussion-edit-outcome" rows="2" style="resize: vertical;" placeholder="What was decided or what came out of it"></textarea>
                 </div>
                 <div class="modal-actions">
+                    <button class="secondary copy-link" id="discussion-copy-link" onclick="copyCurrentLink(this)">Copy link</button>
                     <button class="secondary" onclick="closeDiscussionEditModal()">Cancel</button>
                     <button class="primary" onclick="saveDiscussionEdit()">Save</button>
                 </div>
@@ -1077,6 +1109,7 @@
                 </div>
                 <div id="rt-detail-status" style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.5rem;"></div>
                 <div class="modal-actions">
+                    <button class="secondary copy-link" id="rt-copy-link" onclick="copyCurrentLink(this)">Copy link</button>
                     <button class="secondary" onclick="closeTicketDetail()">Close</button>
                     <button class="primary" onclick="submitTicketAction()">Send</button>
                 </div>
@@ -1085,6 +1118,28 @@
 
         <!-- Social Share View -->
         <div id="social-view" class="view" role="tabpanel" aria-labelledby="tab-social">
+            <div class="social-segment social-panes" role="radiogroup" aria-label="Social view">
+                <button type="button" role="radio" id="social-pane-compose-btn" aria-checked="true" onclick="socialShowPane('compose')">Compose</button>
+                <button type="button" role="radio" id="social-pane-posts-btn" aria-checked="false" onclick="socialShowPane('posts')">Posts</button>
+            </div>
+            <div id="social-pane-posts" hidden>
+                <div class="social-posts-nav">
+                    <button type="button" class="social-ghost" onclick="socialShiftPosts(-1)" aria-label="Earlier posts">‹ Earlier</button>
+                    <span class="social-posts-range" id="social-posts-range"></span>
+                    <button type="button" class="social-ghost" onclick="socialShiftPosts(1)" aria-label="Later posts">Later ›</button>
+                </div>
+                <div id="social-posts"></div>
+            </div>
+            <dialog id="social-post-sheet" class="social-sheet" aria-labelledby="social-post-title" onclick="if (event.target === this) this.close()" onclose="syncRoute('social')">
+                <div class="social-sheet-handle" aria-hidden="true"></div>
+                <h3 id="social-post-title"></h3>
+                <div id="social-post-body" class="social-post-body"></div>
+                <div class="social-sheet-foot">
+                    <button type="button" class="social-ghost" onclick="copyCurrentLink(this)">Copy link</button>
+                    <a class="social-ghost social-postiz-link" id="social-post-postiz" target="_blank" rel="noopener" hidden>Open in Postiz</a>
+                </div>
+            </dialog>
+            <div id="social-pane-compose">
             <div id="social-compose" hidden>
                 <textarea id="social-text" rows="4" aria-label="Post text" placeholder="What do you want to post?" oninput="socialChanged()"></textarea>
                 <div id="social-card"></div>
@@ -1104,6 +1159,7 @@
                 <button class="primary" id="social-go" onclick="socialGo()">Post</button>
             </div>
             <div id="social-status" class="social-status" role="status"></div>
+            </div>
             <dialog id="social-sheet" class="social-sheet" aria-labelledby="social-sheet-title" onclick="if (event.target === this) this.close()">
                 <div class="social-sheet-handle" aria-hidden="true"></div>
                 <h3 id="social-sheet-title">Pick an open slot</h3>
@@ -1463,6 +1519,7 @@
 
         <!-- Aria live region for status announcements -->
         <div id="a11y-status" aria-live="polite" aria-atomic="true" class="sr-only"></div>
+        <div id="route-notice" class="route-notice" hidden></div>
 
         </main>
         <footer style="text-align: center; padding: 0.5rem 0; margin-top: 0.5rem; border-top: 1px solid var(--border-color);">
@@ -1643,6 +1700,7 @@
                 <textarea id="edit-notes" rows="2" placeholder="Notes (optional)"></textarea>
             </div>
             <div class="modal-actions">
+                <button class="secondary copy-link" onclick="copyCurrentLink(this)">Copy link</button>
                 <button class="secondary" onclick="hideEditModal()">Cancel</button>
                 <button class="primary" onclick="saveEditedPomodoro()">Save</button>
             </div>
@@ -2643,28 +2701,118 @@
         let dailyChart = null;
 
         // Navigation
-        document.querySelectorAll('nav button').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('nav button').forEach(b => {
-                    b.classList.remove('active');
-                    b.setAttribute('aria-selected', 'false');
-                    b.setAttribute('tabindex', '-1');
-                });
-                document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-                btn.classList.add('active');
-                btn.setAttribute('aria-selected', 'true');
-                btn.setAttribute('tabindex', '0');
-                document.getElementById(btn.dataset.view + '-view').classList.add('active');
-                if (btn.dataset.view === 'timer') loadWeeklyOverview();
-                if (btn.dataset.view === 'history') loadHistory();
-                if (btn.dataset.view === 'reports') loadReport();
-                if (btn.dataset.view === 'todos') loadTodos();
-                if (btn.dataset.view === 'discussions') { loadDiscussions(); refreshDiscussionsIfChanged(); }
-                if (btn.dataset.view === 'rt') { loadTickets(); refreshTickets(); }
-                if (btn.dataset.view === 'social') socialOnShow();
-                if (btn.dataset.view === 'settings') rtLoadConfigForm();
+        // Show a tab. `load` runs its loader (skipped while the page is still
+        // parsing, before the loaders' state exists); `route` mirrors it in the URL.
+        function showView(view, { load = true, route = true } = {}) {
+            const btn = document.querySelector(`nav button[data-view="${view}"]`);
+            if (!btn) return;
+            document.querySelectorAll('nav button').forEach(b => {
+                b.classList.remove('active');
+                b.setAttribute('aria-selected', 'false');
+                b.setAttribute('tabindex', '-1');
             });
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+            btn.classList.add('active');
+            btn.setAttribute('aria-selected', 'true');
+            btn.setAttribute('tabindex', '0');
+            document.getElementById(view + '-view').classList.add('active');
+            if (route) syncRoute(view);
+            if (!load) return;
+            if (view === 'timer') loadWeeklyOverview();
+            if (view === 'history') loadHistory();
+            if (view === 'reports') loadReport();
+            if (view === 'todos') loadTodos();
+            if (view === 'discussions') { loadDiscussions(); refreshDiscussionsIfChanged(); }
+            if (view === 'rt') { loadTickets(); refreshTickets(); }
+            if (view === 'social') socialOnShow();
+            if (view === 'settings') rtLoadConfigForm();
+        }
+
+        document.querySelectorAll('nav button').forEach(btn => {
+            btn.addEventListener('click', () => showView(btn.dataset.view));
         });
+
+        // Deep links: every tab, sub-view and item has a hash route
+        // (#todos/item/<id>, #rt/ticket/<id>, … see AcquacottaUtils.parseRoute).
+        // Each view registers its handlers beside its own code:
+        //   ROUTES[view] = { current(): [kind, id] for the URL, <kind>(id): open it }
+        // A handler returns false when the item doesn't exist.
+        const ROUTES = {};
+        const PENDING_ROUTE_KEY = 'acquacotta_pending_route';
+
+        function activeView() {
+            return document.querySelector('nav button.active')?.dataset.view || '';
+        }
+
+        // Mirror state in the URL without adding history entries. Only the visible
+        // view writes, so background re-renders can't clobber the route.
+        function setRoute(view, kind, id) {
+            if (activeView() !== view) return;
+            const hash = AcquacottaUtils.formatRoute(view, kind, id);
+            if (location.hash !== hash) history.replaceState(null, '', location.pathname + location.search + hash);
+        }
+
+        function syncRoute(view) {
+            const current = ROUTES[view]?.current?.() || [];
+            setRoute(view, ...current);
+        }
+
+        async function applyRoute(route) {
+            if (!route) return;
+            const tab = document.getElementById(`tab-${route.view}`);
+            if (!tab || tab.style.display === 'none') {
+                // The tab may already be showing from the early paint; fall back.
+                const first = Array.from(document.querySelectorAll('nav[role="tablist"] [role="tab"]'))
+                    .find(t => t.style.display !== 'none');
+                if (first) showView(first.dataset.view);
+                routeNotice('That link points to a tab that is turned off or doesn’t exist.');
+                return;
+            }
+            showView(route.view);
+            const handler = route.kind && ROUTES[route.view]?.[route.kind];
+            if (!handler) return;
+            if (await handler(route.id) === false) {
+                routeNotice('That item wasn’t found. It may have been deleted.');
+                syncRoute(route.view);
+            }
+        }
+
+        function routeNotice(message) {
+            const el = document.getElementById('route-notice');
+            el.textContent = message;
+            el.hidden = false;
+            clearTimeout(routeNotice.timer);
+            routeNotice.timer = setTimeout(() => { el.hidden = true; }, 4000);
+            announceStatus(message);
+        }
+
+        // The route is lost on a Google sign-in round trip, so keep it for the return.
+        function rememberRouteForSignIn() {
+            try { if (location.hash) sessionStorage.setItem(PENDING_ROUTE_KEY, location.hash); } catch (e) { /* private mode */ }
+        }
+
+        function takeInitialRoute(hash) {
+            try {
+                hash = hash || sessionStorage.getItem(PENDING_ROUTE_KEY) || '';
+                sessionStorage.removeItem(PENDING_ROUTE_KEY);
+            } catch (e) { /* private mode */ }
+            return AcquacottaUtils.parseRoute(hash);
+        }
+
+        // A link opened into an already-loaded page (pasted into the address bar).
+        window.addEventListener('hashchange', () => applyRoute(AcquacottaUtils.parseRoute(location.hash)));
+
+        // "Copy link" in an item's dialog: opening it already put the item in the URL.
+        async function copyCurrentLink(btn) {
+            const label = btn.textContent;
+            try {
+                await navigator.clipboard.writeText(location.href);
+                btn.textContent = 'Copied';
+            } catch (e) {
+                btn.textContent = 'Copy failed';
+            }
+            setTimeout(() => { btn.textContent = label; }, 1500);
+        }
 
         // Tab order — the user's choice (settings.tab_order), applied by moving the
         // existing nav buttons so their listeners stay attached.
@@ -2768,23 +2916,19 @@
                 const shared = params.get('share') || '';
                 if (/^https?:\/\//i.test(shared)) socialRememberShare(shared);
             }
-            if (view && ['timer', 'reports', 'history', 'todos', 'discussions', 'rt', 'social', 'settings'].includes(view)) {
-                document.querySelectorAll('nav button').forEach(b => {
-                    b.classList.remove('active');
-                    b.setAttribute('aria-selected', 'false');
-                    b.setAttribute('tabindex', '-1');
-                });
-                document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-                const activeBtn = document.querySelector(`nav button[data-view="${view}"]`);
-                activeBtn.classList.add('active');
-                activeBtn.setAttribute('aria-selected', 'true');
-                activeBtn.setAttribute('tabindex', '0');
-                document.getElementById(view + '-view').classList.add('active');
+            if (view && document.querySelector(`nav button[data-view="${view}"]`)) {
+                showView(view, { load: false, route: false });
                 // Clear the URL parameter
                 window.history.replaceState({}, '', '/');
             }
         }
+        const initialHash = location.hash;  // switchToViewFromURL rewrites the URL
         switchToViewFromURL();
+        // A deep link shows its tab at once; the sub-view or item opens once data
+        // and plugin state are loaded (see the startup sequence at the end). A
+        // share-sheet arrival wins over a route left from an earlier sign-in.
+        const initialRoute = socialOpenedFromURL ? null : takeInitialRoute(initialHash);
+        if (initialRoute) showView(initialRoute.view, { load: false, route: false });
 
         // Timer functions
         const circumference = 2 * Math.PI * 120;
@@ -3520,18 +3664,7 @@
 
         // Navigate to a specific pomodoro in History tab and highlight it
         async function navigateToPomodoro(id) {
-            // Switch to History tab
-            document.querySelectorAll('nav button').forEach(btn => {
-                btn.classList.remove('active');
-                btn.setAttribute('aria-selected', 'false');
-                btn.setAttribute('tabindex', '-1');
-            });
-            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-            const histBtn = document.querySelector('nav button[data-view="history"]');
-            histBtn.classList.add('active');
-            histBtn.setAttribute('aria-selected', 'true');
-            histBtn.setAttribute('tabindex', '0');
-            document.getElementById('history-view').classList.add('active');
+            showView('history', { load: false, route: false });
 
             // Load first page and search for the target pomodoro
             await loadHistory();
@@ -3545,12 +3678,15 @@
                 pagesLoaded++;
             }
 
-            if (item) {
-                document.querySelectorAll('.pomodoro-item.highlighted').forEach(el => el.classList.remove('highlighted'));
-                item.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                item.classList.add('highlighted');
-            }
+            if (!item) return false;
+            document.querySelectorAll('.pomodoro-item.highlighted').forEach(el => el.classList.remove('highlighted'));
+            item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            item.classList.add('highlighted');
+            setRoute('history', 'pomodoro', id);
+            return true;
         }
+
+        ROUTES.history = { pomodoro: navigateToPomodoro };
 
         async function deletePomodoro(id) {
             await Storage.deletePomodoro(id);
@@ -3883,10 +4019,12 @@
             }
 
             document.getElementById('edit-modal').classList.add('active');
+            setRoute('history', 'pomodoro', id);
         }
 
         function hideEditModal() {
             document.getElementById('edit-modal').classList.remove('active');
+            syncRoute('history');
         }
 
         async function saveEditedPomodoro() {
@@ -3927,12 +4065,19 @@
                 document.querySelectorAll('.period-selector button').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 currentPeriod = btn.dataset.period;
+                setRoute('reports', currentPeriod);
                 loadReport();
             });
         });
 
+        // #reports/<day|week|month>
+        ROUTES.reports = { current: () => [currentPeriod] };
+        document.querySelectorAll('.period-selector button').forEach(btn => {
+            ROUTES.reports[btn.dataset.period] = () => btn.click();
+        });
+
         function navigatePeriod(dir) {
-            const d = new Date(currentDate);
+            const d = new Date(currentDate + 'T00:00:00');  // local midnight, not UTC
             if (currentPeriod === 'day') d.setDate(d.getDate() + dir);
             else if (currentPeriod === 'week') d.setDate(d.getDate() + dir * 7);
             else d.setMonth(d.getMonth() + dir);
@@ -3946,9 +4091,13 @@
             loadReport();
         }
 
+        let reportToken = 0;  // only the newest of overlapping loads draws the charts
+
         async function loadReport() {
+            const token = ++reportToken;
             const dateRange = getDateRange(currentPeriod, currentDate);
             const data = await Storage.getReport(currentPeriod, dateRange.start, dateRange.end, currentDate);
+            if (token !== reportToken) return;
 
             // Update summary
             document.getElementById('report-count').textContent = data.total_pomodoros;
@@ -3959,7 +4108,7 @@
                 ? Math.round(data.total_minutes / data.total_pomodoros) + 'm' : '0m';
 
             // Update period label
-            const d = new Date(currentDate);
+            const d = new Date(currentDate + 'T00:00:00');
             let label = '';
             if (currentPeriod === 'day') {
                 label = d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
@@ -4034,7 +4183,6 @@
             });
 
             // Daily chart - stacked by type
-            if (dailyChart) dailyChart.destroy();
 
             // For monthly view, use diagonal labels; for day/week, use stacked labels
             const isMonthly = currentPeriod === 'month';
@@ -4050,6 +4198,7 @@
 
             // Fetch raw pomodoros for this period to build stacked chart
             const pomos = await Storage.getPomodoros(dateRange.start, dateRange.end);
+            if (token !== reportToken) return;
 
             // Get all unique types that have data
             const typesInPeriod = [...new Set(pomos.map(p => p.type))];
@@ -4075,6 +4224,9 @@
                 };
             });
 
+            // Destroy right before drawing, with no await in between, so overlapping
+            // loads can't leave a chart on the canvas.
+            if (dailyChart) dailyChart.destroy();
             dailyChart = new Chart(document.getElementById('chart-daily'), {
                 type: 'bar',
                 data: {
@@ -4459,6 +4611,16 @@
             if (open && pluginId === 'rt') rtLoadConfigForm();
             if (open && pluginId === 'social') socialLoadConfigForm();
         }
+
+        // #settings/plugin/<pluginId> opens that plugin's settings
+        ROUTES.settings = {
+            plugin: async (id) => {
+                if (!/^[a-z0-9_-]+$/.test(id)) return false;
+                await openPluginSettings(id);
+                if (!document.getElementById(`${id}-settings-panel`)) return false;
+                setRoute('settings', 'plugin', id);
+            },
+        };
 
         // Jump from a plugin's own tab to its settings, expanded and in view.
         async function openPluginSettings(pluginId) {
@@ -5692,6 +5854,7 @@
             // OAuth state; the callback lands back on the Social tab with it.
             const pendingShare = socialStoredShare();
             if (pendingShare) params.set('share', pendingShare);
+            rememberRouteForSignIn();
             const query = params.toString();
             window.location.href = '/auth/google' + (query ? '?' + query : '');
         }
@@ -5713,6 +5876,14 @@
 
             await Storage.logout();
             authStatus = { logged_in: false, google_configured: true };
+            // Social keeps Postiz data in localStorage; it belongs to the account leaving.
+            try {
+                localStorage.removeItem(SOCIAL_POSTS_CACHE_KEY);
+                localStorage.removeItem(SOCIAL_CACHE_KEY);
+            } catch (e) {
+                console.warn('Could not clear Social caches:', e);
+            }
+            socialPosts = [];
             updateAuthUI();
             await updateStorageIndicator();
 
@@ -6471,11 +6642,29 @@
         function selectTodoList(listId) {
             todoSelectedListId = listId;
             todoSortOrder = todoSortOrders[listId] || 'manual';
+            syncRoute('todos');
             loadTodos();
         }
 
+        // #todos/list/<listId>, #todos/item/<todoId> (opens in its own list)
+        ROUTES.todos = {
+            current: () => todoSelectedListId === 'all' ? [] : ['list', todoSelectedListId],
+            list: async (listId) => {
+                const lists = await Storage.getTodoLists();
+                if (listId !== 'all' && !lists.some(l => l.id === listId)) return false;
+                selectTodoList(listId);
+            },
+            item: async (id) => {
+                const todo = (await Storage.getTodos()).find(t => t.id === id);
+                if (!todo) return false;
+                selectTodoList(todo.list_id || 'all');
+                await editTodo(id);
+            },
+        };
+
         async function openTodoForCreate() {
             document.getElementById('todo-modal-title').textContent = 'Add To-do';
+            document.getElementById('todo-copy-link').hidden = true;
             document.getElementById('todo-edit-id').value = '';
             document.getElementById('todo-edit-title').value = '';
             document.getElementById('todo-edit-notes').value = '';
@@ -6588,11 +6777,14 @@
             document.getElementById('todo-edit-priority').value = todo.priority || 'none';
             document.getElementById('todo-edit-due').value = todo.due_date || '';
             document.getElementById('todo-edit-list').value = todo.list_id || '';
+            document.getElementById('todo-copy-link').hidden = false;
             document.getElementById('todo-edit-modal').classList.add('active');
+            setRoute('todos', 'item', id);
         }
 
         function closeTodoEditModal() {
             document.getElementById('todo-edit-modal').classList.remove('active');
+            syncRoute('todos');
         }
 
         async function saveTodoEdit() {
@@ -6851,8 +7043,19 @@
             </div>`;
         }
 
-        function selectTicketQueue(q) { rtSelectedQueue = q; renderTickets(); }
-        function selectTicketQueueByIndex(i) { rtSelectedQueue = rtQueues[i] || 'all'; renderTickets(); }
+        function selectTicketQueue(q) { rtSelectedQueue = q; syncRoute('rt'); renderTickets(); }
+        function selectTicketQueueByIndex(i) { selectTicketQueue(rtQueues[i] || 'all'); }
+
+        // #rt/queue/<queue>, #rt/ticket/<id>. A ticket outside the cached list is
+        // fetched from RT, so a link to any ticket works, not only the ones listed.
+        ROUTES.rt = {
+            current: () => rtSelectedQueue === 'all' ? [] : ['queue', rtSelectedQueue],
+            queue: (q) => selectTicketQueue(q),
+            ticket: async (id) => {
+                if (!/^\d+$/.test(id)) return false;
+                await openTicketDetail(id);
+            },
+        };
         function setTicketStatusFilter(v) { rtStatusFilter = v; renderTickets(); }
 
         async function refreshTickets() {
@@ -6883,7 +7086,7 @@
 
         async function openTicketDetail(id) {
             rtCurrentTicketId = id;
-            const t = rtTickets.find(x => x.id === id) || await Storage.getTicket(id);
+            const t = rtTickets.find(x => x.id === id) || await Storage.findTicket(id);
             document.getElementById('rt-detail-title').textContent = t ? `#${t.id}: ${t.subject || ''}` : `Ticket #${id}`;
             const meta = document.getElementById('rt-detail-meta');
             if (t) {
@@ -6906,6 +7109,7 @@
             const histEl = document.getElementById('rt-detail-history');
             histEl.innerHTML = '<div class="empty">Loading history…</div>';
             document.getElementById('rt-detail-modal').classList.add('active');
+            setRoute('rt', 'ticket', id);
             try {
                 const history = await Storage.getTicketHistory(id);
                 histEl.innerHTML = history.length ? history.map(renderTxn).join('') : '<div class="empty">No history.</div>';
@@ -6926,6 +7130,7 @@
         function closeTicketDetail() {
             document.getElementById('rt-detail-modal').classList.remove('active');
             rtCurrentTicketId = null;
+            syncRoute('rt');
         }
 
         async function submitTicketAction() {
@@ -7142,7 +7347,8 @@
                 socialLoadChannels();  // refresh in the background; never block typing
             }
             if (socialLink && !socialLink.title && !socialLink.loading) socialFetchPreview();
-            document.getElementById('social-text').focus();
+            if (socialPane === 'posts') socialLoadPosts();
+            else document.getElementById('social-text').focus();
         }
 
         function socialApplyChannels(data) {
@@ -7525,6 +7731,182 @@
             }
         }
 
+        // ---- Compose | Posts ----
+        // Posts is the Postiz schedule, read-only: a window of weeks around today,
+        // one row per post group (the posts created together across channels).
+        let socialPane = 'compose';
+        let socialPosts = [];
+        let socialPostsFrom = null;   // local midnight the window starts at
+        let socialPostsToken = 0;     // bumps to drop answers from a stale request
+        let socialPostizUrl = '';
+        const SOCIAL_POSTS_BACK_DAYS = 7;
+        const SOCIAL_POSTS_SPAN_DAYS = 35;
+        const SOCIAL_POSTS_STEP_DAYS = 14;
+        const SOCIAL_STATE_LABELS = { QUEUE: 'Scheduled', PUBLISHED: 'Published', ERROR: 'Failed', DRAFT: 'Draft' };
+        // The last window loaded, like the channel cache: it paints at once and
+        // stays readable offline while the live copy loads.
+        const SOCIAL_POSTS_CACHE_KEY = 'acquacotta_social_posts';
+
+        function socialShowPane(pane) {
+            socialPane = pane === 'posts' ? 'posts' : 'compose';
+            for (const p of ['compose', 'posts']) {
+                document.getElementById(`social-pane-${p}-btn`).setAttribute('aria-checked', String(p === socialPane));
+                document.getElementById(`social-pane-${p}`).hidden = p !== socialPane;
+            }
+            syncRoute('social');
+            return socialPane === 'posts' ? socialLoadPosts() : Promise.resolve();
+        }
+
+        function socialShiftPosts(dir) {
+            socialPostsFrom = socialAddDays(socialPostsFrom || socialDefaultPostsFrom(), dir * SOCIAL_POSTS_STEP_DAYS);
+            socialLoadPosts();
+        }
+
+        function socialDefaultPostsFrom() {
+            return socialAddDays(socialDayStart(new Date()), -SOCIAL_POSTS_BACK_DAYS);
+        }
+
+        async function socialLoadPosts() {
+            const box = document.getElementById('social-posts');
+            if (!authStatus || !authStatus.logged_in) {
+                box.innerHTML = '<div class="empty">Sign in with Google to see your posts.</div>';
+                return;
+            }
+            if (!socialPostsFrom) socialPostsFrom = socialDefaultPostsFrom();
+            const from = socialPostsFrom;
+            const until = socialAddDays(from, SOCIAL_POSTS_SPAN_DAYS);
+            const token = ++socialPostsToken;
+            const last = socialAddDays(until, -1);
+            document.getElementById('social-posts-range').textContent =
+                `${from.toLocaleDateString([], { month: 'short', day: 'numeric' })} – ${last.toLocaleDateString([], { month: 'short', day: 'numeric' })}`;
+            // Only this account's copy: a shared browser must not show another
+            // account's posts (sign-out also clears it).
+            const cached = socialLocal(SOCIAL_POSTS_CACHE_KEY);
+            const fromCache = AcquacottaUtils.socialPostsCacheUsable(cached, authStatus.email, from.toISOString());
+            if (fromCache) {
+                socialPosts = cached.posts || [];
+                socialPostizUrl = cached.postiz_url || '';
+                socialRenderPosts();
+            } else {
+                box.innerHTML = '<div class="empty">Loading posts…</div>';
+            }
+            try {
+                const r = await Storage.socialPosts(from.toISOString(), until.toISOString());
+                if (token !== socialPostsToken) return;
+                if (!r.configured) {
+                    box.innerHTML = '<div class="empty">Postiz isn’t connected yet.</div>';
+                    box.firstChild.appendChild(socialStatusButton('Connect Postiz', () => openPluginSettings('social')));
+                    return;
+                }
+                socialPosts = r.posts || [];
+                socialPostizUrl = r.postiz_url || '';
+                socialLocal(SOCIAL_POSTS_CACHE_KEY, { email: authStatus.email || '', from: from.toISOString(), posts: socialPosts, postiz_url: socialPostizUrl });
+                socialRenderPosts();
+            } catch (e) {
+                if (token !== socialPostsToken) return;
+                // Keep showing the cached window; say why it may be stale.
+                const msg = `Could not load posts: ${escapeHtml(e.message || 'error')}`;
+                if (fromCache) box.insertAdjacentHTML('afterbegin', `<div class="empty">${msg} Showing the last copy.</div>`);
+                else box.innerHTML = `<div class="empty">${msg}</div>`;
+            }
+        }
+
+        // Posts created together share a group and a time; show them as one row.
+        function socialPostGroups() {
+            const groups = new Map();
+            for (const p of socialPosts) {
+                const key = `${p.group}|${p.date}`;
+                if (!groups.has(key)) groups.set(key, []);
+                groups.get(key).push(p);
+            }
+            return [...groups.values()];
+        }
+
+        function socialPostChip(p) {
+            const [glyph, label] = socialPlatform(p.channel);
+            const title = `${p.channel.name || label}: ${SOCIAL_STATE_LABELS[p.state] || p.state}`;
+            return `<span class="social-post-chip state-${p.state.toLowerCase()}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">${escapeHtml(glyph)}</span>`;
+        }
+
+        function socialRenderPosts() {
+            const box = document.getElementById('social-posts');
+            if (!socialPosts.length) {
+                box.innerHTML = '<div class="empty">No posts in these weeks.</div>';
+                return;
+            }
+            const now = Date.now();
+            let html = '';
+            let lastDay = null;
+            let nowMarked = false;
+            for (const posts of socialPostGroups()) {
+                const when = new Date(posts[0].date);
+                const day = socialDayStart(when);
+                if (!lastDay || day.getTime() !== lastDay.getTime()) {
+                    const today = day.getTime() === socialDayStart(new Date()).getTime();
+                    html += `<div class="social-posts-day${today ? ' today' : ''}">${escapeHtml(socialDayLabel(day))}</div>`;
+                    lastDay = day;
+                }
+                const past = when.getTime() < now;
+                const marker = !past && !nowMarked ? ' id="social-posts-next"' : '';
+                if (marker) nowMarked = true;
+                const firstLine = (posts[0].text || '').split('\n').find(l => l.trim()) || '(no text)';
+                html += `<button type="button" class="social-post-row${past ? ' past' : ''}"${marker} onclick="socialOpenPost('${escapeHtml(posts[0].id)}', '${escapeHtml(posts[0].date)}')">
+                    <span class="social-post-time">${escapeHtml(when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))}</span>
+                    <span class="social-post-chips">${posts.map(socialPostChip).join('')}</span>
+                    <span class="social-post-text">${escapeHtml(firstLine)}</span>
+                </button>`;
+            }
+            box.innerHTML = html;
+            // Land on what's next, with a little of the recent past above it.
+            const next = document.getElementById('social-posts-next');
+            if (next) next.scrollIntoView({ block: 'center' });
+        }
+
+        // The group's full text per channel, with links out. A repeating post
+        // shares its id across occurrences, so `date` picks the occurrence.
+        function socialOpenPost(id, date) {
+            const first = socialPosts.find(p => p.id === id && (!date || p.date === date));
+            if (!first) return false;
+            const group = socialPosts.filter(p => p.group === first.group && p.date === first.date);
+            document.getElementById('social-post-title').textContent = socialLongWhen(new Date(first.date));
+            document.getElementById('social-post-body').innerHTML = group.map(p => {
+                const [, label] = socialPlatform(p.channel);
+                const link = discussionSafeUrl(p.release_url);
+                return `<div class="social-post-detail">
+                    <div class="social-post-detail-head">${socialPostChip(p)}<span>${escapeHtml(p.channel.name || label)}</span>
+                        <span class="social-post-state state-${p.state.toLowerCase()}">${escapeHtml(SOCIAL_STATE_LABELS[p.state] || p.state)}</span>
+                        ${link ? `<a href="${escapeHtml(link)}" target="_blank" rel="noopener">View post</a>` : ''}</div>
+                    <div class="social-post-detail-text">${escapeHtml(p.text || '')}</div>
+                </div>`;
+            }).join('');
+            const postiz = document.getElementById('social-post-postiz');
+            const postizLink = discussionSafeUrl(socialPostizUrl);
+            postiz.hidden = !postizLink;
+            if (postizLink) postiz.href = postizLink;
+            const sheet = document.getElementById('social-post-sheet');
+            if (!sheet.open) sheet.showModal();
+            setRoute('social', 'post', id);
+            return true;
+        }
+
+        // #social/compose, #social/posts, #social/post/<postizId>. A linked post
+        // outside the default window is looked for a few windows back.
+        ROUTES.social = {
+            current: () => socialPane === 'posts' ? ['posts'] : [],
+            compose: () => socialShowPane('compose'),
+            posts: () => socialShowPane('posts'),
+            post: async (id) => {
+                await socialShowPane('posts');
+                for (let tries = 0; tries < 4; tries++) {
+                    if (socialOpenPost(id)) return;
+                    if (!authStatus || !authStatus.logged_in) return false;
+                    socialPostsFrom = socialAddDays(socialPostsFrom, -SOCIAL_POSTS_SPAN_DAYS);
+                    await socialLoadPosts();
+                }
+                return false;
+            },
+        };
+
         // ---- optional AI draft ----
         // Rewrites the text as one post about the link, sized for the tightest
         // selected channel. The selection goes to the server as one pseudo-channel,
@@ -7790,8 +8172,20 @@
         function selectDiscussionPerson(person) {
             discussionSelectedPerson = person;
             discussionSortOrder = discussionSortOrders[person] || 'manual';
+            syncRoute('discussions');
             loadDiscussions();
         }
+
+        // #discussions/person/<name>, #discussions/item/<id> (opens under its person)
+        ROUTES.discussions = {
+            current: () => discussionSelectedPerson === 'all' ? [] : ['person', discussionSelectedPerson],
+            person: (person) => selectDiscussionPerson(person),
+            item: async (id) => {
+                const d = (await Storage.getDiscussions()).find(x => x.id === id);
+                if (!d) return false;
+                await editDiscussion(id);
+            },
+        };
 
         function selectDiscussionPersonByIndex(i) {
             selectDiscussionPerson(_discussionPeople[i]);
@@ -7806,6 +8200,7 @@
 
         async function openDiscussionForCreate() {
             document.getElementById('discussion-modal-title').textContent = 'Add Discussion';
+            document.getElementById('discussion-copy-link').hidden = true;
             document.getElementById('discussion-edit-id').value = '';
             document.getElementById('discussion-edit-person').value =
                 (discussionSelectedPerson !== 'all' && discussionSelectedPerson !== '__none__') ? discussionSelectedPerson : '';
@@ -7841,11 +8236,14 @@
                 (d.priority && d.priority !== 'none') || d.due_date || d.source);
             document.getElementById('discussion-edit-more').open = hasDetails;
             document.getElementById('discussion-edit-outcome-group').style.display = '';
+            document.getElementById('discussion-copy-link').hidden = false;
             document.getElementById('discussion-edit-modal').classList.add('active');
+            setRoute('discussions', 'item', id);
         }
 
         function closeDiscussionEditModal() {
             document.getElementById('discussion-edit-modal').classList.remove('active');
+            syncRoute('discussions');
         }
 
         function parseTalkingPoints(text) {
@@ -8040,6 +8438,10 @@
             if (socialOpenedFromURL && document.getElementById('social-view').classList.contains('active')) {
                 socialOnShow();
             }
+
+            // Open the deep link's sub-view or item; reads the IndexedDB cache, so
+            // it doesn't wait for the cloud sync below.
+            if (initialRoute) await applyRoute(initialRoute);
 
             // Phase 3: Sync cloud data then render todos once with fresh state.
             if (authStatus.logged_in) {

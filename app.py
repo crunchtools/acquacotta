@@ -1634,6 +1634,24 @@ def api_rt_sync():
     return jsonify({"tickets": tickets, "configured": True})
 
 
+@app.route("/api/rt/ticket/<ticket_id>", methods=["GET"])
+def api_rt_ticket(ticket_id):
+    """Fetch one ticket live by id, for deep links to tickets outside the query."""
+    drive_service, folder_id = _plugin_drive_context()
+    if not drive_service:
+        return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
+    try:
+        config = rt_plugin.read_config(drive_service, folder_id)
+        ticket = rt_plugin.fetch_ticket(config, ticket_id)
+    except (ValueError, rt_plugin.RTError) as exc:
+        return _rt_error_response(exc)
+    except HttpError as e:
+        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+    if ticket is None:
+        return jsonify({"error": "No such ticket"}), HTTPStatus.NOT_FOUND
+    return jsonify({"ticket": ticket})
+
+
 @app.route("/api/rt/ticket/<ticket_id>/history", methods=["GET"])
 def api_rt_ticket_history(ticket_id):
     """Fetch one ticket's recent history thread live from RT."""
@@ -1804,6 +1822,30 @@ def api_social_slots():
     except HttpError as e:
         return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
     return jsonify({"slots": slots})
+
+
+@app.route("/api/social/posts", methods=["GET"])
+def api_social_posts():
+    """The caller's Postiz posts for the Social tab's schedule view.
+
+    ``?start=<ISO-8601>&end=<ISO-8601>``, at most 62 days apart. Returns
+    ``{"configured": bool, "posts": [...]}`` (see ``social_plugin.list_posts``).
+    """
+    drive_service, folder_id = _plugin_drive_context()
+    if not drive_service:
+        return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
+    start, end = request.args.get("start") or "", request.args.get("end") or ""
+    try:
+        social_plugin.posts_range(start, end)
+        config = social_plugin.read_config(drive_service, folder_id)
+        if not social_plugin.postiz_configured(config):
+            return jsonify({"configured": False, "posts": []})
+        posts = social_plugin.list_posts(config, start, end)
+    except (ValueError, social_plugin.SocialError) as exc:
+        return _social_error_response(exc)
+    except HttpError as e:
+        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+    return jsonify({"configured": True, "posts": posts, "postiz_url": social_plugin.postiz_app_url(config)})
 
 
 @app.route("/api/social/draft", methods=["POST"])

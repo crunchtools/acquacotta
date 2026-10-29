@@ -6,6 +6,34 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.27.0] - 2026-10-28
+
+### Added
+- Deep links: every tab, sub-view and item has a URL (`/#todos/item/<id>`,
+  `/#rt/ticket/<id>`, `/#discussions/person/<name>`, `/#social/posts`, …; see
+  `specs/013-deep-links`), for calendar invites, emails and handing items to
+  agents. Each item dialog has a Copy link button (the installed app has no
+  address bar). A link survives a Google sign-in. A link to a missing item or a
+  turned-off tab falls back with a notice. New plugins get links by registering a
+  route handler.
+- A ticket link opens any ticket, not only those in the Tickets query
+  (`GET /api/rt/ticket/<id>`).
+- MCP tools return a `link` on each todo, discussion, ticket and pomodoro when
+  `ACQUACOTTA_PUBLIC_URL` is set.
+- Social → Posts: the Postiz schedule, past and future (last week plus the next
+  four), one row per post group with per-channel status; tap for each channel's
+  full text, the published post and Postiz (`GET /api/social/posts`). Read-only.
+
+### Security
+- Authlib 1.8.0 → 1.9.1 (CVE-2026-96760 critical, CVE-2026-114615, CVE-2026-114616),
+  oauthlib 3.3.1 → 4.0.0 (CVE-2026-49272), dnspython 2.8.0 → 2.9.0 (CVE-2026-114605).
+
+### Fixed
+- Reports could draw the daily chart twice when two loads overlapped (fast
+  period clicks), throwing "Canvas is already in use".
+- The Reports period label and ‹ › stepping parsed the date as UTC, so west of
+  UTC the Day view showed yesterday and stepping stalled or skipped a day.
+
 ## [2.26.2] - 2026-10-28
 
 ### Fixed
