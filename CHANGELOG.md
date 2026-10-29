@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.31.3] - 2026-10-29
+
+### Fixed
+- Tickets: on a phone (or with larger text) the ticket modal clipped its
+  Close and Send buttons off the bottom, so it could not be dismissed. The
+  modal now scrolls as a whole when it doesn't fit, with the actions pinned
+  to the bottom. Modal titles are smaller on narrow screens.
+
 ## [2.31.2] - 2026-10-29
 
 ### Fixed
