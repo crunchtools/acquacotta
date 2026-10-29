@@ -122,6 +122,11 @@ _SETTINGS_WORKERS = 5
 _SLOT_MAX_DAYS = 15
 _SLOT_MAX_PER_DAY = 8
 _SLOT_WORKERS = 7
+# Posts listing for the Social tab's schedule view: the widest window per call.
+_POSTS_MAX_DAYS = 62
+_POST_STATES = frozenset({"QUEUE", "PUBLISHED", "ERROR", "DRAFT"})
+_BLOCK_END_RE = re.compile(r"</p\s*>|<br\s*/?>", re.IGNORECASE)
+_TAG_RE = re.compile(r"<[^>]*>")
 _USER_AGENT = "Mozilla/5.0 (compatible; Acquacotta/1.0; +https://github.com/crunchtools/acquacotta)"
 
 _SECRET_CONFIG_FIELDS = ("postiz_api_key", "gemini_api_key")
@@ -632,6 +637,74 @@ def list_slots(config, integration_id, start, end):
     with ThreadPoolExecutor(max_workers=min(len(pieces), _SLOT_WORKERS)) as pool:
         per_piece = list(pool.map(walk, pieces))
     return [_iso_z(slot) for slot in sorted({s for piece in per_piece for s in piece})]
+
+
+def postiz_html_to_text(value):
+    """The HTML Postiz stores back to plain text: paragraphs and breaks become newlines."""
+    text = _TAG_RE.sub("", _BLOCK_END_RE.sub("\n", str(value or "")))
+    return html.unescape(text).strip()
+
+
+def _post_record(item):
+    """One Postiz post as the schedule view's flat record, or None if malformed.
+
+    Ids are the trust boundary (they reach the UI and Postiz URL paths), so a
+    post or channel with an odd id is dropped; the release URL is kept only if
+    it is http(s).
+    """
+    if not isinstance(item, dict):
+        return None
+    integration = item.get("integration") if isinstance(item.get("integration"), dict) else {}
+    post_id, channel_id = str(item.get("id") or ""), str(integration.get("id") or "")
+    group = str(item.get("group") or post_id)
+    if not (_ID_RE.match(post_id) and _ID_RE.match(channel_id) and _ID_RE.match(group)):
+        return None
+    try:
+        when = _iso_z(_parse_iso(item.get("publishDate")))
+    except (TypeError, ValueError):
+        return None
+    state = str(item.get("state") or "").upper()
+    release = str(item.get("releaseURL") or "")
+    return {
+        "id": post_id,
+        "group": group,
+        "date": when,
+        "state": state if state in _POST_STATES else "QUEUE",
+        "text": postiz_html_to_text(item.get("content")),
+        "release_url": release if release.startswith(("https://", "http://")) else "",
+        "channel": {
+            "id": channel_id,
+            "name": str(integration.get("name") or ""),
+            "identifier": str(integration.get("providerIdentifier") or ""),
+            "picture": _safe_picture(integration.get("picture")),
+        },
+    }
+
+
+def list_posts(config, start, end):
+    """The user's Postiz posts, past and future, published in ``[start, end]``.
+
+    Args:
+        config: the user's social config (Postiz URL and key).
+        start, end: ISO-8601 instants with an offset or Z, at most
+            ``_POSTS_MAX_DAYS`` days apart.
+
+    Returns:
+        list[dict]: posts (see ``_post_record``) sorted by date, one per channel;
+        posts sharing a ``group`` were created together. A repeating post
+        appears once per occurrence, so occurrences share an ``id``.
+
+    Raises:
+        ValueError: a bound not ISO-8601, or a range that is empty or too long.
+        SocialError: Postiz unreachable or erroring.
+    """
+    first, last = _parse_bound(start, "start"), _parse_bound(end, "end")
+    if not timedelta(0) < last - first <= timedelta(days=_POSTS_MAX_DAYS):
+        raise ValueError(f"end must be after start and at most {_POSTS_MAX_DAYS} days later")
+    raw = _postiz_request(config, "GET", "/posts", params={"startDate": _iso_z(first), "endDate": _iso_z(last)})
+    items = raw.get("posts") if isinstance(raw, dict) else None
+    posts = [p for p in map(_post_record, items if isinstance(items, list) else []) if p]
+    return sorted(posts, key=lambda p: (p["date"], p["group"], p["channel"]["name"]))
 
 
 def _require_id(value):

@@ -99,6 +99,7 @@ python app.py
 | `MCP_PORT` | No | Port the MCP server listens on (default: `5001`) |
 | `RT_ALLOWED_HOSTS` | No | Comma-separated hostname allowlist for the RT Tickets plugin's server-side proxy. When set, a user's RT `base_url` host must be listed, private addresses included. Unset = public addresses only. |
 | `SOCIAL_ALLOWED_HOSTS` | No | Comma-separated hosts the Social Share plugin may reach for Postiz even if they resolve to private addresses. Unset = public addresses only. Shared pages are always public-only. See [docs/SOCIAL_SHARE.md](docs/SOCIAL_SHARE.md). |
+| `ACQUACOTTA_PUBLIC_URL` | No | Public URL of this server (e.g. `https://acquacotta.example.com`). MCP tools use it to return a `link` that opens each item in the web app. Falls back to `OAUTH_REDIRECT_BASE`; unset = no links. |
 
 The MCP server (`mcp_server.py`) is a separate process from the Flask app. It
 binds to localhost by default and is reached through the in-container Apache,
@@ -214,6 +215,7 @@ Then open http://localhost:5000 in your browser.
 | `MCP_PORT` | No | Port the MCP server listens on (default: `5001`) |
 | `RT_ALLOWED_HOSTS` | No | Comma-separated hostname allowlist for the RT Tickets plugin's server-side proxy. When set, a user's RT `base_url` host must be listed, private addresses included. Unset = public addresses only. |
 | `SOCIAL_ALLOWED_HOSTS` | No | Comma-separated hosts the Social Share plugin may reach for Postiz even if they resolve to private addresses. Unset = public addresses only. Shared pages are always public-only. See [docs/SOCIAL_SHARE.md](docs/SOCIAL_SHARE.md). |
+| `ACQUACOTTA_PUBLIC_URL` | No | Public URL of this server (e.g. `https://acquacotta.example.com`). MCP tools use it to return a `link` that opens each item in the web app. Falls back to `OAUTH_REDIRECT_BASE`; unset = no links. |
 
 The MCP server (`mcp_server.py`) is a separate process from the Flask app. It
 binds to localhost by default and is reached through the in-container Apache,

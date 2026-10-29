@@ -261,6 +261,21 @@ class TestConfigMcpTools:
         with pytest.raises(ToolError, match="non-public|http"):
             t["test_rt_connection"]()
 
+    def test_tickets_carry_deep_links(self, tools, monkeypatch):
+        t, _ = tools
+        monkeypatch.setenv("ACQUACOTTA_PUBLIC_URL", "https://acq.example.com")
+        monkeypatch.setattr(rt_plugin, "fetch_tickets", lambda cfg, query=None: [{"id": "1529", "subject": "S"}])
+        monkeypatch.setattr(rt_plugin, "fetch_ticket_history", lambda cfg, tid: [])
+        assert t["list_tickets"]()[0]["link"] == "https://acq.example.com/#rt/ticket/1529"
+        assert t["get_ticket"]("1529")["ticket"]["link"] == "https://acq.example.com/#rt/ticket/1529"
+
+    def test_get_ticket_rejects_bad_id(self, tools):
+        from fastmcp.exceptions import ToolError
+
+        t, _ = tools
+        with pytest.raises(ToolError):
+            t["get_ticket"]("1 OR 1=1")
+
 
 # --------------------------------------------------------------------------- #
 # Session / auth selection
@@ -347,6 +362,23 @@ class TestFetchTickets:
         tickets = rt_plugin.fetch_tickets(_cfg(public_url="", base_url="http://rt-internal"))
         # falls back to base_url for the link
         assert tickets[0]["url"] == "http://rt-internal/Ticket/Display.html?id=9"
+
+
+class TestFetchTicket:
+    def test_queries_by_id_not_the_configured_query(self, fake_rt):
+        fake_rt.handler = lambda m, u, k: FakeResp(json_data={"items": [{"id": 1529, "Subject": "S"}], "pages": 1})
+        ticket = rt_plugin.fetch_ticket(_cfg(query="Owner = '__CurrentUser__'"), "1529")
+        assert ticket["id"] == "1529"
+        assert fake_rt.session.calls[0][2]["params"]["query"] == "id = 1529"
+
+    def test_missing_ticket_is_none(self, fake_rt):
+        fake_rt.handler = lambda m, u, k: FakeResp(json_data={"items": [], "pages": 1})
+        assert rt_plugin.fetch_ticket(_cfg(), "7") is None
+
+    @pytest.mark.parametrize("bad", ["", "1 OR 1=1", "abc", "-1"])
+    def test_rejects_non_numeric_id(self, fake_rt, bad):
+        with pytest.raises(ValueError):
+            rt_plugin.fetch_ticket(_cfg(), bad)
 
 
 class TestErrors:

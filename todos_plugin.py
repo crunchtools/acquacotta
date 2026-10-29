@@ -4,6 +4,7 @@ import json
 import uuid
 from datetime import datetime, timezone
 
+import deep_links
 from transports.google_drive_transport import GoogleDriveTransport
 
 PLUGIN_METADATA = {
@@ -300,10 +301,16 @@ def register_mcp_tools(mcp, require_ctx):
             list_id: Optional filter — only todos in this custom list.
             priority: Optional filter — 'none', 'low', 'medium', or 'high'.
             q: Optional text search — matches title and notes, case-insensitively.
+
+        Each todo carries ``link``, a URL that opens it in Acquacotta, when the
+        server knows its public URL.
         """
         ctx = require_ctx()
         try:
-            return query_todos(ctx["service"], ctx["folder_id"], status=status, list_id=list_id, priority=priority, q=q)
+            todos = query_todos(
+                ctx["service"], ctx["folder_id"], status=status, list_id=list_id, priority=priority, q=q
+            )
+            return deep_links.with_links(todos, "todos", "item")
         except ValueError as exc:
             raise ToolError(str(exc)) from exc
 
@@ -332,7 +339,8 @@ def register_mcp_tools(mcp, require_ctx):
         """
         ctx = require_ctx()
         try:
-            return add_todo(ctx["service"], ctx["folder_id"], title, notes, priority, due_date, list_id)
+            todo = add_todo(ctx["service"], ctx["folder_id"], title, notes, priority, due_date, list_id)
+            return deep_links.with_link(todo, "todos", "item")
         except ValueError as exc:
             raise ToolError(str(exc)) from exc
 
@@ -347,7 +355,7 @@ def register_mcp_tools(mcp, require_ctx):
         completed = set_todo_status(ctx["service"], ctx["folder_id"], todo_id, "completed")
         if completed is None:
             raise ToolError(f"No todo found with id {todo_id}")
-        return completed
+        return deep_links.with_link(completed, "todos", "item")
 
     @mcp.tool()
     def update_todo(
@@ -376,7 +384,7 @@ def register_mcp_tools(mcp, require_ctx):
             raise ToolError(str(exc)) from exc
         if updated is None:
             raise ToolError(f"No todo found with id {todo_id}")
-        return updated
+        return deep_links.with_link(updated, "todos", "item")
 
     @mcp.tool()
     def delete_todo(todo_id: str) -> dict:
