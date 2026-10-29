@@ -6,6 +6,20 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.32.0] - 2026-10-29
+
+### Changed
+- Modals: every record modal ends Copy link · · · Cancel, Save. The primary
+  button is last, as on GNOME, Android and macOS, and the label names the
+  action (NN/g, PatternFly). Add Pomodoro's "Add" is now "Save".
+- Tickets: the ticket modal is an edit form like the others. One Save applies
+  the comment or reply and the status change, then closes; Cancel discards.
+  "Set status" and "Send" are gone, and status is a dropdown of RT's
+  lifecycle instead of free text.
+- Escape presses the open modal's Cancel on every modal that has one (it used
+  to work only on the pomodoro add and edit modals).
+- tests/test_modals.py enforces the labels, the order and the Escape wiring.
+
 ## [2.31.3] - 2026-10-29
 
 ### Fixed
