@@ -6,6 +6,21 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.30.0] - 2026-10-29
+
+### Changed
+- Social → Posts uses Compose's parts and layout (Fable UX spec,
+  `specs/015-social-consistency`). A Past | Upcoming segment sits where
+  Post now | Schedule sits in Compose; below it are ten entries and Show more.
+  Every channel glyph is Compose's 44px chip: filled when it goes or went,
+  outline when it doesn't, ringed when it needs a look. There is no green.
+  Each row has the same layout: date and time, channels, text.
+- Day blocks, "No posts" lines and Earlier/Next week paging are gone.
+  Show more fetches further out (56-day windows, up to a year).
+- `#social/posts/past` links to Past.
+- Arrow keys move between the options of every Social segment. The Compose
+  over-limit chip class `over` is now `flag`.
+
 ## [2.29.0] - 2026-10-28
 
 ### Changed

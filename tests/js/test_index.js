@@ -295,7 +295,7 @@ test('over the limit names the channel and blocks posting', SOCIAL_SIGNED_IN, as
     await page.click('.social-card-remove');
     await setSocialText(page, 'x'.repeat(45));
     assert.equal(await page.$eval('#social-count', el => el.textContent), '−5 · too long for X');
-    assert.equal(await page.$eval('#social-chip-0', el => el.classList.contains('over')), true);
+    assert.equal(await page.$eval('#social-chip-0', el => el.classList.contains('flag')), true);
     assert.equal(await page.$eval('#social-go', el => el.disabled), true);
     assert.equal(await page.evaluate(() => sessionStorage.getItem('acquacotta_pending_share')), null, 'removing the card drops the share');
 });
@@ -429,6 +429,7 @@ const CH = {
     m: { id: 'm1', name: '@fatherlinux', identifier: 'mastodon', picture: '' },
 };
 const POSTS = [
+    { id: 'ancient', days: -100, hour: 9, state: 'PUBLISHED', text: 'A hundred days back', channel: CH.x },
     { id: 'old', days: -10, hour: 9, state: 'PUBLISHED', text: 'Ten days back', channel: CH.x },
     { id: 'lw1', group: 'lw', days: -3, hour: 9, state: 'PUBLISHED', text: 'Last week, partly failed', channel: CH.x },
     { id: 'lw2', group: 'lw', days: -3, hour: 9, state: 'ERROR', text: 'Last week, partly failed', channel: CH.li },
@@ -441,53 +442,97 @@ const POSTS = [
 const POSTS_SIGNED_IN = { path: '/#social/posts', auth: { logged_in: true, email: 'test@example.com' }, socialPosts: POSTS };
 const postsReady = page => page.waitForFunction(() => document.getElementById('social-posts').getAttribute('aria-busy') === 'false'
     && !document.querySelector('.social-post.skeleton') && !document.getElementById('social-pane-posts').hidden);
-const dayLabels = page => page.$$eval('#social-posts .social-day-label', els => els.map(e => e.textContent));
-const rowStates = page => page.$$eval('#social-posts .social-post', els => els.map(e => [e.querySelector('.social-post-text').textContent, e.querySelector('summary .social-post-state')?.textContent || '', e.classList.contains('failed')]));
+const rowStates = page => page.$$eval('#social-posts .social-post', els => els.map(e => [e.querySelector('.social-post-text').textContent, e.querySelector('summary .social-post-state')?.textContent || '']));
+const rowChips = page => page.$$eval('#social-posts .social-post > summary', els => els.map(s => [...s.querySelectorAll('.social-chip')].map(c => c.className.replace('social-chip', '').trim())));
 const postsStatus = page => page.$eval('#social-posts-status', el => el.textContent);
 const localDay = n => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + n); return d.toISOString(); };
 const channelLines = page => page.$$eval('.social-post[open] .social-post-ch', els => els.map(e => [e.querySelector('.social-post-ch-name').textContent, e.querySelector('.social-post-state').textContent]));
+const checkedList = page => page.$eval('#social-pane-posts .social-segment [aria-checked="true"]', el => el.textContent);
+const settled = (page, n) => page.waitForFunction(k => window.__storageCalls.filter(c => c[0] === 'socialPosts').length >= k
+    && document.getElementById('social-posts').getAttribute('aria-busy') === 'false', {}, n);
 
-test('Posts opens on Today; empty days fold into one line; last week is collapsed and reports its failures', POSTS_SIGNED_IN, async ({ page }) => {
+test('Posts opens on Upcoming, soonest first: two 56-day requests, one row layout', POSTS_SIGNED_IN, async ({ page }) => {
     await postsReady(page);
-    const [[, start, end]] = await socialCalls(page, 'socialPosts');
-    assert.equal(start, localDay(-7), 'last week is fetched with the first request');
-    assert.equal(end, localDay(7));
-    const labels = await dayLabels(page);
-    assert.deepEqual(labels.slice(0, 2), ['Today', 'Tomorrow'], 'Today keeps its own block; a single empty day keeps its name');
-    assert.match(labels[labels.length - 1], / – /, 'a run of empty days is one line');
-    assert.equal(labels.length, 6);
-    assert.equal(await page.$eval('#social-posts-earlier', el => el.textContent), '‹ Last week · 1 failed');
-    assert.deepEqual(await rowStates(page), [['Upcoming <b>post</b>', '', false], ['A draft', 'Draft', false]],
+    assert.deepEqual((await socialCalls(page, 'socialPosts')).map(c => c.slice(1)),
+        [[localDay(-56), localDay(0)], [localDay(0), localDay(56)]], 'both lists load together');
+    assert.equal(await checkedList(page), 'Upcoming');
+    assert.equal(await page.evaluate(() => location.hash), '#social/posts');
+    assert.deepEqual(await rowStates(page), [['Upcoming <b>post</b>', ''], ['A draft', 'Draft'], ['Next week', '']],
         'one entry per post, not per channel; drafts say so; text renders as text');
-    assert.deepEqual(await page.$eval('#social-posts .social-post > summary', row => [...row.querySelectorAll('.social-post-chip')].map(e => e.getAttribute('aria-label'))),
-        ['Scott McCarty: Scheduled', 'Scott on X: Scheduled'], 'one chip per channel, labelled with its state');
+    assert.deepEqual(await rowChips(page), [['on', 'on'], [''], ['on']], 'scheduled is filled, a draft is an outline');
+    assert.match(await page.$eval('#social-posts .social-post > summary', s => s.getAttribute('aria-label')), /, 2 channels$/);
+    assert.equal(await page.$eval('#social-posts summary .social-chip', c => c.getAttribute('aria-hidden')), 'true', 'the summary label speaks for the chips');
+    assert.match(await page.$eval('#social-posts .social-post-time', el => el.textContent), / · \d/, 'date and time on the meta line');
+    assert.equal(await page.$eval('#social-posts-more', el => el.hidden), false, 'more may exist past the loaded range');
 });
 
-test('revealing last week keeps Today in place and flags failed and unsent posts', POSTS_SIGNED_IN, async ({ page }) => {
+test('Past is newest first, flags failures and unsent posts, and is in the URL', POSTS_SIGNED_IN, async ({ page }) => {
     await postsReady(page);
-    const top = () => page.$eval('.social-day-label.today', el => el.getBoundingClientRect().top);
-    const before = await top();
-    await page.click('#social-posts-earlier');
-    assert.ok(Math.abs(await top() - before) < 2, 'Today does not move');
-    assert.equal(await page.$eval('#social-posts-earlier', el => el.textContent), '‹ Earlier');
-    assert.equal((await socialCalls(page, 'socialPosts')).length, 1, 'no new request to show last week');
-    const states = await rowStates(page);
-    assert.deepEqual(states.slice(0, 2), [['Last week, partly failed', '1 of 2 failed', true], ['Should have gone out', 'Not sent yet', false]]);
-    await page.click('#social-posts-earlier');
-    await page.waitForFunction(() => window.__storageCalls.filter(c => c[0] === 'socialPosts').length === 2
-        && document.getElementById('social-posts').getAttribute('aria-busy') === 'false');
-    assert.equal((await socialCalls(page, 'socialPosts'))[1][1], localDay(-14), 'Earlier fetches the week before');
-    assert.ok((await rowStates(page)).some(r => r[0] === 'Ten days back'));
+    await page.click('#social-list-past');
+    assert.equal(await page.evaluate(() => location.hash), '#social/posts/past');
+    assert.equal((await socialCalls(page, 'socialPosts')).length, 2, 'switching lists needs no request');
+    assert.deepEqual(await rowStates(page), [['Should have gone out', 'Not sent yet'], ['Last week, partly failed', '1 of 2 failed'], ['Ten days back', '']]);
+    assert.deepEqual(await rowChips(page), [['flag'], ['flag', 'on'], ['on']]);
+    await page.click('#social-list-upcoming');
+    assert.equal(await page.evaluate(() => location.hash), '#social/posts');
 });
 
-test('Next week appends seven days', POSTS_SIGNED_IN, async ({ page }) => {
+test('#social/posts/past opens on Past', { ...POSTS_SIGNED_IN, path: '/#social/posts/past' }, async ({ page }) => {
     await postsReady(page);
-    await page.click('#social-posts-later');
-    await page.waitForFunction(() => window.__storageCalls.filter(c => c[0] === 'socialPosts').length === 2
-        && document.getElementById('social-posts').getAttribute('aria-busy') === 'false');
-    const calls = await socialCalls(page, 'socialPosts');
-    assert.deepEqual(calls[1].slice(1), [localDay(7), localDay(14)]);
-    assert.ok((await rowStates(page)).some(r => r[0] === 'Next week'));
+    assert.equal(await checkedList(page), 'Past');
+    assert.equal((await rowStates(page))[0][0], 'Should have gone out');
+});
+
+test('Show more looks further back until the page fills, then ends at the horizon', POSTS_SIGNED_IN, async ({ page }) => {
+    await postsReady(page);
+    await page.click('#social-list-past');
+    await page.click('#social-posts-more');
+    await settled(page, 8);
+    const ranges = (await socialCalls(page, 'socialPosts')).map(c => c.slice(1));
+    assert.deepEqual(ranges[2], [localDay(-112), localDay(-56)], 'the window before the loaded range');
+    assert.deepEqual(ranges[ranges.length - 1], [localDay(-364), localDay(-336)], 'stops at the horizon');
+    assert.equal((await rowStates(page)).at(-1)[0], 'A hundred days back');
+    assert.equal(await postsStatus(page), '1 more shown');
+    assert.equal(await page.$eval('#social-posts-more', el => el.hidden), true);
+    assert.equal(await page.$eval('.social-posts-end', el => el.textContent), 'No older posts in the last year');
+});
+
+test('ten entries at a time', {
+    ...POSTS_SIGNED_IN,
+    socialPosts: Array.from({ length: 13 }, (_, i) => ({ id: `p${i}`, days: i + 1, hour: 9, state: 'QUEUE', text: `Post ${i}`, channel: CH.x })),
+}, async ({ page }) => {
+    await postsReady(page);
+    assert.equal((await rowStates(page)).length, 10);
+    await page.click('#social-posts-more');
+    await settled(page, 3);
+    await page.waitForFunction(() => document.querySelectorAll('#social-posts .social-post').length === 13);
+    assert.equal(await postsStatus(page), '3 more shown');
+    const ranges = (await socialCalls(page, 'socialPosts')).map(c => c.slice(1));
+    assert.deepEqual(ranges[2], [localDay(56), localDay(112)], 'Upcoming widens after the loaded range');
+    assert.deepEqual(ranges[ranges.length - 1], [localDay(336), localDay(364)], 'and stops at the horizon');
+    assert.deepEqual((await rowStates(page)).map(r => r[0]).slice(-3), ['Post 10', 'Post 11', 'Post 12'], 'still soonest first');
+    assert.equal(await page.$eval('.social-posts-end', el => el.textContent), 'Nothing more scheduled in the next year');
+});
+
+test('a failed Show more keeps the rows and retries', POSTS_SIGNED_IN, async ({ page }) => {
+    await postsReady(page);
+    await page.click('#social-list-past');
+    await page.evaluate(() => { window.__TEST__.socialPostsError = 'HTTP 502'; });
+    await page.click('#social-posts-more');
+    await page.waitForFunction(() => document.getElementById('social-posts-status').textContent.includes('Couldn’t load more'));
+    assert.equal(await postsStatus(page), 'Couldn’t load more: HTTP 502Retry');
+    assert.equal((await rowStates(page)).length, 3, 'the rows already shown stay');
+    await page.evaluate(() => { window.__TEST__.socialPostsError = ''; });
+    await page.click('#social-posts-status .social-ghost');
+    await page.waitForFunction(() => document.getElementById('social-posts').textContent.includes('A hundred days back'));
+});
+
+test('nothing upcoming says how far it looked and offers Compose', { ...POSTS_SIGNED_IN, socialPosts: [] }, async ({ page }) => {
+    await postsReady(page);
+    assert.match(await page.$eval('.social-posts-end', el => el.textContent), /^Nothing scheduled through \w+ \d+Compose a post$/);
+    await page.click('.social-posts-end .social-ghost');
+    assert.equal(await page.$eval('#social-pane-compose', el => el.hidden), false);
+    assert.equal(await page.evaluate(() => location.hash), '#social');
 });
 
 test('an entry opens in place: the text once, then each channel; closing returns to #social/posts', POSTS_SIGNED_IN, async ({ page }) => {
@@ -497,6 +542,7 @@ test('an entry opens in place: the text once, then each channel; closing returns
     assert.equal(await page.$$eval('.social-post[open] .social-post-full', els => els.length), 1, 'identical text shows once');
     assert.equal(await page.$$eval('.social-post[open] .social-post-version-cap', els => els.length), 0, 'no version captions when all agree');
     assert.deepEqual(await channelLines(page), [['Scott McCarty', 'Scheduled'], ['Scott on X', 'Scheduled']]);
+    assert.equal(await page.$eval('.social-post[open] .social-post-ch .social-chip', c => c.getAttribute('aria-label')), 'Scott McCarty: Scheduled');
     assert.equal(await page.$eval('.social-post[open] .social-postiz-link', el => el.href), 'https://postiz.example.com/');
     await page.click('.social-post[open] > summary');
     await page.waitForFunction(() => location.hash === '#social/posts');
@@ -512,7 +558,7 @@ test('posts made separately in Postiz with the same words at the same minute are
     ],
 }, async ({ page }) => {
     await postsReady(page);
-    const rows = await page.$$eval('#social-posts .social-post', els => els.map(e => [e.querySelector('.social-post-text').textContent, e.querySelectorAll('summary .social-post-chip').length, !!e.querySelector('.social-post-versions')]));
+    const rows = await page.$$eval('#social-posts .social-post', els => els.map(e => [e.querySelector('.social-post-text').textContent, e.querySelectorAll('summary .social-chip').length, !!e.querySelector('.social-post-versions')]));
     assert.deepEqual(rows.map(r => r[1]).sort(), [1, 2], 'same words merge across groups; different words stay apart');
     assert.ok(rows.every(r => !r[2]), 'a link difference is not a separate version');
 });
@@ -544,7 +590,7 @@ test('a record that bridges two entries (one by group, one by text) joins them a
 }, async ({ page }) => {
     await postsReady(page);
     assert.equal(await page.$$eval('#social-posts .social-post', els => els.length), 1, 't3 shares a group with t2 and the text of t1');
-    assert.equal(await page.$$eval('#social-posts summary .social-post-chip', els => els.length), 3);
+    assert.equal(await page.$$eval('#social-posts summary .social-chip', els => els.length), 3);
     assert.equal(await page.$eval('.social-post-versions', el => el.textContent), '· 2 versions');
 });
 
@@ -565,11 +611,12 @@ test('a link to any channel of a post opens its entry', { ...POSTS_SIGNED_IN, pa
     assert.equal(await page.evaluate(() => location.hash), '#social/post/up2', 'the link settles on the entry id');
 });
 
-test('a link to a post outside the first two weeks looks further and opens it', { ...POSTS_SIGNED_IN, path: '/#social/post/old' }, async ({ page }) => {
+test('a link to a post outside the first range looks further and opens it on Past', { ...POSTS_SIGNED_IN, path: '/#social/post/ancient' }, async ({ page }) => {
     await page.waitForFunction(() => document.querySelector('.social-post[open]'));
-    assert.equal(await page.$eval('.social-post[open] .social-post-full', el => el.textContent), 'Ten days back');
+    assert.equal(await page.$eval('.social-post[open] .social-post-full', el => el.textContent), 'A hundred days back');
+    assert.equal(await checkedList(page), 'Past');
     const ranges = (await socialCalls(page, 'socialPosts')).map(c => c.slice(1));
-    assert.deepEqual(ranges.slice(-2), [[localDay(-63), localDay(-7)], [localDay(7), localDay(63)]]);
+    assert.deepEqual(ranges.slice(2), [[localDay(-112), localDay(-56)], [localDay(56), localDay(112)]], 'one window more each way');
 });
 
 test('a link to a post that is gone says so', { ...POSTS_SIGNED_IN, path: '/#social/post/nope' }, async ({ page }) => {
@@ -581,28 +628,28 @@ test('a link to a post that is gone says so', { ...POSTS_SIGNED_IN, path: '/#soc
 test('Posts signed out asks to sign in', { path: '/#social/posts' }, async ({ page }) => {
     await page.waitForFunction(() => document.getElementById('social-posts-status').textContent.includes('Sign in'));
     assert.equal(await page.$eval('#social-posts-status button', el => el.textContent), 'Sign in with Google');
-    assert.equal(await page.$eval('#social-posts-top', el => el.hidden), true, 'no week navigation');
+    assert.equal(await page.$eval('#social-posts-more', el => el.hidden), true, 'nothing to show more of');
 });
 
 test('Posts without Postiz offers to connect it', { ...POSTS_SIGNED_IN, socialPostsConfigured: false }, async ({ page }) => {
     await page.waitForFunction(() => document.getElementById('social-posts-status').textContent.includes('connected'));
     assert.equal(await postsStatus(page), 'Postiz isn’t connected yet.Connect Postiz');
     assert.equal(await page.$eval('#social-posts', el => el.innerHTML), '');
-    assert.equal(await page.$eval('#social-posts-bottom', el => el.hidden), true);
+    assert.equal(await page.$eval('#social-posts-more', el => el.hidden), true);
 });
 
 test('Postiz unreachable with no copy: the list says so and retries', { ...POSTS_SIGNED_IN, socialPostsError: 'HTTP 502' }, async ({ page }) => {
     await page.waitForFunction(() => document.getElementById('social-posts').textContent.includes('Couldn’t reach Postiz'));
     assert.match(await page.$eval('#social-posts', el => el.textContent), /Couldn’t reach Postiz: HTTP 502\s*Retry/);
     await page.click('#social-posts .social-ghost');
-    await page.waitForFunction(() => window.__storageCalls.filter(c => c[0] === 'socialPosts').length === 2);
+    await page.waitForFunction(() => window.__storageCalls.filter(c => c[0] === 'socialPosts').length === 4);
 });
 
 test("Postiz unreachable with this account's copy: the copy shows, the status says why", {
     ...POSTS_SIGNED_IN,
     socialPostsError: 'HTTP 502',
     localStorage: {
-        acquacotta_social_posts: JSON.stringify({ email: 'test@example.com', from: localDay(-7), postiz_url: '', posts: [
+        acquacotta_social_posts: JSON.stringify({ email: 'test@example.com', from: localDay(-56), postiz_url: '', posts: [
             { id: 'c1', group: 'c1', date: localDay(1), state: 'QUEUE', text: 'From the cache', release_url: '', channel: CH.x },
         ] }),
     },
@@ -617,7 +664,7 @@ test("another account's cached posts never show", {
     ...POSTS_SIGNED_IN,
     socialPostsError: 'HTTP 502',
     localStorage: {
-        acquacotta_social_posts: JSON.stringify({ email: 'someone@else.com', from: localDay(-7), postiz_url: '', posts: [
+        acquacotta_social_posts: JSON.stringify({ email: 'someone@else.com', from: localDay(-56), postiz_url: '', posts: [
             { id: 'c1', group: 'c1', date: localDay(1), state: 'QUEUE', text: 'Not yours', release_url: '', channel: CH.x },
         ] }),
     },
@@ -626,12 +673,48 @@ test("another account's cached posts never show", {
     assert.equal(await page.$eval('#social-posts', el => el.textContent.includes('Not yours')), false);
 });
 
-test('paging after Postiz is disconnected shows the connect prompt, not empty weeks', POSTS_SIGNED_IN, async ({ page }) => {
+test('Show more after Postiz is disconnected shows the connect prompt, not an empty list', POSTS_SIGNED_IN, async ({ page }) => {
     await postsReady(page);
     await page.evaluate(() => { window.__TEST__.socialPostsConfigured = false; });
-    await page.click('#social-posts-later');
+    await page.click('#social-posts-more');
     await page.waitForFunction(() => document.getElementById('social-posts-status').textContent.includes('connected'));
-    assert.equal(await page.$eval('#social-posts-bottom', el => el.hidden), true);
+    assert.equal(await page.$eval('#social-posts-more', el => el.hidden), true);
+});
+
+test('one look at 390px: same segments, same 44px chips, no green in Posts', {
+    ...SOCIAL_SIGNED_IN, path: '/#social/compose', socialPosts: POSTS,
+}, async ({ page }) => {
+    await page.setViewport({ width: 390, height: 844 });
+    await composerReady(page);
+    const box = sel => page.$eval(sel, el => { const r = el.getBoundingClientRect(); return [r.left, r.top, r.width, r.height]; });
+    const panes = await box('#social-view > .social-segment');
+    const when = await box('#social-compose .social-segment');
+    const chipSizes = sel => page.$$eval(sel, els => [...new Set(els.filter(e => e.offsetParent).map(e => `${e.offsetWidth}x${e.offsetHeight}`))]);
+    assert.deepEqual(await chipSizes('#social-chips .social-chip'), ['44x44']);
+    await page.click('#social-pane-posts-btn');
+    await postsReady(page);
+    assert.deepEqual(await box('#social-view > .social-segment'), panes, 'Compose | Posts stays put');
+    const lists = await box('#social-pane-posts .social-segment');
+    assert.deepEqual([lists[0], lists[2], lists[3]], [when[0], when[2], when[3]], 'Past | Upcoming is the Post now | Schedule control');
+    assert.deepEqual(await chipSizes('#social-posts .social-chip'), ['44x44'], 'row chips are Compose chips');
+    await page.click('#social-posts .social-post > summary');
+    await page.waitForFunction(() => document.querySelector('.social-post[open]'));
+    assert.deepEqual(await chipSizes('#social-posts .social-chip'), ['44x44']);
+    assert.equal(await page.$eval('.social-post[open] > summary .social-chips', el => el.offsetParent), null, 'an open entry lists its channels once');
+    const green = await page.$$eval('#social-pane-posts *', els => els.some(e => {
+        const s = getComputedStyle(e);
+        return [s.color, s.backgroundColor, s.borderColor].includes('rgb(78, 204, 163)');
+    }));
+    assert.equal(green, false);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 390, 'no horizontal scroll');
+});
+
+test('arrow keys move between a segment’s options', POSTS_SIGNED_IN, async ({ page }) => {
+    await postsReady(page);
+    await page.focus('#social-list-upcoming');
+    await page.keyboard.press('ArrowLeft');
+    assert.equal(await checkedList(page), 'Past');
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'social-list-past');
 });
 
 run(tests);
