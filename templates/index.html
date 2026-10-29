@@ -5876,6 +5876,14 @@
 
             await Storage.logout();
             authStatus = { logged_in: false, google_configured: true };
+            // Social keeps Postiz data in localStorage; it belongs to the account leaving.
+            try {
+                localStorage.removeItem(SOCIAL_POSTS_CACHE_KEY);
+                localStorage.removeItem(SOCIAL_CACHE_KEY);
+            } catch (e) {
+                console.warn('Could not clear Social caches:', e);
+            }
+            socialPosts = [];
             updateAuthUI();
             await updateStorageIndicator();
 
@@ -7771,8 +7779,11 @@
             const last = socialAddDays(until, -1);
             document.getElementById('social-posts-range').textContent =
                 `${from.toLocaleDateString([], { month: 'short', day: 'numeric' })} – ${last.toLocaleDateString([], { month: 'short', day: 'numeric' })}`;
+            // Only this account's copy: a shared browser must not show another
+            // account's posts (sign-out also clears it).
             const cached = socialLocal(SOCIAL_POSTS_CACHE_KEY);
-            const fromCache = !!cached && cached.from === from.toISOString();
+            const fromCache = !!cached && !!authStatus.email && cached.email === authStatus.email
+                && cached.from === from.toISOString();
             if (fromCache) {
                 socialPosts = cached.posts || [];
                 socialPostizUrl = cached.postiz_url || '';
@@ -7790,7 +7801,7 @@
                 }
                 socialPosts = r.posts || [];
                 socialPostizUrl = r.postiz_url || '';
-                socialLocal(SOCIAL_POSTS_CACHE_KEY, { from: from.toISOString(), posts: socialPosts, postiz_url: socialPostizUrl });
+                socialLocal(SOCIAL_POSTS_CACHE_KEY, { email: authStatus.email || '', from: from.toISOString(), posts: socialPosts, postiz_url: socialPostizUrl });
                 socialRenderPosts();
             } catch (e) {
                 if (token !== socialPostsToken) return;
