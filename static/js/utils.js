@@ -303,6 +303,19 @@
     }
 
     /**
+     * Whether a cached Social posts window may be shown: it must belong to the
+     * signed-in account and be the same window. No account, no cache.
+     *
+     * @param {object|null} cached - { email, from, posts } from localStorage
+     * @param {string} email - The signed-in account's email
+     * @param {string} from - The window start, ISO-8601
+     * @returns {boolean}
+     */
+    function socialPostsCacheUsable(cached, email, from) {
+        return !!cached && !!email && cached.email === email && cached.from === from;
+    }
+
+    /**
      * Build the RT settings save payload from the form, or explain what's missing.
      * A blank secret input keeps the saved one (secrets are never read back).
      * Choosing the token clears basic_user, because a saved username wins over it.
@@ -348,6 +361,7 @@
         resolveTabOrder: resolveTabOrder,
         parseRoute: parseRoute,
         formatRoute: formatRoute,
+        socialPostsCacheUsable: socialPostsCacheUsable,
         buildRTConfigPayload: buildRTConfigPayload
     };
 

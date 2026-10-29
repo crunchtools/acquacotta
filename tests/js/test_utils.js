@@ -450,6 +450,29 @@ describe('parseRoute / formatRoute', function() {
     });
 });
 
+describe('socialPostsCacheUsable', function() {
+    var from = '2026-10-21T04:00:00.000Z';
+    var cached = { email: 'a@example.com', from: from, posts: [] };
+
+    it('should use the cache for the same account and window', function() {
+        expect(utils.socialPostsCacheUsable(cached, 'a@example.com', from)).toBe(true);
+    });
+
+    it('should never show another account its cache', function() {
+        expect(utils.socialPostsCacheUsable(cached, 'b@example.com', from)).toBe(false);
+    });
+
+    it('should not use a cache without an account on either side', function() {
+        expect(utils.socialPostsCacheUsable(cached, '', from)).toBe(false);
+        expect(utils.socialPostsCacheUsable({ from: from, posts: [] }, undefined, from)).toBe(false);
+    });
+
+    it('should not use another window or a missing cache', function() {
+        expect(utils.socialPostsCacheUsable(cached, 'a@example.com', '2026-11-04T05:00:00.000Z')).toBe(false);
+        expect(utils.socialPostsCacheUsable(null, 'a@example.com', from)).toBe(false);
+    });
+});
+
 describe('buildRTConfigPayload', function() {
     var base = { baseUrl: 'https://rt', publicUrl: 'https://rt', query: 'q' };
     function form(extra) {

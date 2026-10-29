@@ -7782,8 +7782,7 @@
             // Only this account's copy: a shared browser must not show another
             // account's posts (sign-out also clears it).
             const cached = socialLocal(SOCIAL_POSTS_CACHE_KEY);
-            const fromCache = !!cached && !!authStatus.email && cached.email === authStatus.email
-                && cached.from === from.toISOString();
+            const fromCache = AcquacottaUtils.socialPostsCacheUsable(cached, authStatus.email, from.toISOString());
             if (fromCache) {
                 socialPosts = cached.posts || [];
                 socialPostizUrl = cached.postiz_url || '';
