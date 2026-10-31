@@ -1,0 +1,27 @@
+# Drop in as .github/workflows/security.yml in a uv project. See constitution.md XV.
+#
+# The dependency audit fails a pull request with a vulnerable dependency, and on
+# the default branch keeps one alert issue in step with the scan, closing it on
+# the first clean run. Its tag moves with `Inherits:` (scripts/fleet-bump.py).
+# Keep any container scan or CodeQL jobs alongside it in this file.
+
+name: Security Scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  dependency-audit:
+    name: Dependency audit
+    permissions:
+      contents: read
+      issues: write
+    uses: crunchtools/constitution/.github/workflows/dependency-audit.yml@v1.28.0
