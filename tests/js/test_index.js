@@ -768,4 +768,112 @@ test('the week label ends on the spring-forward Sunday in a Monday-first week', 
     assert.equal(label, 'Mar 2 - Mar 8');
 });
 
+const NY = 'America/New_York';
+// Wall clock in a timezone, to compare against what the app computed.
+const wallClock = (iso, tz) => new Date(iso).toLocaleString('sv-SE', { timeZone: tz });
+
+for (const browser of ['Asia/Tokyo', 'America/Phoenix', 'UTC', 'Europe/London', NY]) {
+    test(`a typed time means the Settings timezone, browser in ${browser}`, {}, async ({ page }) => {
+        await page.emulateTimezone(browser);
+        const cases = [
+            ['2026-11-03', '00:00', NY], ['2026-11-03', '09:00', NY],
+            ['2026-11-01', '00:00', NY], ['2026-11-01', '09:00', NY], ['2026-11-01', '23:59', NY],
+            ['2026-03-08', '01:30', NY], ['2026-03-08', '09:00', NY],
+            ['2026-10-25', '09:00', 'Europe/London'], ['2026-11-01', '09:00', 'Asia/Tokyo'], ['2026-11-01', '12:00', 'UTC'],
+        ];
+        for (const [day, time, tz] of cases) {
+            const iso = await page.evaluate((d, t, z) => createDateInTimezone(d, t, z).toISOString(), day, time, tz);
+            assert.equal(wallClock(iso, tz), `${day} ${time}:00`, `${day} ${time} in ${tz}`);
+        }
+        const typed = (d, t) => page.evaluate((a, b, z) => createDateInTimezone(a, b, z).toISOString(), d, t, NY);
+        assert.equal(wallClock(await typed('2026-03-08', '02:30'), NY), '2026-03-08 03:30:00', 'a skipped time moves forward');
+        assert.equal(await typed('2026-11-01', '01:30'), '2026-11-01T05:30:00.000Z', 'a repeated time means the first one');
+    });
+}
+
+test('report ranges fall on Settings-timezone midnights across both clock changes', {}, async ({ page }) => {
+    await page.emulateTimezone('Asia/Tokyo');
+    const range = (period, day) => page.evaluate((p, d, z) => AcquacottaUtils.getDateRange(p, d, z), period, day, NY);
+    const fall = await range('week', '2026-11-03');
+    assert.equal(wallClock(fall.start, NY), '2026-11-01 00:00:00');
+    assert.equal(wallClock(fall.end, NY), '2026-11-08 00:00:00');
+    assert.deepEqual(fall.dates, ['2026-11-01', '2026-11-02', '2026-11-03', '2026-11-04', '2026-11-05', '2026-11-06', '2026-11-07']);
+    const longDay = await range('day', '2026-11-01');
+    assert.equal(new Date(longDay.end) - new Date(longDay.start), 25 * 3600000, 'the fall-back day is 25 hours');
+    const shortDay = await range('day', '2026-03-08');
+    assert.equal(new Date(shortDay.end) - new Date(shortDay.start), 23 * 3600000, 'the spring-forward day is 23 hours');
+    const month = await range('month', '2026-12-15');
+    assert.equal(wallClock(month.end, NY), '2027-01-01 00:00:00');
+    assert.equal(month.dates.length, 31);
+});
+
+test('midnight is hour 0', {}, async ({ page }) => {
+    assert.equal(await page.evaluate(z => AcquacottaUtils.hourInTz(new Date('2026-11-03T05:00:00Z'), z), NY), 0);
+});
+
+test('Reports count a late pomodoro on its Settings-timezone day and label it so', {}, async ({ page }) => {
+    await page.emulateTimezone('Asia/Tokyo');
+    const chart = await page.evaluate(async z => {
+        const charts = [];
+        const RealChart = window.Chart;
+        window.Chart = class extends RealChart { constructor(el, cfg) { super(el, cfg); charts.push(cfg); } };
+        // 11pm on the 3rd in New York is already 1pm on the 4th in Tokyo.
+        Storage.getPomodoros = async () => [{ type: 'Content', duration_minutes: 25, start_time: '2026-11-04T04:00:00Z' }];
+        Storage.getReport = async () => ({ total_minutes: 25, total_pomodoros: 1, by_type: { Content: 25 },
+            daily_totals: [{ date: '2026-11-03', minutes: 25, count: 1 }] });
+        settings.date_format = 'iso';
+        appTimezone = z;
+        currentPeriod = 'day';
+        currentDate = '2026-11-03';
+        await loadReport();
+        const daily = charts.find(c => c.type === 'bar');
+        return { label: daily.data.labels[0], minutes: daily.data.datasets[0].data };
+    }, NY);
+    assert.equal(chart.label[0], new Date(2026, 10, 3).toLocaleDateString(undefined, { weekday: 'short' }));
+    assert.match(chart.label[1], /11.*3|3.*11/, 'labelled the 3rd');
+    assert.deepEqual(chart.minutes, [25]);
+});
+
+test('the Timer week follows the Settings timezone, not the browser', {}, async ({ page }) => {
+    await page.emulateTimezone('Asia/Tokyo');
+    const start = await page.evaluate(async z => {
+        let from;
+        Storage.getPomodoros = async s => { from = s; return []; };
+        settings.date_format = 'us';
+        appTimezone = z;
+        weekOverviewOffset = 0;
+        await loadWeeklyOverview();
+        return from;
+    }, NY);
+    assert.match(wallClock(start, NY), / 00:00:00$/);
+    assert.equal(new Date(start).toLocaleDateString('en-US', { weekday: 'short', timeZone: NY }), 'Sun');
+    const today = await page.evaluate(() => document.querySelector('#week-grid .week-day-header.today .week-day-num').textContent);
+    assert.equal(today, String(Number(new Date().toLocaleString('en-US', { day: 'numeric', timeZone: NY }))));
+});
+
+// flatpickr is stubbed, so stand-in pickers write to the inputs as the real ones do.
+const editAndSave = (page, startTime) => page.evaluate(async (iso, z) => {
+    let saved;
+    Storage.getPomodoros = async () => [{ id: 'p1', name: 'x', type: 'Content', duration_minutes: 25, start_time: iso }];
+    Storage.updatePomodoro = async (id, data) => { saved = data; };
+    const picker = id => ({ setDate(v) { document.getElementById(id).value = v; } });
+    editDatePicker = picker('edit-date');
+    editTimePicker = picker('edit-time');
+    settings.timezone = z;
+    appTimezone = z;
+    await showEditModal('p1');
+    await saveEditedPomodoro();
+    return saved.start_time;
+}, startTime, NY);
+
+test('opening and saving a pomodoro leaves it where it was', {}, async ({ page }) => {
+    await page.emulateTimezone('Asia/Tokyo');
+    assert.equal(await editAndSave(page, '2026-11-02T14:30:00.000Z'), '2026-11-02T14:30:00.000Z');
+});
+
+test('an edit rounding up to midnight carries the date with it', {}, async ({ page }) => {
+    await page.emulateTimezone(NY);
+    assert.equal(wallClock(await editAndSave(page, '2026-11-03T04:50:00.000Z'), NY), '2026-11-03 00:00:00');
+});
+
 run(tests);

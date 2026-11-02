@@ -6,6 +6,23 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.32.2] - 2026-11-02
+
+### Fixed
+- The Settings timezone now applies to every pomodoro date and time when it
+  differs from the browser's. Reports count days in it, the Timer week grid
+  shows its current week, and the edit modal shows and saves in it, so saving
+  a pomodoro no longer moves it. The add modal's date, preview and half-hour
+  alignment follow it too.
+- Adding a pomodoro with a Settings timezone different from the browser's no
+  longer saves an hour off around a daylight saving change.
+- Editing a pomodoro within 15 minutes of midnight no longer rounds the time
+  to 00:00 on the same date, moving it a day back.
+
+### Changed
+- Hour readings can no longer see midnight as hour 24, which would have put a
+  midnight pomodoro under PM in browsers that report it that way.
+
 ## [2.32.1] - 2026-11-02
 
 ### Fixed
