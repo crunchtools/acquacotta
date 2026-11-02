@@ -910,7 +910,7 @@ test('Add saves the typed time in the Settings timezone', {}, async ({ page }) =
         set('add-time', '09:00');
         set('add-duration', '25');
         set('add-count', '1');
-        document.getElementById('add-type').innerHTML = '<option value="Content" selected>Content</option>';
+        document.getElementById('add-type').add(new Option('Content', 'Content', true, true));
         await addManualPomodoro();
         return saved.start_time;
     }, NY);
@@ -925,6 +925,26 @@ test('half-hour alignment rounds in the Settings timezone', {}, async ({ page })
     assert.equal(wallClock(await aligned('2026-11-03T14:44:00Z'), NY), '2026-11-03 09:30:00');
     assert.equal(wallClock(await aligned('2026-11-03T14:45:00Z'), NY), '2026-11-03 10:00:00');
     assert.equal(wallClock(await aligned('2026-11-04T04:50:00Z'), NY), '2026-11-04 00:00:00', 'across midnight');
+});
+
+test('half-hour alignment stays right across both clock changes', {}, async ({ page }) => {
+    await page.emulateTimezone('Asia/Kolkata');
+    const aligned = iso => page.evaluate((i, z) => { appTimezone = z; return alignToHalfHour(new Date(i)).toISOString(); }, iso, NY);
+    assert.equal(await aligned('2026-11-01T05:50:00Z'), '2026-11-01T06:00:00.000Z', 'ten minutes on, the clock reads 1:00 again');
+    assert.equal(wallClock(await aligned('2026-03-08T06:50:00Z'), NY), '2026-03-08 03:00:00', 'ten minutes on, the clock skips to 3:00');
+});
+
+test('changing timezone moves a report on today to the new today, and leaves a past one', {}, async ({ page }) => {
+    const change = (day, z) => page.evaluate((d, zone) => {
+        appTimezone = 'UTC';
+        currentDate = d === 'today' ? AcquacottaUtils.getTodayString('UTC') : d;
+        settings.timezone = zone;
+        updateAppTimezone();
+        return { currentDate, today: AcquacottaUtils.getTodayString(zone) };
+    }, day, z);
+    const onToday = await change('today', 'Pacific/Kiritimati');
+    assert.equal(onToday.currentDate, onToday.today);
+    assert.equal((await change('2020-01-15', 'Pacific/Kiritimati')).currentDate, '2020-01-15');
 });
 
 run(tests);

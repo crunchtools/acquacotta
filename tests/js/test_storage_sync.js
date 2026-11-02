@@ -169,6 +169,10 @@ test('a report counts days in the timezone it is given', async ({ page }) => {
     assert.deepEqual(report.daily_totals, [{ date: '2026-11-03', minutes: 25, count: 1 }]);
 });
 
+test('a report for an unknown period is an error', async ({ page }) => {
+    assert.deepEqual(await page.evaluate(() => Storage.getReport('year', '2026-11-03', 'UTC')), { error: 'Invalid period' });
+});
+
 (async () => {
     const send = (res, type, body) => { res.writeHead(200, { 'Content-Type': type }); res.end(body); };
     const server = http.createServer((req, res) => {
