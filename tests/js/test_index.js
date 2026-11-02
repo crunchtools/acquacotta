@@ -851,6 +851,21 @@ test('the Timer week follows the Settings timezone, not the browser', {}, async 
     assert.equal(today, String(Number(new Date().toLocaleString('en-US', { day: 'numeric', timeZone: NY }))));
 });
 
+test('the add preview shows the typed time in the Settings timezone', {}, async ({ page }) => {
+    await page.emulateTimezone('America/New_York');
+    const preview = await page.evaluate(() => {
+        appTimezone = 'Asia/Tokyo';
+        existingPomodoros = [];
+        document.getElementById('add-date').value = '2026-11-03';
+        document.getElementById('add-time').value = '08:00';
+        document.getElementById('add-duration').value = '25';
+        document.getElementById('add-count').value = '1';
+        updateAddPreview();
+        return document.getElementById('add-preview').textContent;
+    });
+    assert.match(preview, /08:00 AM - 08:25 AM/);
+});
+
 // flatpickr is stubbed, so stand-in pickers write to the inputs as the real ones do.
 const editAndSave = (page, startTime) => page.evaluate(async (iso, z) => {
     let saved;

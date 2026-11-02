@@ -3818,7 +3818,7 @@
                 return;
             }
 
-            const startTime = new Date(`${date}T${time}`);
+            const startTime = createDateInTimezone(date, time, getEffectiveTimezone());
             const slots = [];
             let currentStart = startTime;
 
