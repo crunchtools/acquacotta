@@ -3956,6 +3956,10 @@
             return `${String(hours).padStart(2, '0')}:${String(snappedMinutes % 60).padStart(2, '0')}`;
         }
 
+        // The moment the edit modal opened on. The repeated hour when clocks fall back
+        // reads the same twice, so an unchanged date and time keeps this moment.
+        let editOpened = null;
+
         async function showEditModal(id) {
             // Fetch all pomodoros to find the one to edit
             allPomodoros = await Storage.getPomodoros();
@@ -3988,13 +3992,16 @@
             const startDate = new Date(pomo.start_time);
             const startMinutes = parseInt(startDate.toLocaleString('en-US', { minute: 'numeric', timeZone: tz }));
             const snappedStart = new Date(startDate.getTime() + (snapTo30Minutes(startMinutes) - startMinutes) * 60000);
+            const snappedDay = snappedStart.toLocaleDateString('en-CA', { timeZone: tz });
+            const snappedTime = formatTimeSnappedTz(snappedStart, tz);
+            editOpened = { day: snappedDay, time: snappedTime, start: snappedStart };
             // Set date using Flatpickr API
             if (editDatePicker) {
-                editDatePicker.setDate(snappedStart.toLocaleDateString('en-CA', { timeZone: tz }), true);
+                editDatePicker.setDate(snappedDay, true);
             }
             // Set time using Flatpickr API
             if (editTimePicker) {
-                editTimePicker.setDate(formatTimeSnappedTz(snappedStart, tz), true);
+                editTimePicker.setDate(snappedTime, true);
             }
 
             document.getElementById('edit-modal').classList.add('active');
@@ -4015,7 +4022,8 @@
             const duration = parseInt(document.getElementById('edit-duration').value);
 
             // HTML date input returns YYYY-MM-DD format
-            const startTime = createDateInTimezone(dateStr, time, getEffectiveTimezone());
+            const unchanged = editOpened && editOpened.day === dateStr && editOpened.time === time;
+            const startTime = unchanged ? editOpened.start : createDateInTimezone(dateStr, time, getEffectiveTimezone());
             const endTime = new Date(startTime.getTime() + duration * 60000);
 
             const editTypeSelect = document.getElementById('edit-type');
@@ -4273,7 +4281,6 @@
             });
         }
 
-        // Helper to get date range for a period
         // Settings
         async function loadSettings() {
             settings = await Storage.getSettings();

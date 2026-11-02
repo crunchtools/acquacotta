@@ -891,4 +891,40 @@ test('an edit rounding up to midnight carries the date with it', {}, async ({ pa
     assert.equal(wallClock(await editAndSave(page, '2026-11-03T04:50:00.000Z'), NY), '2026-11-03 00:00:00');
 });
 
+test('saving an unchanged pomodoro from the repeated fall-back hour keeps it', {}, async ({ page }) => {
+    await page.emulateTimezone(NY);
+    assert.equal(await editAndSave(page, '2026-11-01T06:30:00.000Z'), '2026-11-01T06:30:00.000Z', 'the second 1:30');
+    assert.equal(await editAndSave(page, '2026-11-01T05:30:00.000Z'), '2026-11-01T05:30:00.000Z', 'the first 1:30');
+});
+
+test('Add saves the typed time in the Settings timezone', {}, async ({ page }) => {
+    await page.emulateTimezone('Asia/Tokyo');
+    const start = await page.evaluate(async z => {
+        let saved;
+        Storage.createManualPomodoro = async data => { saved = data; return data; };
+        appTimezone = z;
+        settings.timezone = z;
+        existingPomodoros = [];
+        const set = (id, v) => { document.getElementById(id).value = v; };
+        set('add-date', '2026-11-01');
+        set('add-time', '09:00');
+        set('add-duration', '25');
+        set('add-count', '1');
+        document.getElementById('add-type').innerHTML = '<option value="Content" selected>Content</option>';
+        await addManualPomodoro();
+        return saved.start_time;
+    }, NY);
+    assert.equal(wallClock(start, NY), '2026-11-01 09:00:00');
+});
+
+test('half-hour alignment rounds in the Settings timezone', {}, async ({ page }) => {
+    await page.emulateTimezone('Asia/Kolkata');  // half an hour off New York's minutes
+    const aligned = iso => page.evaluate((i, z) => { appTimezone = z; return alignToHalfHour(new Date(i)).toISOString(); }, iso, NY);
+    assert.equal(wallClock(await aligned('2026-11-03T14:14:00Z'), NY), '2026-11-03 09:00:00');
+    assert.equal(wallClock(await aligned('2026-11-03T14:15:00Z'), NY), '2026-11-03 09:30:00');
+    assert.equal(wallClock(await aligned('2026-11-03T14:44:00Z'), NY), '2026-11-03 09:30:00');
+    assert.equal(wallClock(await aligned('2026-11-03T14:45:00Z'), NY), '2026-11-03 10:00:00');
+    assert.equal(wallClock(await aligned('2026-11-04T04:50:00Z'), NY), '2026-11-04 00:00:00', 'across midnight');
+});
+
 run(tests);

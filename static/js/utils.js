@@ -156,7 +156,8 @@
      *
      * @param {string} period - 'day', 'week', or 'month'
      * @param {string} dateStr - Reference date in YYYY-MM-DD format
-     * @returns {object} - { start: ISO string, end: ISO string }
+     * @param {string} [timezone] - IANA timezone days are counted in, browser timezone if omitted
+     * @returns {object} - { start: ISO string, end: ISO string, dates: YYYY-MM-DD strings }
      */
     function getDateRange(period, dateStr, timezone) {
         var tz = timezone || browserTimezone();

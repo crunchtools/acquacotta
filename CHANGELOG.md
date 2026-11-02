@@ -18,6 +18,8 @@ All notable changes to this project are documented here. The format follows
   longer saves an hour off around a daylight saving change.
 - Editing a pomodoro within 15 minutes of midnight no longer rounds the time
   to 00:00 on the same date, moving it a day back.
+- Saving an unchanged pomodoro from the repeated hour when clocks fall back no
+  longer moves it an hour.
 
 ### Changed
 - Hour readings can no longer see midnight as hour 24, which would have put a
