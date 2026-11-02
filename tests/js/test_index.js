@@ -748,6 +748,12 @@ test('the week grid numbers each day once across the fall-back Sunday', {}, asyn
     assert.deepEqual(await weekDayNums(page), [1, 2, 3, 4, 5, 6, 7]);
 });
 
+test('the week grid follows the app timezone’s DST, not the browser’s', {}, async ({ page }) => {
+    await page.emulateTimezone('America/Phoenix');
+    await page.evaluate(() => renderWeeklyGrid([], new Date(2026, 10, 1), 'America/Los_Angeles', true));
+    assert.deepEqual(await weekDayNums(page), [1, 2, 3, 4, 5, 6, 7]);
+});
+
 test('the week label ends on the spring-forward Sunday in a Monday-first week', {}, async ({ page }) => {
     await page.emulateTimezone('America/New_York');
     const label = await page.evaluate(async () => {

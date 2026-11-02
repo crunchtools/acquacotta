@@ -2154,6 +2154,13 @@
             loadWeeklyOverview();
         }
 
+        // The calendar day `days` after date's day in tz, as a UTC date: a local day is 23 or 25 hours when DST
+        // changes, so format the result with timeZone 'UTC'
+        function calendarDayInTz(date, tz, days) {
+            const [year, month, day] = date.toLocaleDateString('en-CA', { timeZone: tz }).split('-').map(Number);
+            return new Date(Date.UTC(year, month - 1, day + days));
+        }
+
         async function loadWeeklyOverview() {
             const tz = appTimezone;
             const now = new Date();
@@ -2187,9 +2194,8 @@
             } else {
                 // Format date range
                 const startMonth = startOfWeek.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: tz });
-                const endDate = new Date(endOfWeek);
-                endDate.setDate(endOfWeek.getDate() - 1); // End of week is exclusive, so subtract 1 day
-                const endMonth = endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: tz });
+                const endDate = calendarDayInTz(startOfWeek, tz, 6);
+                const endMonth = endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
                 weekLabel.textContent = `${startMonth} - ${endMonth}`;
             }
 
@@ -2223,12 +2229,10 @@
 
             let html = '';
             for (let i = 0; i < 7; i++) {
-                // Calendar arithmetic: a day is 23 or 25 hours when DST changes
-                const dayDate = new Date(startOfWeek);
-                dayDate.setDate(startOfWeek.getDate() + i);
-                const dayStr = dayDate.toLocaleDateString('en-CA', { timeZone: tz });
+                const dayDate = calendarDayInTz(startOfWeek, tz, i);
+                const dayStr = dayDate.toLocaleDateString('en-CA', { timeZone: 'UTC' });
                 const isToday = dayStr === todayStr;
-                const dayNum = parseInt(dayDate.toLocaleString('en-US', { day: 'numeric', timeZone: tz }));
+                const dayNum = dayDate.getUTCDate();
 
                 // Filter pomodoros for this day
                 const dayPomos = pomodoros.filter(p => {
@@ -2252,7 +2256,7 @@
                 const pmLabel = effectivePeriodLabels === 'morning' ? 'Afternoon' : 'PM';
 
                 const isSelected = i === selectedIndex;
-                const fullDate = dayDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: tz });
+                const fullDate = dayDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
                 html += `<div class="week-day ${isSelected ? 'selected' : ''}">
                     <div class="week-day-header ${isToday ? 'today' : ''}" role="button" tabindex="0"
                          aria-pressed="${isSelected}" aria-label="${fullDate}, ${dayPomos.length} pomodoros"
