@@ -183,7 +183,7 @@ protobuf==7.36.2
     #   proto-plus
 py-key-value-aio==0.4.6
     # via fastmcp-slim
-pyasn1==0.6.4
+pyasn1==0.6.5
     # via pyasn1-modules
 pyasn1-modules==0.4.2
     # via google-auth

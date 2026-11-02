@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.32.1] - 2026-11-02
+
+### Fixed
+- Timer: the week grid no longer repeats a date and shifts every later day
+  when the week crosses the end of daylight saving time. The label on a
+  distant week had the same flaw on the 23-hour spring-forward Sunday.
+
+### Security
+- Bump pyasn1 to 0.6.5 (CVE-2026-119194, CVE-2026-119195, CVE-2026-119196,
+  CVE-2026-119197).
+
 ## [2.32.0] - 2026-10-29
 
 ### Changed

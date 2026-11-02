@@ -740,4 +740,32 @@ test('arrow keys move between a segment’s options', POSTS_SIGNED_IN, async ({ 
     assert.equal(await page.evaluate(() => document.activeElement.id), 'social-list-past');
 });
 
+const weekDayNums = page => page.$$eval('#week-grid .week-day-num', els => els.map(e => Number(e.textContent)));
+
+test('the week grid numbers each day once across the fall-back Sunday', {}, async ({ page }) => {
+    await page.emulateTimezone('America/New_York');
+    await page.evaluate(() => renderWeeklyGrid([], new Date(2026, 10, 1), 'America/New_York', true));
+    assert.deepEqual(await weekDayNums(page), [1, 2, 3, 4, 5, 6, 7]);
+});
+
+test('the week grid follows the app timezone’s DST, not the browser’s', {}, async ({ page }) => {
+    await page.emulateTimezone('America/Phoenix');
+    await page.evaluate(() => renderWeeklyGrid([], new Date(2026, 10, 1), 'America/Los_Angeles', true));
+    assert.deepEqual(await weekDayNums(page), [1, 2, 3, 4, 5, 6, 7]);
+});
+
+test('the week label ends on the spring-forward Sunday in a Monday-first week', {}, async ({ page }) => {
+    await page.emulateTimezone('America/New_York');
+    const label = await page.evaluate(async () => {
+        settings.date_format = 'iso';
+        const monday = new Date();
+        monday.setDate(monday.getDate() - (monday.getDay() + 6) % 7);
+        monday.setHours(0, 0, 0, 0);
+        weekOverviewOffset = Math.round((new Date(2026, 2, 2) - monday) / (7 * 86400000));
+        await loadWeeklyOverview();
+        return document.getElementById('week-overview-label').textContent;
+    });
+    assert.equal(label, 'Mar 2 - Mar 8');
+});
+
 run(tests);
