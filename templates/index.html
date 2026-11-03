@@ -1830,11 +1830,13 @@
 
         // Update appTimezone from settings (call after settings load or timezone change)
         function updateAppTimezone() {
+            const reportOnToday = currentDate === AcquacottaUtils.getTodayString(appTimezone);
             if (settings.timezone && settings.timezone !== 'auto') {
                 appTimezone = settings.timezone;
             } else {
                 appTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
             }
+            if (reportOnToday) currentDate = AcquacottaUtils.getTodayString(appTimezone);
         }
 
         // Bell sound using Web Audio API
@@ -2168,22 +2170,14 @@
             // US = Sunday first, EU/ISO = Monday first
             const sundayFirst = getEffectiveDateFormat() === 'us';
 
-            // Get start of current week (use browser timezone for calculation, then convert)
-            const startOfWeek = new Date(now);
-            if (sundayFirst) {
-                startOfWeek.setDate(now.getDate() - now.getDay());
-            } else {
-                const daysSinceMonday = (now.getDay() + 6) % 7;
-                startOfWeek.setDate(now.getDate() - daysSinceMonday);
-            }
-            startOfWeek.setHours(0, 0, 0, 0);
+            // Start of the current week, counted on the calendar of the app timezone
+            const todayStr = now.toLocaleDateString('en-CA', { timeZone: tz });
+            const dayOfWeek = AcquacottaUtils.dayOfWeek(todayStr);
+            const daysSinceWeekStart = sundayFirst ? dayOfWeek : (dayOfWeek + 6) % 7;
+            const weekStartStr = AcquacottaUtils.addDays(todayStr, (weekOverviewOffset * 7) - daysSinceWeekStart);
 
-            // Apply week offset
-            startOfWeek.setDate(startOfWeek.getDate() + (weekOverviewOffset * 7));
-
-            // Get end of week (7 days later)
-            const endOfWeek = new Date(startOfWeek);
-            endOfWeek.setDate(startOfWeek.getDate() + 7);
+            const startOfWeek = createDateInTimezone(weekStartStr, '00:00', tz);
+            const endOfWeek = createDateInTimezone(AcquacottaUtils.addDays(weekStartStr, 7), '00:00', tz);
 
             // Update week label
             const weekLabel = document.getElementById('week-overview-label');
@@ -2242,11 +2236,11 @@
 
                 // Split into AM/PM (noon = 12:00) using configured timezone
                 const amPomos = dayPomos.filter(p => {
-                    const h = parseInt(new Date(p.start_time).toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: tz }));
+                    const h = AcquacottaUtils.hourInTz(new Date(p.start_time), tz);
                     return h < 12;
                 });
                 const pmPomos = dayPomos.filter(p => {
-                    const h = parseInt(new Date(p.start_time).toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: tz }));
+                    const h = AcquacottaUtils.hourInTz(new Date(p.start_time), tz);
                     return h >= 12;
                 });
 
@@ -2477,50 +2471,7 @@
         // Helper: Create a Date object for a specific time in the configured timezone
         // When user enters "12:00" in the app, we want that to mean 12:00 in appTimezone
         function createDateInTimezone(dayStr, timeStr, tz) {
-            const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-
-            // If app timezone matches browser timezone, no conversion needed
-            if (tz === browserTz) {
-                return new Date(dayStr + 'T' + timeStr + ':00');
-            }
-
-            // Different timezones: we need to find what UTC time corresponds to
-            // the given local time in the target timezone
-            //
-            // Strategy: Create date in browser TZ, then figure out the offset difference
-            const browserDate = new Date(dayStr + 'T' + timeStr + ':00');
-
-            // Get what time it would be in target TZ at this UTC moment
-            const targetTimeStr = browserDate.toLocaleString('en-US', {
-                timeZone: tz,
-                year: 'numeric', month: '2-digit', day: '2-digit',
-                hour: '2-digit', minute: '2-digit', second: '2-digit',
-                hour12: false
-            });
-
-            // Get what time it is in browser TZ at this UTC moment
-            const browserTimeStr = browserDate.toLocaleString('en-US', {
-                timeZone: browserTz,
-                year: 'numeric', month: '2-digit', day: '2-digit',
-                hour: '2-digit', minute: '2-digit', second: '2-digit',
-                hour12: false
-            });
-
-            // Parse both times to get the offset in minutes
-            const parseTime = (str) => {
-                const [datePart, timePart] = str.split(', ');
-                const [m, d, y] = datePart.split('/').map(Number);
-                const [h, min, s] = timePart.split(':').map(Number);
-                return new Date(y, m-1, d, h, min, s).getTime();
-            };
-
-            const targetMs = parseTime(targetTimeStr);
-            const browserMs = parseTime(browserTimeStr);
-            const offsetMs = browserMs - targetMs;
-
-            // Adjust: if user wants 12:00 in target TZ, and target is 6 hours behind browser,
-            // we need to ADD 6 hours to the browser time
-            return new Date(browserDate.getTime() + offsetMs);
+            return AcquacottaUtils.zonedTimeToUtc(dayStr, timeStr, tz);
         }
 
         // Add a pomodoro to the next available slot in morning or afternoon
@@ -3745,7 +3696,7 @@
             const [endHour, endMin] = workEnd.split(':').map(Number);
 
             // Get current time in configured timezone
-            const currentHour = parseInt(now.toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: tz }));
+            const currentHour = AcquacottaUtils.hourInTz(now, tz);
             const currentMin = parseInt(now.toLocaleString('en-US', { minute: 'numeric', timeZone: tz }));
             const currentTimeMinutes = currentHour * 60 + currentMin;
             const workStartMinutes = startHour * 60 + startMin;
@@ -3764,11 +3715,11 @@
         }
 
         function showAddModal() {
-            // Use local date and time (not UTC) to avoid timezone issues
+            // Use the date and time in the app timezone
             const now = new Date();
             // Set date using Flatpickr API
             if (addDatePicker) {
-                addDatePicker.setDate(now, true);
+                addDatePicker.setDate(AcquacottaUtils.getTodayString(getEffectiveTimezone()), true);
             }
             // Set time using Flatpickr API
             if (addTimePicker) {
@@ -3811,16 +3762,10 @@
 
         // Align time to nearest half-hour boundary
         function alignToHalfHour(date) {
-            const aligned = new Date(date);
-            const minutes = aligned.getMinutes();
-            if (minutes < 15) {
-                aligned.setMinutes(0, 0, 0);
-            } else if (minutes < 45) {
-                aligned.setMinutes(30, 0, 0);
-            } else {
-                aligned.setMinutes(0, 0, 0);
-                aligned.setHours(aligned.getHours() + 1);
-            }
+            const minutes = parseInt(date.toLocaleString('en-US', { minute: 'numeric', timeZone: appTimezone }));
+            const target = minutes < 15 ? 0 : minutes < 45 ? 30 : 60;
+            const aligned = new Date(date.getTime() + (target - minutes) * 60000);
+            aligned.setSeconds(0, 0);
             return aligned;
         }
 
@@ -3873,7 +3818,7 @@
                 return;
             }
 
-            const startTime = new Date(`${date}T${time}`);
+            const startTime = createDateInTimezone(date, time, getEffectiveTimezone());
             const slots = [];
             let currentStart = startTime;
 
@@ -3893,12 +3838,12 @@
             if (count === 1) {
                 const s = slots[0];
                 document.getElementById('add-preview').textContent =
-                    `Will create: ${s.start.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} - ${s.end.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+                    `Will create: ${s.start.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', timeZone: appTimezone})} - ${s.end.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', timeZone: appTimezone})}`;
             } else {
                 const first = slots[0];
                 const last = slots[slots.length - 1];
                 document.getElementById('add-preview').textContent =
-                    `Will create ${count} entries: ${first.start.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} - ${last.end.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+                    `Will create ${count} entries: ${first.start.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', timeZone: appTimezone})} - ${last.end.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', timeZone: appTimezone})}`;
             }
         }
 
@@ -4002,21 +3947,18 @@
             return Math.round(minutes / 30) * 30;
         }
 
-        // Format time as HH:MM with 30-minute snapping
-        function formatTimeSnapped(date) {
-            const snappedMinutes = snapTo30Minutes(date.getMinutes());
-            const hours = snappedMinutes >= 60 ? date.getHours() + 1 : date.getHours();
-            return `${String(hours % 24).padStart(2, '0')}:${String(snappedMinutes % 60).padStart(2, '0')}`;
-        }
-
         // Format time as HH:MM with 30-minute snapping in a specific timezone
         function formatTimeSnappedTz(date, tz) {
             const minutes = parseInt(date.toLocaleString('en-US', { minute: 'numeric', timeZone: tz }));
             const snappedMinutes = snapTo30Minutes(minutes);
-            let hours = parseInt(date.toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: tz }));
+            let hours = AcquacottaUtils.hourInTz(date, tz);
             if (snappedMinutes >= 60) hours = (hours + 1) % 24;
             return `${String(hours).padStart(2, '0')}:${String(snappedMinutes % 60).padStart(2, '0')}`;
         }
+
+        // The moment the edit modal opened on. The repeated hour when clocks fall back
+        // reads the same twice, so an unchanged date and time keeps this moment.
+        let editOpened = null;
 
         async function showEditModal(id) {
             // Fetch all pomodoros to find the one to edit
@@ -4045,14 +3987,21 @@
             document.getElementById('edit-duration').value = pomo.duration_minutes;
 
             // Use the entry's date and time
+            // Snap first, so rounding past midnight carries the date with it
+            const tz = getEffectiveTimezone();
             const startDate = new Date(pomo.start_time);
+            const startMinutes = parseInt(startDate.toLocaleString('en-US', { minute: 'numeric', timeZone: tz }));
+            const snappedStart = new Date(startDate.getTime() + (snapTo30Minutes(startMinutes) - startMinutes) * 60000);
+            const snappedDay = snappedStart.toLocaleDateString('en-CA', { timeZone: tz });
+            const snappedTime = formatTimeSnappedTz(snappedStart, tz);
+            editOpened = { day: snappedDay, time: snappedTime, start: snappedStart };
             // Set date using Flatpickr API
             if (editDatePicker) {
-                editDatePicker.setDate(startDate, true);
+                editDatePicker.setDate(snappedDay, true);
             }
             // Set time using Flatpickr API
             if (editTimePicker) {
-                editTimePicker.setDate(formatTimeSnapped(startDate), true);
+                editTimePicker.setDate(snappedTime, true);
             }
 
             document.getElementById('edit-modal').classList.add('active');
@@ -4073,7 +4022,8 @@
             const duration = parseInt(document.getElementById('edit-duration').value);
 
             // HTML date input returns YYYY-MM-DD format
-            const startTime = new Date(`${dateStr}T${time}`);
+            const unchanged = editOpened && editOpened.day === dateStr && editOpened.time === time;
+            const startTime = unchanged ? editOpened.start : createDateInTimezone(dateStr, time, getEffectiveTimezone());
             const endTime = new Date(startTime.getTime() + duration * 60000);
 
             const editTypeSelect = document.getElementById('edit-type');
@@ -4123,8 +4073,7 @@
         }
 
         function goToCurrentPeriod() {
-            // Use local date to avoid timezone offset issues
-            currentDate = new Date().toLocaleDateString('en-CA');
+            currentDate = AcquacottaUtils.getTodayString(appTimezone);
             loadReport();
         }
 
@@ -4132,8 +4081,8 @@
 
         async function loadReport() {
             const token = ++reportToken;
-            const dateRange = getDateRange(currentPeriod, currentDate);
-            const data = await Storage.getReport(currentPeriod, dateRange.start, dateRange.end, currentDate);
+            const dateRange = AcquacottaUtils.getDateRange(currentPeriod, currentDate, appTimezone);
+            const data = await Storage.getReport(currentPeriod, currentDate, appTimezone);
             if (token !== reportToken) return;
 
             // Update summary
@@ -4226,7 +4175,7 @@
             const chartLabels = data.daily_totals.map(d => {
                 const dt = new Date(d.date + 'T00:00:00');
                 const dayName = dt.toLocaleDateString(undefined, { weekday: 'short' });
-                const dateStr = formatDate(dt);
+                const dateStr = formatDate(createDateInTimezone(d.date, '12:00', appTimezone));
                 if (isMonthly) {
                     return `${dayName} ${dateStr}`;
                 }
@@ -4250,9 +4199,9 @@
                     label: type,
                     shortLabel: getFirstWord(type),  // First word for limited space
                     data: data.daily_totals.map(d => {
-                        // Sum minutes for this type on this day (use local date, not UTC prefix)
+                        // Sum minutes for this type on this day (use the app timezone's date, not UTC prefix)
                         return pomos
-                            .filter(p => p.type === type && new Date(p.start_time).toLocaleDateString('en-CA') === d.date)
+                            .filter(p => p.type === type && new Date(p.start_time).toLocaleDateString('en-CA', { timeZone: appTimezone }) === d.date)
                             .reduce((sum, p) => sum + p.duration_minutes, 0);
                     }),
                     backgroundColor: color + 'B3', // Add transparency
@@ -4330,34 +4279,6 @@
                     }
                 }
             });
-        }
-
-        // Helper to get date range for a period
-        function getDateRange(period, dateStr) {
-            // Parse date string as local time (not UTC) by appending time component
-            const refDate = new Date(dateStr + 'T00:00:00');
-            let start, end;
-
-            if (period === 'day') {
-                start = new Date(refDate);
-                start.setHours(0, 0, 0, 0);
-                end = new Date(start);
-                end.setDate(end.getDate() + 1);
-            } else if (period === 'week') {
-                start = new Date(refDate);
-                start.setDate(refDate.getDate() - refDate.getDay());
-                start.setHours(0, 0, 0, 0);
-                end = new Date(start);
-                end.setDate(start.getDate() + 7);
-            } else {
-                start = new Date(refDate.getFullYear(), refDate.getMonth(), 1);
-                end = new Date(refDate.getFullYear(), refDate.getMonth() + 1, 1);
-            }
-
-            return {
-                start: start.toISOString(),
-                end: end.toISOString()
-            };
         }
 
         // Settings
@@ -5017,6 +4938,9 @@
             loadWeeklyOverview();
             if (document.getElementById('history-view').classList.contains('active')) {
                 loadHistory();
+            }
+            if (document.getElementById('reports-view').classList.contains('active')) {
+                loadReport();
             }
 
             autoSaveSettings();

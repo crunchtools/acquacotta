@@ -155,6 +155,24 @@ test('a poll with nothing pending reconciles local todos to the cloud copy', asy
     assert.deepEqual(await todoTitles(page), []);
 });
 
+test('a report counts days in the timezone it is given', async ({ page }) => {
+    await page.emulateTimezone('Asia/Tokyo');
+    const report = await page.evaluate(async () => {
+        // 11pm on the 3rd in New York is already 1pm on the 4th in Tokyo.
+        const add = start_time => Storage.createManualPomodoro({ name: 'x', type: 'Content', duration_minutes: 25, start_time, end_time: start_time });
+        await add('2026-11-04T04:00:00.000Z');
+        // Midnight on the 4th in New York belongs to the next day's report.
+        await add('2026-11-04T05:00:00.000Z');
+        return Storage.getReport('day', '2026-11-03', 'America/New_York');
+    });
+    assert.equal(report.total_pomodoros, 1);
+    assert.deepEqual(report.daily_totals, [{ date: '2026-11-03', minutes: 25, count: 1 }]);
+});
+
+test('a report for an unknown period is an error', async ({ page }) => {
+    assert.deepEqual(await page.evaluate(() => Storage.getReport('year', '2026-11-03', 'UTC')), { error: 'Invalid period' });
+});
+
 (async () => {
     const send = (res, type, body) => { res.writeHead(200, { 'Content-Type': type }); res.end(body); };
     const server = http.createServer((req, res) => {

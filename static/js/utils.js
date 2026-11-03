@@ -75,38 +75,116 @@
         }
     }
 
+    function browserTimezone() {
+        return Intl.DateTimeFormat().resolvedOptions().timeZone;
+    }
+
+    /**
+     * The YYYY-MM-DD date a number of days after another. Pure calendar arithmetic:
+     * no timezone is involved, so a 23- or 25-hour day can't shift the result.
+     */
+    function addDays(dayStr, days) {
+        var parts = dayStr.split('-').map(Number);
+        return new Date(Date.UTC(parts[0], parts[1] - 1, parts[2] + days)).toISOString().slice(0, 10);
+    }
+
+    /**
+     * Day of the week of a YYYY-MM-DD date, 0 = Sunday.
+     */
+    function dayOfWeek(dayStr) {
+        var parts = dayStr.split('-').map(Number);
+        return new Date(Date.UTC(parts[0], parts[1] - 1, parts[2])).getUTCDay();
+    }
+
+    /**
+     * Wall clock fields of a moment in a timezone.
+     * h23 because some browsers read midnight as hour 24 under hour12: false.
+     */
+    function zonedParts(date, timezone) {
+        var parts = {};
+        new Intl.DateTimeFormat('en-US', {
+            timeZone: timezone, hourCycle: 'h23',
+            year: 'numeric', month: 'numeric', day: 'numeric',
+            hour: 'numeric', minute: 'numeric', second: 'numeric'
+        }).formatToParts(date).forEach(function(part) {
+            parts[part.type] = parseInt(part.value, 10);
+        });
+        return parts;
+    }
+
+    /**
+     * The hour, 0-23, of a moment in a timezone.
+     */
+    function hourInTz(date, timezone) {
+        return zonedParts(date, timezone).hour;
+    }
+
+    /**
+     * How far a timezone's wall clock is ahead of UTC at a moment, in milliseconds.
+     */
+    function tzOffsetMs(date, timezone) {
+        var p = zonedParts(date, timezone);
+        var wholeSeconds = Math.floor(date.getTime() / 1000) * 1000;
+        return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - wholeSeconds;
+    }
+
+    /**
+     * The moment a wall clock in a timezone reads a given date and time.
+     * Matches native Date at the DST edges: a time skipped in spring moves forward
+     * (2:30 means 3:30), and a time repeated in fall means the first one.
+     *
+     * @param {string} dayStr - Date string (YYYY-MM-DD)
+     * @param {string} timeStr - Time string (HH:MM)
+     * @param {string} timezone - IANA timezone string
+     * @returns {Date}
+     */
+    function zonedTimeToUtc(dayStr, timeStr, timezone) {
+        var d = dayStr.split('-').map(Number);
+        var t = timeStr.split(':').map(Number);
+        var wall = Date.UTC(d[0], d[1] - 1, d[2], t[0], t[1]);
+        var DAY_MS = 86400000;
+        var offsetBefore = tzOffsetMs(new Date(wall - DAY_MS), timezone);
+        var offsetAfter = tzOffsetMs(new Date(wall + DAY_MS), timezone);
+        var matches = [wall - offsetBefore, wall - offsetAfter].filter(function(utc) {
+            return tzOffsetMs(new Date(utc), timezone) === wall - utc;
+        });
+        return new Date(matches.length ? Math.min.apply(null, matches) : wall - offsetBefore);
+    }
+
     /**
      * Get date range for a period (day, week, or month).
      *
      * @param {string} period - 'day', 'week', or 'month'
      * @param {string} dateStr - Reference date in YYYY-MM-DD format
-     * @returns {object} - { start: ISO string, end: ISO string }
+     * @param {string} [timezone] - IANA timezone days are counted in, browser timezone if omitted
+     * @returns {object} - { start: ISO string, end: ISO string, dates: YYYY-MM-DD strings }
      */
-    function getDateRange(period, dateStr) {
-        // Parse date string as local time (not UTC) by appending time component
-        const refDate = new Date(dateStr + 'T00:00:00');
-        var start, end;
+    function getDateRange(period, dateStr, timezone) {
+        var tz = timezone || browserTimezone();
+        var parts = dateStr.split('-').map(Number);
+        var first, end;
 
         if (period === 'day') {
-            start = new Date(refDate);
-            start.setHours(0, 0, 0, 0);
-            end = new Date(start);
-            end.setDate(end.getDate() + 1);
+            first = dateStr;
+            end = addDays(first, 1);
         } else if (period === 'week') {
-            start = new Date(refDate);
-            start.setDate(refDate.getDate() - refDate.getDay());
-            start.setHours(0, 0, 0, 0);
-            end = new Date(start);
-            end.setDate(start.getDate() + 7);
+            first = addDays(dateStr, -dayOfWeek(dateStr));
+            end = addDays(first, 7);
         } else {
             // month
-            start = new Date(refDate.getFullYear(), refDate.getMonth(), 1);
-            end = new Date(refDate.getFullYear(), refDate.getMonth() + 1, 1);
+            first = new Date(Date.UTC(parts[0], parts[1] - 1, 1)).toISOString().slice(0, 10);
+            end = new Date(Date.UTC(parts[0], parts[1], 1)).toISOString().slice(0, 10);
+        }
+
+        var dates = [];
+        for (var day = first; day < end; day = addDays(day, 1)) {
+            dates.push(day);
         }
 
         return {
-            start: start.toISOString(),
-            end: end.toISOString()
+            start: zonedTimeToUtc(first, '00:00', tz).toISOString(),
+            end: zonedTimeToUtc(end, '00:00', tz).toISOString(),
+            dates: dates
         };
     }
 
@@ -349,6 +427,11 @@
         formatDate: formatDate,
         formatDateWithDay: formatDateWithDay,
         getDateRange: getDateRange,
+        addDays: addDays,
+        dayOfWeek: dayOfWeek,
+        hourInTz: hourInTz,
+        tzOffsetMs: tzOffsetMs,
+        zonedTimeToUtc: zonedTimeToUtc,
         getDateFormatForTimezone: getDateFormatForTimezone,
         snapTo30Minutes: snapTo30Minutes,
         formatTimeSnapped: formatTimeSnapped,

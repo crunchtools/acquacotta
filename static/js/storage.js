@@ -537,7 +537,7 @@
     /**
      * Calculate report statistics
      */
-    function calculateReportStats(pomodoros, dates) {
+    function calculateReportStats(pomodoros, dates, timezone) {
         const totalMinutes = pomodoros.reduce((sum, p) => sum + p.duration_minutes, 0);
         const totalCount = pomodoros.length;
 
@@ -547,11 +547,10 @@
             byType[p.type] = (byType[p.type] || 0) + p.duration_minutes;
         });
 
-        // Daily totals — group by local date, not UTC date prefix
-        const dailyTotals = dates.map(d => {
-            const dayStr = d.toLocaleDateString('en-CA');
+        // Daily totals — group by date in the app timezone, not UTC date prefix
+        const dailyTotals = dates.map(dayStr => {
             const dayPomodoros = pomodoros.filter(p => {
-                const localDate = new Date(p.start_time).toLocaleDateString('en-CA');
+                const localDate = new Date(p.start_time).toLocaleDateString('en-CA', { timeZone: timezone });
                 return localDate === dayStr;
             });
             return {
@@ -567,76 +566,6 @@
             by_type: byType,
             daily_totals: dailyTotals
         };
-    }
-
-    /**
-     * Parse ISO date range and build dates list
-     */
-    function parseDateRange(startIso, endIso) {
-        const startDt = new Date(startIso);
-        const endDt = new Date(endIso);
-
-        const dates = [];
-        const d = new Date(startDt);
-        d.setHours(0, 0, 0, 0);
-        const endNaive = new Date(endDt);
-        endNaive.setHours(0, 0, 0, 0);
-
-        while (d < endNaive) {
-            dates.push(new Date(d));
-            d.setDate(d.getDate() + 1);
-        }
-
-        if (dates.length === 0) {
-            dates.push(new Date(startDt));
-        }
-
-        return dates;
-    }
-
-    /**
-     * Calculate period date range
-     */
-    function calculatePeriodDateRange(period, dateStr) {
-        const refDate = new Date(dateStr + 'T00:00:00');
-        let start, end, dates;
-
-        if (period === 'day') {
-            start = new Date(refDate);
-            start.setHours(0, 0, 0, 0);
-            end = new Date(start);
-            end.setDate(end.getDate() + 1);
-            dates = [new Date(start)];
-        } else if (period === 'week') {
-            start = new Date(refDate);
-            start.setDate(refDate.getDate() - refDate.getDay());
-            start.setHours(0, 0, 0, 0);
-            end = new Date(start);
-            end.setDate(start.getDate() + 7);
-            dates = [];
-            for (let i = 0; i < 7; i++) {
-                const d = new Date(start);
-                d.setDate(start.getDate() + i);
-                dates.push(d);
-            }
-        } else if (period === 'month') {
-            start = new Date(refDate.getFullYear(), refDate.getMonth(), 1);
-            if (refDate.getMonth() === 11) {
-                end = new Date(refDate.getFullYear() + 1, 0, 1);
-            } else {
-                end = new Date(refDate.getFullYear(), refDate.getMonth() + 1, 1);
-            }
-            dates = [];
-            const d = new Date(start);
-            while (d < end) {
-                dates.push(new Date(d));
-                d.setDate(d.getDate() + 1);
-            }
-        } else {
-            return null;
-        }
-
-        return { dates, start, end };
     }
 
     /**
@@ -1445,30 +1374,19 @@
         /**
          * Get report for a period
          * @param {string} period - 'day', 'week', or 'month'
-         * @param {string} startDate - Start date (ISO string)
-         * @param {string} endDate - End date (ISO string)
          * @param {string} dateStr - Reference date string (YYYY-MM-DD)
+         * @param {string} timezone - IANA timezone days are counted in
          * @returns {Promise<object>}
          */
-        getReport: async function(period, startDate, endDate, dateStr) {
-            let dates, startIso, endIso;
-
-            if (startDate && endDate) {
-                dates = parseDateRange(startDate, endDate);
-                startIso = startDate;
-                endIso = endDate;
-            } else {
-                const range = calculatePeriodDateRange(period, dateStr || new Date().toLocaleDateString('en-CA'));
-                if (!range) {
-                    return { error: 'Invalid period' };
-                }
-                dates = range.dates;
-                startIso = range.start.toISOString();
-                endIso = range.end.toISOString();
+        getReport: async function(period, dateStr, timezone) {
+            if (!['day', 'week', 'month'].includes(period)) {
+                return { error: 'Invalid period' };
             }
-
-            const pomodoros = await getRangeFromIndex(STORES.POMODOROS, 'start_time', startIso, endIso);
-            const stats = calculateReportStats(pomodoros, dates);
+            const range = global.AcquacottaUtils.getDateRange(period, dateStr, timezone);
+            // The index range includes its upper bound, which is the first moment of the next period
+            const pomodoros = (await getRangeFromIndex(STORES.POMODOROS, 'start_time', range.start, range.end))
+                .filter(p => new Date(p.start_time) < new Date(range.end));
+            const stats = calculateReportStats(pomodoros, range.dates, timezone);
 
             return {
                 period: period,
