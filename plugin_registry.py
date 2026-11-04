@@ -1,5 +1,7 @@
 """Acquacotta Plugin Registry — type system, contracts, and discovery."""
 
+from typing import Any
+
 PLUGIN_TYPES = {
     "storage": {
         "description": "Data storage backends",
@@ -35,7 +37,8 @@ PLUGIN_TYPES = {
     },
 }
 
-_plugins = {}  # plugin_type -> {plugin_id -> {module, metadata, active}}
+# plugin_type -> {plugin_id -> {module, metadata, active}}
+_plugins: dict[str, dict[str, dict[str, Any]]] = {}
 _active_storage = None
 
 

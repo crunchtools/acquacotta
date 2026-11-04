@@ -3,6 +3,7 @@
 import json
 import uuid
 from datetime import datetime, timezone
+from typing import Any
 
 import deep_links
 from transports.google_drive_transport import GoogleDriveTransport
@@ -27,7 +28,7 @@ PLUGIN_METADATA = {
 TODOS_FILE = "data.json"
 PLUGIN_FOLDER = "plugins/todos"
 
-_EMPTY_DATA = {"todos": [], "lists": []}
+_EMPTY_DATA: dict[str, list[Any]] = {"todos": [], "lists": []}
 
 
 def _transport(drive_service, folder_id):

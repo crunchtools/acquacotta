@@ -1,64 +1,18 @@
-# Pre-commit hooks for Acquacotta
-# Install: pre-commit install
-# Run manually: pre-commit run --all-files
+# Every check runs from python-sdlc, pinned here once (constitution XII,
+# v1.30.0). This `rev:` fixes the launcher, the image and every tool inside it,
+# for this laptop and for CI, which reads the same line.
+#
+# What each hook runs is configured in pyproject.toml: [tool.sdlc.commit],
+# [tool.sdlc.push], [tool.sdlc.ci]. `sdlc tiers` prints it.
+#
+# `default_install_hook_types` must name both: without pre-push, `pre-commit
+# install` wires only the commit hook and every verdict silently stops running.
+
+default_install_hook_types: [pre-commit, pre-push]
 
 repos:
-  # General file cleanup
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.5.0
+  - repo: https://github.com/crunchtools/python-sdlc
+    rev: v0.3.4
     hooks:
-      - id: trailing-whitespace
-        args: [--markdown-linebreak-ext=md]
-      - id: end-of-file-fixer
-      - id: check-yaml
-      - id: check-json
-      - id: check-added-large-files
-        args: ['--maxkb=1000']
-      - id: check-merge-conflict
-      - id: detect-private-key
-
-  # Python linting with ruff
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.8
-    hooks:
-      - id: ruff
-        args: [--fix, --exit-non-zero-on-fix]
-        stages: [pre-commit, pre-merge-commit]
-      - id: ruff-format
-        args: [--check]
-        stages: [pre-commit, pre-merge-commit]
-
-  # Run Python tests from the test image CI builds (Containerfile.test), not a
-  # host pytest (constitution XII, host contract). The image's entrypoint is
-  # systemd, so pytest replaces it; the repo is mounted read-only over /app.
-  - repo: local
-    hooks:
-      - id: pytest
-        name: pytest
-        entry: podman --events-backend=none run --rm --log-driver=none --entrypoint pytest -v .:/app:ro,Z -w /app -e FLASK_SECRET_KEY=test-secret-key -e CLEAR_CACHE_ON_START=false quay.io/crunchtools/acquacotta-test:latest tests/ -v --tb=short -p no:cacheprovider
-        language: system
-        pass_filenames: false
-        always_run: true
-        stages: [pre-commit, pre-merge-commit]
-
-  # Gourmand runs from its container: the PyPI package of the same name
-  # shadows the real binary on PATH, so a bare `gourmand` is the wrong tool.
-  - repo: local
-    hooks:
-      - id: gourmand
-        name: Gourmand (AI slop detection)
-        entry: podman --events-backend=none run --rm --log-driver=none -v .:/src:Z -w /src quay.io/crunchtools/gourmand:latest check --full
-        language: system
-        pass_filenames: false
-        always_run: true
-        stages: [pre-commit, pre-merge-commit]
-  # Constitution XII gates, from crunchtools/gatehouse examples/pre-commit.yaml
-  - repo: local
-    hooks:
-      - id: gatehouse
-        name: Gatehouse (AI code review, staged diff)
-        entry: bash -c 'git diff --cached | podman --events-backend=none run --rm --log-driver=none -i --env-file "$HOME/.config/mcp-env/gatehouse.env" -v .:/src:ro,Z -w /src quay.io/crunchtools/gatehouse:latest --stdin'
-        language: system
-        pass_filenames: false
-        always_run: true
-        stages: [pre-commit, pre-merge-commit]
+      - id: sdlc-commit
+      - id: sdlc-push
