@@ -112,7 +112,11 @@ DEFAULT_STORAGE_BACKEND = "json-google-drive"
 plugin_registry.activate_storage(DEFAULT_STORAGE_BACKEND)
 
 app = Flask(__name__)
-app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
+# ProxyFix wraps the WSGI callable in place. This is Flask's documented
+# idiom; mypy reads it as assigning over a method.
+app.wsgi_app = ProxyFix(  # type: ignore[method-assign]
+    app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1
+)
 
 # Session configuration — uses Flask's built-in signed-cookie sessions (no filesystem required)
 secret_key = os.environ.get("FLASK_SECRET_KEY")

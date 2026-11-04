@@ -196,3 +196,14 @@ check = "dead_structs"
 path = "plugin_common.py"
 justification = "The _Public* connection and pool classes are instantiated by urllib3, not by our code: the adapter registers them in pool_classes_by_scheme and the pools build connections from ConnectionCls. They are how the connect-time public-peer check (DNS rebinding guard) is installed."
 classification = "by_design"
+
+# Ruff is not missing; it moved. Gourmand's IF001 looks for a literal
+# `ruff-check` hook id, and under python-sdlc (constitution XII, v1.30.0) ruff
+# runs inside the `sdlc-commit` hook, configured by [tool.ruff] in
+# pyproject.toml. Same precedent as trentina.
+[[exceptions]]
+check = "linter_configuration"
+path = ".pre-commit-config.yaml"
+pattern = "ruff-check"
+justification = "ruff runs inside the sdlc-commit hook from python-sdlc (constitution XII v1.30.0), configured by [tool.ruff] in pyproject.toml; Gourmand looks for a literal ruff hook id"
+classification = "by_design"
