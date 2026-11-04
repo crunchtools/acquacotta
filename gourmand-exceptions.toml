@@ -207,3 +207,13 @@ path = ".pre-commit-config.yaml"
 pattern = "ruff-check"
 justification = "ruff runs inside the sdlc-commit hook from python-sdlc (constitution XII v1.30.0), configured by [tool.ruff] in pyproject.toml; Gourmand looks for a literal ruff hook id"
 classification = "by_design"
+
+# ProxyFix wraps the WSGI callable in place, which is Flask's documented idiom
+# and which mypy reads as assigning over a method. The suppression is narrow
+# (one error code, one line) and the reason sits next to it in app.py.
+[[exceptions]]
+check = "EV001-lint_suppression"
+path = "app.py"
+pattern = "type: ignore[method-assign]"
+justification = "Flask's documented ProxyFix idiom is `app.wsgi_app = ProxyFix(app.wsgi_app, ...)`; mypy classes that as method-assign. The alternative is not writing the proxy, which would drop X-Forwarded-For handling behind the reverse proxy. Narrowed to the single error code rather than a bare `type: ignore`."
+classification = "by_design"
