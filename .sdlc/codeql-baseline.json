@@ -1,33 +1,15 @@
 [
   {
-    "rule": "py/full-ssrf",
-    "path": "app.py",
-    "fingerprint": "ea21e9149aa87313:1"
-  },
-  {
-    "rule": "py/full-ssrf",
-    "path": "social_plugin.py",
-    "fingerprint": "39b1c8166870be10:1"
-  },
-  {
-    "rule": "py/full-ssrf",
-    "path": "transports/pcloud_transport.py",
-    "fingerprint": "29f3faa1c6906499:1"
-  },
-  {
-    "rule": "py/full-ssrf",
-    "path": "transports/pcloud_transport.py",
-    "fingerprint": "d220171aa7b25dbb:1"
-  },
-  {
     "rule": "py/incomplete-url-substring-sanitization",
     "path": "tests/test_app.py",
-    "fingerprint": "b73e72e7cf44e1de:1"
+    "fingerprint": "b73e72e7cf44e1de:1",
+    "justification": "Test file. The flagged substring check is an assertion about a URL in a test, not production URL handling."
   },
   {
     "rule": "py/incomplete-url-substring-sanitization",
     "path": "tests/test_social_plugin.py",
-    "fingerprint": "33bbdb3dbf5d9e5f:1"
+    "fingerprint": "33bbdb3dbf5d9e5f:1",
+    "justification": "Test file. The flagged substring check is an assertion about a URL in a test, not production URL handling."
   },
   {
     "rule": "py/log-injection",
@@ -37,12 +19,14 @@
   {
     "rule": "py/partial-ssrf",
     "path": "rt_plugin.py",
-    "fingerprint": "e41399eb975fe9fe:1"
+    "fingerprint": "e41399eb975fe9fe:1",
+    "justification": "Scanner limitation. _rest_base calls plugin_common.check_destination(strict=True), which rejects non-http(s) and non-public hosts and supports an operator allowlist, paired with require_public_peer against DNS rebinding. CodeQL cannot see through the helper."
   },
   {
     "rule": "py/partial-ssrf",
     "path": "social_plugin.py",
-    "fingerprint": "dad75b7124c17431:1"
+    "fingerprint": "dad75b7124c17431:1",
+    "justification": "Scanner limitation. Requests go through plugin_common.check_destination (rejects non-http(s) and non-public hosts, supports an operator allowlist) with require_public_peer against DNS rebinding; _get_following_redirects re-checks it on every redirect hop. CodeQL cannot see through the helper."
   },
   {
     "rule": "py/stack-trace-exposure",
