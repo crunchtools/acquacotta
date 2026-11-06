@@ -586,7 +586,9 @@ class TestPCloudBackendWiring:
             patch.object(app_module.requests, "get", return_value=token_response),
             patch.object(app_module.pcloud_transport, "PCloudTransport", return_value=fake_transport),
         ):
-            response = client.get(f"/auth/pcloud/callback?code=abc&state={state}&hostname=eapi.pcloud.com")
+            response = client.get(f"/auth/pcloud/callback?code=abc&state={state}&locationid=2&hostname=evil.example")
+            # A caller-supplied hostname never receives the client secret
+            assert app_module.requests.get.call_args[0][0] == "https://eapi.pcloud.com/oauth2_token"
 
         assert response.status_code == 200
         body = response.data.decode()
