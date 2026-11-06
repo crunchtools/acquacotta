@@ -436,9 +436,11 @@ class TestDraft:
             social_plugin.parse_draft_response(bad, CHANNELS)
 
     def test_gemini_http_error(self, http):
-        http.handler = lambda m, u, k: FakeResp(429, text="quota")
-        with pytest.raises(social_plugin.SocialError):
+        http.handler = lambda m, u, k: FakeResp(429, text="quota detail from upstream")
+        with pytest.raises(social_plugin.SocialError) as err:
             social_plugin.draft_posts(_cfg(), PAGE, CHANNELS)
+        assert "upstream" not in str(err.value)
+        assert "Gemini request failed" in str(err.value)
 
     def test_needs_key_and_channels(self):
         with pytest.raises(ValueError):

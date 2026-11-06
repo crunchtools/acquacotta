@@ -1010,7 +1010,9 @@ def _gemini_generate(config, prompt):
     except requests.RequestException as exc:
         raise SocialError("Could not reach Gemini") from exc
     if resp.status_code >= HTTPStatus.BAD_REQUEST:
-        raise SocialError(f"Gemini returned HTTP {resp.status_code}: {resp.text[:300]}")
+        # The response body is never echoed: it can carry upstream details the
+        # client should not see. The status alone tells the user what went wrong.
+        raise SocialError(f"Gemini request failed (HTTP {resp.status_code})")
     try:
         return resp.json()
     except ValueError as exc:

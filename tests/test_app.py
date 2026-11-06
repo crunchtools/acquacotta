@@ -307,6 +307,36 @@ class TestRTConfigSave:
         assert body["error"] and body["correlation_id"]
 
 
+class TestExceptionLogging:
+    """_log_exception writes one sanitized line whose id matches the client's."""
+
+    def _raise_and_respond(self):
+        try:
+            raise RuntimeError("first line\r\nFAKE forged entry\nthird")
+        except RuntimeError as exc:
+            with app_module.app.app_context():
+                resp, status = app_module._error_response(exc)
+                return resp.get_json(), status
+
+    def test_log_entry_is_single_sanitized_line(self, monkeypatch):
+        logged = []
+        monkeypatch.setattr(app_module.app.logger, "error", lambda msg, *args: logged.append(msg % args))
+        body, status = self._raise_and_respond()
+        assert status == 500
+        assert len(logged) == 1
+        line = logged[0]
+        assert "\r" not in line and "\n" not in line
+        assert "first line" in line and "FAKE forged entry" in line
+        assert "Traceback" in line and "RuntimeError" in line
+
+    def test_correlation_id_matches_response(self, monkeypatch):
+        logged = []
+        monkeypatch.setattr(app_module.app.logger, "error", lambda msg, *args: logged.append(args))
+        body, _status = self._raise_and_respond()
+        assert logged[0][0] == body["correlation_id"]
+        assert "first line" not in json.dumps(body)
+
+
 class TestExtensionTogglePerUser:
     """Extension enablement is a per-user client preference; the toggle endpoint
     validates the plugin but never flips shared global registry state (spec 008)."""
