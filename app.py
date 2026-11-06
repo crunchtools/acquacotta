@@ -19,6 +19,7 @@ import json
 import os
 import time
 import traceback
+import uuid
 from functools import cache
 from http import HTTPStatus
 from pathlib import Path
@@ -146,13 +147,27 @@ app.config["SESSION_COOKIE_HTTPONLY"] = True  # Prevent JavaScript access
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"  # CSRF protection
 
 
+def _log_safe(value):
+    """Strip CR/LF so a user-controlled value cannot forge log lines."""
+    return str(value).replace("\r", " ").replace("\n", " ")
+
+
+def _error_response(exc):
+    """Log the real exception server-side; return a generic message and a correlation id."""
+    correlation_id = uuid.uuid4().hex[:12]
+    app.logger.error("Request failed [%s]: %s", correlation_id, _log_safe(exc), exc_info=exc)
+    return (
+        jsonify({"error": "An internal error occurred", "correlation_id": correlation_id}),
+        HTTPStatus.INTERNAL_SERVER_ERROR,
+    )
+
+
 @app.errorhandler(Exception)
 def handle_exception(e):
     """Return JSON for API errors instead of HTML."""
     if request.path.startswith("/api/"):
-        # Log the actual error for debugging, but don't expose details to client
-        app.logger.error(f"API error: {e}")
-        return jsonify({"error": "An internal error occurred"}), HTTPStatus.INTERNAL_SERVER_ERROR
+        # Log the actual error server-side, but don't expose details to client
+        return _error_response(e)
     # For non-API routes, re-raise to get default handling
     raise e
 
@@ -351,7 +366,7 @@ def get_credentials_from_request():
             creds_data = json.loads(base64.b64decode(creds_header))
             return creds_data
         except Exception as e:
-            app.logger.error(f"Failed to decode X-Credentials header: {e}")
+            app.logger.error("Failed to decode X-Credentials header: %s", _log_safe(e))
             return None
 
     # Try _credentials in request body (for POST/PUT)
@@ -1136,7 +1151,7 @@ def api_migrate_to_json():
         )
     except Exception as e:
         app.logger.error(f"Migration failed: {e}")
-        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+        return _error_response(e)
 
     # Only flip this user's active backend after the JSON write above has succeeded.
     save_location(user_email, "json-google-drive", folder_id)
@@ -1233,7 +1248,7 @@ def proxy_get_pomodoros():
         pomodoros = storage_api.get_pomodoros(ctx, start_date, end_date)
         return jsonify(pomodoros)
     except HttpError as e:
-        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+        return _error_response(e)
 
 
 @app.route("/api/sheets/pomodoros/count")
@@ -1247,7 +1262,7 @@ def proxy_get_pomodoro_count():
         count = storage_api.count_pomodoros(ctx)
         return jsonify({"count": count})
     except (HttpError, StorageUnavailable) as e:
-        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+        return _error_response(e)
 
 
 def get_request_data():
@@ -1274,10 +1289,10 @@ def proxy_create_pomodoro():
         storage_api.save_pomodoro(ctx, pomodoro)
         return jsonify({"status": "ok", "id": pomodoro.get("id")})
     except HttpError as e:
-        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+        return _error_response(e)
     except Exception as e:
         app.logger.error(f"Error in proxy_create_pomodoro: {e}\n{traceback.format_exc()}")
-        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+        return _error_response(e)
 
 
 @app.route("/api/sheets/pomodoros/batch", methods=["POST"])
@@ -1297,10 +1312,10 @@ def proxy_create_pomodoros_batch():
         count = storage_api.save_pomodoros_batch(ctx, pomodoros)
         return jsonify({"status": "ok", "count": count})
     except HttpError as e:
-        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+        return _error_response(e)
     except Exception as e:
         app.logger.error(f"Error in proxy_create_pomodoros_batch: {e}\n{traceback.format_exc()}")
-        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+        return _error_response(e)
 
 
 @app.route("/api/sheets/pomodoros/<pomodoro_id>", methods=["PUT"])
@@ -1317,7 +1332,7 @@ def proxy_update_pomodoro(pomodoro_id):
             return jsonify({"status": "ok"})
         return jsonify({"error": "Pomodoro not found"}), HTTPStatus.NOT_FOUND
     except HttpError as e:
-        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+        return _error_response(e)
 
 
 @app.route("/api/sheets/pomodoros/<pomodoro_id>", methods=["DELETE"])
@@ -1333,7 +1348,7 @@ def proxy_delete_pomodoro(pomodoro_id):
             return jsonify({"status": "ok"})
         return jsonify({"error": "Pomodoro not found"}), HTTPStatus.NOT_FOUND
     except HttpError as e:
-        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+        return _error_response(e)
 
 
 @app.route("/api/sheets/settings", methods=["GET"])
@@ -1347,7 +1362,7 @@ def proxy_get_settings():
         settings = storage_api.get_settings(ctx, DEFAULT_SETTINGS)
         return jsonify(settings)
     except HttpError as e:
-        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+        return _error_response(e)
 
 
 @app.route("/api/sheets/settings", methods=["POST"])
@@ -1364,7 +1379,7 @@ def proxy_save_settings():
         storage_api.save_settings(ctx, settings_payload, replace_all=replace_all)
         return jsonify({"status": "ok"})
     except HttpError as e:
-        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+        return _error_response(e)
 
 
 @app.route("/api/sheets/deduplicate", methods=["POST"])
@@ -1378,7 +1393,7 @@ def proxy_deduplicate_pomodoros():
         dedup_result = storage_api.deduplicate_pomodoros(ctx)
         return jsonify(dedup_result)
     except HttpError as e:
-        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+        return _error_response(e)
 
 
 @app.route("/api/sheets/export")
@@ -1406,7 +1421,7 @@ def proxy_export_csv():
             headers={"Content-Disposition": "attachment;filename=pomodoros.csv"},
         )
     except HttpError as e:
-        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+        return _error_response(e)
 
 
 @app.route("/api/sheets/clear", methods=["POST"])
@@ -1424,10 +1439,10 @@ def proxy_clear_sheets():
             return jsonify({"error": clear_response["error"]}), HTTPStatus.NOT_FOUND
         return jsonify(clear_response)
     except HttpError as e:
-        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+        return _error_response(e)
     except Exception as e:
         app.logger.error(f"Error in proxy_clear_sheets: {e}")
-        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+        return _error_response(e)
 
 
 @app.route("/api/todos/sync", methods=["GET"])
@@ -1447,7 +1462,7 @@ def api_get_todos():
         todos_snapshot = todos_plugin.read_todos(drive_service, folder_id)
         return jsonify(todos_snapshot)
     except HttpError as e:
-        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+        return _error_response(e)
 
 
 @app.route("/api/todos/sync", methods=["POST"])
@@ -1469,7 +1484,7 @@ def api_save_todos():
         todos_plugin.write_todos(drive_service, folder_id, todos_payload)
         return jsonify({"status": "ok"})
     except HttpError as e:
-        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+        return _error_response(e)
 
 
 @app.route("/api/discussions/sync", methods=["GET"])
@@ -1500,7 +1515,7 @@ def api_get_discussions():
         snapshot = discussions_plugin.read_discussions(drive_service, folder_id)
         return jsonify(snapshot)
     except HttpError as e:
-        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+        return _error_response(e)
 
 
 @app.route("/api/discussions/sync", methods=["POST"])
@@ -1628,7 +1643,7 @@ def api_rt_get_config():
     try:
         config = rt_plugin.read_config(drive_service, folder_id)
     except HttpError as e:
-        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+        return _error_response(e)
     return jsonify(rt_plugin.public_config(config))
 
 
@@ -1651,7 +1666,7 @@ def api_rt_save_config():
     except ValueError as ve:
         return jsonify({"error": str(ve)}), HTTPStatus.BAD_REQUEST
     except HttpError as e:
-        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+        return _error_response(e)
     return jsonify(rt_plugin.public_config(clean))
 
 
@@ -1667,7 +1682,7 @@ def api_rt_test():
     except (ValueError, rt_plugin.RTError) as exc:
         return _rt_error_response(exc)
     except HttpError as e:
-        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+        return _error_response(e)
     return jsonify(result)
 
 
@@ -1685,7 +1700,7 @@ def api_rt_sync():
     except (ValueError, rt_plugin.RTError) as exc:
         return _rt_error_response(exc)
     except HttpError as e:
-        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+        return _error_response(e)
     return jsonify({"tickets": tickets, "configured": True})
 
 
@@ -1701,7 +1716,7 @@ def api_rt_ticket(ticket_id):
     except (ValueError, rt_plugin.RTError) as exc:
         return _rt_error_response(exc)
     except HttpError as e:
-        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+        return _error_response(e)
     if ticket is None:
         return jsonify({"error": "No such ticket"}), HTTPStatus.NOT_FOUND
     return jsonify({"ticket": ticket})
@@ -1719,7 +1734,7 @@ def api_rt_ticket_history(ticket_id):
     except (ValueError, rt_plugin.RTError) as exc:
         return _rt_error_response(exc)
     except HttpError as e:
-        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+        return _error_response(e)
     return jsonify({"history": history})
 
 
@@ -1746,7 +1761,7 @@ def api_rt_ticket_action(ticket_id, action):
     except (ValueError, rt_plugin.RTError) as exc:
         return _rt_error_response(exc)
     except HttpError as e:
-        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+        return _error_response(e)
     return jsonify({"status": "ok"})
 
 
@@ -1776,7 +1791,7 @@ def api_social_get_config():
     try:
         config = social_plugin.read_config(drive_service, folder_id)
     except HttpError as e:
-        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+        return _error_response(e)
     return jsonify({**social_plugin.public_config(config), "postiz_url": social_plugin.postiz_app_url(config)})
 
 
@@ -1791,7 +1806,7 @@ def api_social_save_config():
     except ValueError as exc:
         return _social_error_response(exc)
     except HttpError as e:
-        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+        return _error_response(e)
     return jsonify({**social_plugin.public_config(clean), "postiz_url": social_plugin.postiz_app_url(clean)})
 
 
@@ -1806,7 +1821,7 @@ def api_social_test():
     except (ValueError, social_plugin.SocialError) as exc:
         return _social_error_response(exc)
     except HttpError as e:
-        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+        return _error_response(e)
     return jsonify(result)
 
 
@@ -1824,7 +1839,7 @@ def api_social_integrations():
     except (ValueError, social_plugin.SocialError) as exc:
         return _social_error_response(exc)
     except HttpError as e:
-        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+        return _error_response(e)
     return jsonify(
         {
             "configured": True,
@@ -1852,7 +1867,7 @@ def api_social_slot():
     except (ValueError, social_plugin.SocialError) as exc:
         return _social_error_response(exc)
     except HttpError as e:
-        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+        return _error_response(e)
     return jsonify({"date": date})
 
 
@@ -1875,7 +1890,7 @@ def api_social_slots():
     except (ValueError, social_plugin.SocialError) as exc:
         return _social_error_response(exc)
     except HttpError as e:
-        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+        return _error_response(e)
     return jsonify({"slots": slots})
 
 
@@ -1899,7 +1914,7 @@ def api_social_posts():
     except (ValueError, social_plugin.SocialError) as exc:
         return _social_error_response(exc)
     except HttpError as e:
-        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+        return _error_response(e)
     return jsonify({"configured": True, "posts": posts, "postiz_url": social_plugin.postiz_app_url(config)})
 
 
@@ -1920,7 +1935,7 @@ def api_social_draft():
     except (ValueError, social_plugin.SocialError) as exc:
         return _social_error_response(exc)
     except HttpError as e:
-        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+        return _error_response(e)
     return jsonify({"page": page, "drafts": drafts})
 
 
@@ -1967,7 +1982,7 @@ def api_social_schedule():
     except (ValueError, social_plugin.SocialError) as exc:
         return _social_error_response(exc)
     except HttpError as e:
-        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+        return _error_response(e)
     return jsonify(result)
 
 
@@ -2046,7 +2061,7 @@ def _mint_mcp_token():
     try:
         token = mcp_tokens.seal(email, refresh_token, folder_id, issued_at=epoch)
     except mcp_tokens.TokenError as e:
-        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+        return _error_response(e)
     return jsonify({"status": "ok", "enabled": True, "token": token, "endpoint": _mcp_endpoint()})
 
 

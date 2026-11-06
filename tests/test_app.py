@@ -295,6 +295,17 @@ class TestRTConfigSave:
         monkeypatch.setattr(rt_plugin, "read_config", boom)
         assert client.post("/api/rt/config", json={"base_url": "http://rt2"}).status_code == 500
 
+    def test_exception_text_not_returned_to_caller(self, client, drive, monkeypatch):
+        def boom(_s, _f):
+            raise RuntimeError("secret /srv/app/path detail")
+
+        monkeypatch.setattr(rt_plugin, "read_config", boom)
+        resp = client.post("/api/rt/config", json={"base_url": "http://rt2"})
+        assert resp.status_code == 500
+        body = resp.get_json()
+        assert "secret" not in json.dumps(body)
+        assert body["error"] and body["correlation_id"]
+
 
 class TestExtensionTogglePerUser:
     """Extension enablement is a per-user client preference; the toggle endpoint
