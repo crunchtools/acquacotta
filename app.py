@@ -152,14 +152,46 @@ def _log_safe(value):
     return str(value).replace("\r", " ").replace("\n", " ")
 
 
+def _log_exception(exc):
+    """Log an exception and its traceback on one sanitized line; return a correlation id.
+
+    The traceback is flattened and CR/LF-stripped rather than passed as exc_info,
+    because a user-controlled exception message would otherwise be written raw.
+    """
+    correlation_id = uuid.uuid4().hex[:12]
+    chunks = traceback.format_exception(type(exc), exc, exc.__traceback__)
+    tb_text = " | ".join(line.rstrip() for chunk in chunks for line in chunk.splitlines())
+    app.logger.error("Request failed [%s]: %s", correlation_id, _log_safe(tb_text))
+    return correlation_id
+
+
 def _error_response(exc):
     """Log the real exception server-side; return a generic message and a correlation id."""
-    correlation_id = uuid.uuid4().hex[:12]
-    app.logger.error("Request failed [%s]: %s", correlation_id, _log_safe(exc), exc_info=exc)
+    correlation_id = _log_exception(exc)
     return (
         jsonify({"error": "An internal error occurred", "correlation_id": correlation_id}),
         HTTPStatus.INTERNAL_SERVER_ERROR,
     )
+
+
+def _html_error_response(exc):
+    """Browser-facing (non-API) variant of _error_response: plain text, no exception details."""
+    correlation_id = _log_exception(exc)
+    return (
+        f"An internal error occurred. Reference: {correlation_id}",
+        HTTPStatus.INTERNAL_SERVER_ERROR,
+        {"Content-Type": "text/plain; charset=utf-8"},
+    )
+
+
+def _client_message(exc, default="Request could not be processed"):
+    """Return the message a plugin deliberately raised for the client.
+
+    Plugin ValueError/RTError/SocialError messages are written for the user
+    (validation errors, "Postiz rejected the API key"); only the first string
+    argument is used, never a repr or traceback.
+    """
+    return exc.args[0] if exc.args and isinstance(exc.args[0], str) else default
 
 
 @app.errorhandler(Exception)
@@ -631,7 +663,7 @@ def auth_google():
 
         return redirect(authorization_url)
     except Exception as e:
-        return f"<pre>Error: {e}\n\n{traceback.format_exc()}</pre>", HTTPStatus.INTERNAL_SERVER_ERROR
+        return _html_error_response(e)
 
 
 def _validate_oauth_callback():
@@ -918,7 +950,7 @@ def auth_callback():
             return _pending_auth_handoff(credentials_data, settings_data, next_url=_social_view_url(shared_url))
         return _pending_auth_handoff(credentials_data, settings_data)
     except Exception as e:
-        return f"<pre>Error: {e}\n\n{traceback.format_exc()}</pre>", HTTPStatus.INTERNAL_SERVER_ERROR
+        return _html_error_response(e)
 
 
 @app.route("/auth/pcloud")
@@ -1096,8 +1128,7 @@ def api_provision_storage():
     try:
         location_id, existed = _provision_storage(active_id, credentials, user_email, None)
     except Exception as e:
-        app.logger.error(f"Storage provisioning failed: {e}")
-        return jsonify({"error": f"Provisioning failed: {e}"}), HTTPStatus.INTERNAL_SERVER_ERROR
+        return _error_response(e)
 
     backend = _active_storage_backend()
     metadata = getattr(backend, "PLUGIN_METADATA", {})
@@ -1150,7 +1181,6 @@ def api_migrate_to_json():
             json_ctx["service"], json_ctx["location"], user_settings, replace_all=False
         )
     except Exception as e:
-        app.logger.error(f"Migration failed: {e}")
         return _error_response(e)
 
     # Only flip this user's active backend after the JSON write above has succeeded.
@@ -1288,10 +1318,7 @@ def proxy_create_pomodoro():
         pomodoro = get_request_data()
         storage_api.save_pomodoro(ctx, pomodoro)
         return jsonify({"status": "ok", "id": pomodoro.get("id")})
-    except HttpError as e:
-        return _error_response(e)
     except Exception as e:
-        app.logger.error(f"Error in proxy_create_pomodoro: {e}\n{traceback.format_exc()}")
         return _error_response(e)
 
 
@@ -1311,10 +1338,7 @@ def proxy_create_pomodoros_batch():
         pomodoros = batch_request.get("pomodoros", [])
         count = storage_api.save_pomodoros_batch(ctx, pomodoros)
         return jsonify({"status": "ok", "count": count})
-    except HttpError as e:
-        return _error_response(e)
     except Exception as e:
-        app.logger.error(f"Error in proxy_create_pomodoros_batch: {e}\n{traceback.format_exc()}")
         return _error_response(e)
 
 
@@ -1438,10 +1462,7 @@ def proxy_clear_sheets():
         if clear_response.get("error"):
             return jsonify({"error": clear_response["error"]}), HTTPStatus.NOT_FOUND
         return jsonify(clear_response)
-    except HttpError as e:
-        return _error_response(e)
     except Exception as e:
-        app.logger.error(f"Error in proxy_clear_sheets: {e}")
         return _error_response(e)
 
 
@@ -1548,7 +1569,7 @@ def api_save_discussions():
         try:
             discussions_payload = discussions_plugin.validate_sync_payload(payload)
         except ValueError as ve:
-            return jsonify({"error": str(ve)}), HTTPStatus.BAD_REQUEST
+            return jsonify({"error": _client_message(ve)}), HTTPStatus.BAD_REQUEST
         drive_service = build("drive", "v3", credentials=credentials)
         discussions_plugin.write_discussions(drive_service, folder_id, discussions_payload)
         return jsonify({"status": "ok"})
@@ -1628,9 +1649,9 @@ def _plugin_drive_context():
 def _rt_error_response(exc):
     """Map a plugin exception to a JSON error response, or None if not ours."""
     if isinstance(exc, ValueError):
-        return jsonify({"error": str(exc)}), HTTPStatus.BAD_REQUEST
+        return jsonify({"error": _client_message(exc)}), HTTPStatus.BAD_REQUEST
     if isinstance(exc, rt_plugin.RTError):
-        return jsonify({"error": str(exc)}), HTTPStatus.BAD_GATEWAY
+        return jsonify({"error": _client_message(exc)}), HTTPStatus.BAD_GATEWAY
     return None
 
 
@@ -1664,7 +1685,7 @@ def api_rt_save_config():
     try:
         clean = rt_plugin.update_config(drive_service, folder_id, payload)
     except ValueError as ve:
-        return jsonify({"error": str(ve)}), HTTPStatus.BAD_REQUEST
+        return jsonify({"error": _client_message(ve)}), HTTPStatus.BAD_REQUEST
     except HttpError as e:
         return _error_response(e)
     return jsonify(rt_plugin.public_config(clean))
@@ -1772,7 +1793,7 @@ def api_rt_ticket_action(ticket_id, action):
 def _social_error_response(exc):
     """502 for an upstream failure (Postiz, Gemini, the page), 400 for bad input."""
     status = HTTPStatus.BAD_GATEWAY if isinstance(exc, social_plugin.SocialError) else HTTPStatus.BAD_REQUEST
-    return jsonify({"error": str(exc)}), status
+    return jsonify({"error": _client_message(exc)}), status
 
 
 def _social_payload():

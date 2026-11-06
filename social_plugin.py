@@ -407,7 +407,7 @@ def _read_capped(resp, deadline, limit):
             if size > limit or time.monotonic() > deadline:
                 break
     except requests.RequestException as exc:
-        raise SocialError(f"The download failed: {exc}") from exc
+        raise SocialError("The download failed") from exc
     return b"".join(chunks)[: limit + 1]
 
 
@@ -422,7 +422,7 @@ def _get_following_redirects(url, deadline, accept):
                 url, headers=headers, timeout=stall, allow_redirects=False, stream=True
             )
         except requests.RequestException as exc:
-            raise SocialError(f"Could not fetch the page: {exc}") from exc
+            raise SocialError("Could not fetch the page") from exc
         if not resp.is_redirect:
             return url, resp
         location = resp.headers.get("Location", "")
@@ -486,7 +486,7 @@ def _postiz_request(config, method, path, **kwargs):
             method, f"{base}{path}", headers=headers, timeout=_HTTP_TIMEOUT, allow_redirects=False, **kwargs
         )
     except requests.RequestException as exc:
-        raise SocialError(f"Could not reach Postiz: {exc}") from exc
+        raise SocialError("Could not reach Postiz") from exc
     if resp.status_code in (HTTPStatus.UNAUTHORIZED, HTTPStatus.FORBIDDEN):
         raise SocialError("Postiz rejected the API key")
     if HTTPStatus.MULTIPLE_CHOICES <= resp.status_code < HTTPStatus.BAD_REQUEST:
@@ -795,7 +795,8 @@ def _prepare_media(image_url):
             return None, "Image skipped: image URL must not carry credentials."
         _fetch_image(image_url)
     except (ValueError, SocialError) as exc:
-        return None, f"Image skipped: {exc}"
+        reason = exc.args[0] if exc.args and isinstance(exc.args[0], str) else "the image could not be used"
+        return None, f"Image skipped: {reason}"
     return {"id": secrets.token_hex(8), "path": image_url}, ""
 
 
@@ -1007,7 +1008,7 @@ def _gemini_generate(config, prompt):
             timeout=_GEMINI_TIMEOUT,
         )
     except requests.RequestException as exc:
-        raise SocialError(f"Could not reach Gemini: {exc}") from exc
+        raise SocialError("Could not reach Gemini") from exc
     if resp.status_code >= HTTPStatus.BAD_REQUEST:
         raise SocialError(f"Gemini returned HTTP {resp.status_code}: {resp.text[:300]}")
     try:

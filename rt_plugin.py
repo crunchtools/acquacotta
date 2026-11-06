@@ -269,7 +269,7 @@ def _request(session, method, url, **kwargs):
     try:
         resp = session.request(method, url, **kwargs)
     except requests.RequestException as exc:
-        raise RTError(f"Could not reach RT: {exc}") from exc
+        raise RTError("Could not reach RT") from exc
     if resp.status_code in (HTTPStatus.UNAUTHORIZED, HTTPStatus.FORBIDDEN):
         raise RTError("RT rejected the credentials (check the Basic-Auth user/token)")
     if resp.status_code >= HTTPStatus.BAD_REQUEST:
