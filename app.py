@@ -1537,8 +1537,8 @@ def api_save_discussions():
         drive_service = build("drive", "v3", credentials=credentials)
         discussions_plugin.write_discussions(drive_service, folder_id, discussions_payload)
         return jsonify({"status": "ok"})
-    except HttpError as e:
-        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+    except HttpError:
+        return jsonify({"error": "Google Drive request failed"}), HTTPStatus.INTERNAL_SERVER_ERROR
 
 
 @app.route("/api/timer-sync", methods=["GET"])
@@ -1556,8 +1556,8 @@ def api_get_timer_sync():
             return jsonify({"version": timer_sync_plugin.SCHEMA_VERSION, "timer": {"state": "idle"}})
         drive_service = build("drive", "v3", credentials=credentials)
         return jsonify(timer_sync_plugin.read_sync(drive_service, folder_id))
-    except HttpError as e:
-        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+    except HttpError:
+        return jsonify({"error": "Google Drive request failed"}), HTTPStatus.INTERNAL_SERVER_ERROR
 
 
 @app.route("/api/timer-sync", methods=["POST"])
@@ -1577,11 +1577,11 @@ def api_save_timer_sync():
         drive_service = build("drive", "v3", credentials=credentials)
         try:
             doc = timer_sync_plugin.write_sync(drive_service, folder_id, payload.get("timer"))
-        except ValueError as ve:
-            return jsonify({"error": str(ve)}), HTTPStatus.BAD_REQUEST
+        except ValueError:
+            return jsonify({"error": "Invalid timer payload"}), HTTPStatus.BAD_REQUEST
         return jsonify(doc)
-    except HttpError as e:
-        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+    except HttpError:
+        return jsonify({"error": "Google Drive request failed"}), HTTPStatus.INTERNAL_SERVER_ERROR
 
 
 # RT Tickets — proxy to the user's Request Tracker. RT is the source of truth; the
