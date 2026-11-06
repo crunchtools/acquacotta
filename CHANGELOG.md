@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Timer Sync plugin backend: `GET`/`POST /api/timer-sync` share the running timer
+  through `plugins/timer-sync/synchronization.json` in the user's storage. Remaining
+  time is computed from `start_time` and `duration_minutes`, never stored. Writes are
+  last-writer-wins (the storage layer has no compare-and-swap); an owner with no
+  check-in for 3 minutes (3 x the 60 s cadence) is stale and the timer reads as idle.
+
 ### Security
 - The pCloud OAuth callback no longer honours a caller-supplied `hostname`, which
   could have sent `PCLOUD_CLIENT_SECRET` to an arbitrary host. The API host now

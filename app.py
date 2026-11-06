@@ -49,6 +49,7 @@ import settings_plugin
 import sheets_storage
 import social_plugin
 import storage_api
+import timer_sync_plugin
 import todos_plugin
 from storage_api import StorageUnavailable
 from transports import pcloud_transport
@@ -90,6 +91,11 @@ plugin_registry.activate_extension("rt")
 # server-side.
 plugin_registry.register("extension", "social", social_plugin, social_plugin.PLUGIN_METADATA)
 plugin_registry.activate_extension("social")
+
+# Timer Sync — optional plugin, per-user. Advertises the running timer through
+# plugins/timer-sync/synchronization.json in the user's own Drive; no tab.
+plugin_registry.register("extension", "timer-sync", timer_sync_plugin, timer_sync_plugin.PLUGIN_METADATA)
+plugin_registry.activate_extension("timer-sync")
 
 # MCP access appears in the plugin list. It has no server-side module contract —
 # enable/disable and per-user state live in the /api/mcp/* routes + the user's Drive, so a
@@ -1531,6 +1537,49 @@ def api_save_discussions():
         drive_service = build("drive", "v3", credentials=credentials)
         discussions_plugin.write_discussions(drive_service, folder_id, discussions_payload)
         return jsonify({"status": "ok"})
+    except HttpError as e:
+        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+
+
+@app.route("/api/timer-sync", methods=["GET"])
+def api_get_timer_sync():
+    """Return the shared timer as seen now: running (with computed remaining_seconds) or idle."""
+    if not is_logged_in():
+        return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
+    try:
+        credentials = get_credentials()
+        if not credentials:
+            return jsonify({"error": "No credentials"}), HTTPStatus.UNAUTHORIZED
+        request_creds = get_credentials_from_request()
+        folder_id = request_creds.get("folder_id") if request_creds else None
+        if not folder_id:
+            return jsonify({"version": timer_sync_plugin.SCHEMA_VERSION, "timer": {"state": "idle"}})
+        drive_service = build("drive", "v3", credentials=credentials)
+        return jsonify(timer_sync_plugin.read_sync(drive_service, folder_id))
+    except HttpError as e:
+        return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+
+
+@app.route("/api/timer-sync", methods=["POST"])
+def api_save_timer_sync():
+    """Record a client's check-in (last writer wins; the stale-owner rule recovers)."""
+    if not is_logged_in():
+        return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
+    try:
+        credentials = get_credentials()
+        if not credentials:
+            return jsonify({"error": "No credentials"}), HTTPStatus.UNAUTHORIZED
+        payload = get_request_data()
+        request_creds = get_credentials_from_request()
+        folder_id = request_creds.get("folder_id") if request_creds else None
+        if not folder_id:
+            return jsonify({"error": "No folder_id configured"}), HTTPStatus.BAD_REQUEST
+        drive_service = build("drive", "v3", credentials=credentials)
+        try:
+            doc = timer_sync_plugin.write_sync(drive_service, folder_id, payload.get("timer"))
+        except ValueError as ve:
+            return jsonify({"error": str(ve)}), HTTPStatus.BAD_REQUEST
+        return jsonify(doc)
     except HttpError as e:
         return jsonify({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
 
