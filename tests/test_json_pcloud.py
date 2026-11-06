@@ -342,3 +342,40 @@ class TestMcpState:
         name, content = t.upload_file.call_args[0]
         assert name == "mcp_access.json"
         assert json.loads(content) == {"enabled": True, "epoch": 456}
+
+
+class TestPCloudClientHostValidation:
+    @pytest.mark.parametrize("host", ["api.pcloud.com", "eapi.pcloud.com"])
+    def test_supported_hosts_accepted(self, host):
+        assert PCloudClient("tok", api_host=host).api_host == host
+
+    def test_default_host_is_us(self):
+        assert PCloudClient("tok").api_host == "api.pcloud.com"
+
+    @pytest.mark.parametrize("host", ["evil.example", "api.pcloud.com.evil.example", "localhost"])
+    def test_unsupported_host_rejected(self, host):
+        with pytest.raises(ValueError):
+            PCloudClient("tok", api_host=host)
+
+
+class TestPCloudFetchContentValidation:
+    def test_valid_https_pcloud_subdomain_fetched(self):
+        resp = MagicMock(text="body")
+        with patch("transports.pcloud_transport.requests.get", return_value=resp) as get:
+            assert PCloudClient("tok").fetch_content("https://c1.pcloud.com/dl/x") == "body"
+        get.assert_called_once()
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "http://c1.pcloud.com/dl/x",
+            "https://evil.example/dl/x",
+            "https://pcloud.com.evil.example/dl/x",
+            "https://c1.pcloud.com.evil.example/dl/x",
+        ],
+    )
+    def test_invalid_url_rejected(self, url):
+        with patch("transports.pcloud_transport.requests.get") as get:
+            with pytest.raises(ValueError):
+                PCloudClient("tok").fetch_content(url)
+        get.assert_not_called()

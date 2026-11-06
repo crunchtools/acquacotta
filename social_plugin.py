@@ -992,6 +992,8 @@ def _gemini_generate(config, prompt):
     if not key:
         raise ValueError("Gemini is not configured: add an API key in Social settings")
     model = config.get("gemini_model") or DEFAULT_GEMINI_MODEL
+    if not re.fullmatch(r"[A-Za-z0-9._-]+", model) or model in (".", ".."):
+        raise SocialError("Invalid Gemini model name")
     body = {
         "systemInstruction": {"parts": [{"text": VOICE_INSTRUCTIONS}]},
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],

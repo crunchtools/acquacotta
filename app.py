@@ -949,7 +949,9 @@ def auth_pcloud_callback():
 
         # pCloud tells us in the callback which region minted the code; the token
         # is only valid against that region's API host, so it travels with it.
-        api_host = request.args.get("hostname") or pcloud_transport.API_HOSTS_BY_LOCATION_ID.get(
+        # The host is derived from locationid via a fixed map only; a caller-supplied
+        # hostname would receive PCLOUD_CLIENT_SECRET.
+        api_host = pcloud_transport.API_HOSTS_BY_LOCATION_ID.get(
             request.args.get("locationid", type=int), pcloud_transport.US_API_HOST
         )
 

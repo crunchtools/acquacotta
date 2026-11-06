@@ -5,6 +5,8 @@ NOT_FOUND_CODES are ordinary "not there yet" answers that must read as an empty
 file rather than propagate as errors.
 """
 
+from urllib.parse import urlparse
+
 import requests
 
 ACQUACOTTA_FOLDER_PATH = "/Acquacotta"
@@ -44,6 +46,8 @@ class PCloudClient:
 
     def __init__(self, access_token, api_host=None):
         self._api_host = api_host or US_API_HOST
+        if self._api_host not in API_HOSTS_BY_LOCATION_ID.values():
+            raise ValueError("Unsupported pCloud API host")
         self._session = requests.Session()
         self._session.headers["Authorization"] = f"Bearer {access_token}"
 
@@ -76,6 +80,10 @@ class PCloudClient:
         one-time URL on a content host, so the bearer token has no business
         being sent there.
         """
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower()
+        if parsed.scheme != "https" or not host.endswith(".pcloud.com"):
+            raise ValueError("Refusing to fetch a non-pCloud content URL")
         response = requests.get(url, timeout=REQUEST_TIMEOUT_SECONDS)
         response.raise_for_status()
         return response.text

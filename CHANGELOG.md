@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Security
+- The pCloud OAuth callback no longer honours a caller-supplied `hostname`, which
+  could have sent `PCLOUD_CLIENT_SECRET` to an arbitrary host. The API host now
+  comes only from `locationid`. `PCloudClient` rejects unknown API hosts, pCloud
+  content fetches require https on `*.pcloud.com`, and the Gemini model name is
+  validated before it is placed in a URL. Rotate `PCLOUD_CLIENT_SECRET`.
+
 ## [2.32.2] - 2026-11-02
 
 ### Fixed
