@@ -54,6 +54,11 @@ def time_summary(drive_service, folder_id, start_date=None, end_date=None, categ
     pomodoros = drive_storage.get_pomodoros(drive_service, folder_id, start_date, end_date)
     if not include_imported:
         pomodoros = [p for p in pomodoros if p.get("source") != "rt_import"]
+    return _summarize(pomodoros, category)
+
+
+def _summarize(pomodoros, category=None):
+    """The ``time_summary`` aggregation over an already-loaded list of pomodoros."""
     by_category = {}
     total_minutes = 0
     total_count = 0
@@ -143,10 +148,9 @@ def assistant_context(drive_service, folder_id):
     end = _iso_z(now)
     week_start = _iso_z(now - timedelta(days=ASSISTANT_WEEK_DAYS))
     month_start = _iso_z(now - timedelta(days=ASSISTANT_MONTH_DAYS))
-    return {
-        "last_7_days": time_summary(drive_service, folder_id, week_start, end),
-        "last_30_days": time_summary(drive_service, folder_id, month_start, end),
-    }
+    month = drive_storage.get_pomodoros(drive_service, folder_id, month_start, end)
+    week = [p for p in month if p.get("start_time", "") >= week_start]
+    return {"last_7_days": _summarize(week), "last_30_days": _summarize(month)}
 
 
 def register_mcp_tools(mcp, require_ctx):

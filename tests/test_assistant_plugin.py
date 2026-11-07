@@ -1,12 +1,15 @@
 """Tests for assistant_plugin: registry-driven context and the Gemini text call."""
 
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
 
 import assistant_plugin
 import plugin_registry
+import pomodoro_tools
 import social_plugin
+import todos_plugin
 
 CONFIG = {"gemini_api_key": "gm-key", "gemini_model": "gemini-test"}
 
@@ -69,3 +72,54 @@ class TestChat:
     def test_missing_key(self):
         with pytest.raises(ValueError):
             assistant_plugin.chat({}, "hi", {})
+
+
+class TestPomodoroContextHook:
+    def test_one_read_split_into_7_and_30_day_summaries(self, monkeypatch):
+        fixed_now = datetime(2026, 7, 31, 12, 0, tzinfo=timezone.utc)
+
+        class FixedClock(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return fixed_now
+
+        reads = []
+        records = [
+            {"type": "Product", "duration_minutes": 25, "start_time": "2026-07-30T09:00:00Z"},
+            {"type": "Content", "duration_minutes": 50, "start_time": "2026-07-10T09:00:00Z"},
+        ]
+
+        def fake_get(_d, _f, start_date=None, end_date=None):
+            reads.append((start_date, end_date))
+            return list(records)
+
+        monkeypatch.setattr(pomodoro_tools, "datetime", FixedClock)
+        monkeypatch.setattr(pomodoro_tools.drive_storage, "get_pomodoros", fake_get)
+        context = pomodoro_tools.assistant_context(None, "f")
+        assert reads == [("2026-07-01T12:00:00Z", "2026-07-31T12:00:00Z")]
+        assert context["last_7_days"] == {
+            "total_minutes": 25,
+            "total_count": 1,
+            "by_category": {"Product": {"minutes": 25, "count": 1}},
+        }
+        assert context["last_30_days"]["total_minutes"] == 75
+        assert context["last_30_days"]["total_count"] == 2
+
+
+class TestTodosContextHook:
+    def test_pending_only_capped_and_projected(self, monkeypatch):
+        calls = []
+        todos = [
+            {"title": f"t{i}", "priority": "high", "due_date": "2026-08-01", "notes": "private", "status": "pending"}
+            for i in range(60)
+        ]
+
+        def fake_query(_d, _f, status=None, **_kw):
+            calls.append(status)
+            return list(todos)
+
+        monkeypatch.setattr(todos_plugin, "query_todos", fake_query)
+        context = todos_plugin.assistant_context(None, "f")
+        assert calls == ["pending"]
+        assert len(context) == 50
+        assert context[0] == {"title": "t0", "priority": "high", "due_date": "2026-08-01"}

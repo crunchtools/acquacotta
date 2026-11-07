@@ -72,5 +72,5 @@ def extract_answer(response):
 def chat(config, question, context):
     """Answer ``question`` from ``context``. Raises ValueError / SocialError."""
     prompt = build_prompt(question, context)
-    response = social_plugin._gemini_generate(config, prompt, system=SYSTEM_INSTRUCTIONS, schema=None)
+    response = social_plugin.gemini_text(config, prompt, SYSTEM_INSTRUCTIONS)
     return extract_answer(response)
