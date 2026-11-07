@@ -224,6 +224,19 @@ test('sign-out clears the RT and Postiz copies but keeps local todos', async ({ 
     assert.deepEqual(await todoTitles(page), ['keep me']);
 });
 
+test('offline, a cached thread comes from IndexedDB and RT is not asked', async ({ page }) => {
+    await page.evaluate(() => Storage.getTicketHistory('7'));
+    await page.evaluate(() => window.dispatchEvent(new Event('offline')));
+    assert.deepEqual(contents(await page.evaluate(() => Storage.getTicketHistory('7'))), ['first']);
+    assert.equal(await page.evaluate(r => __net.count(r), HISTORY), 1);
+});
+
+test('offline with nothing cached, a thread is empty and RT is not asked', async ({ page }) => {
+    await page.evaluate(() => window.dispatchEvent(new Event('offline')));
+    assert.deepEqual(await page.evaluate(() => Storage.getTicketHistory('7')), []);
+    assert.equal(await page.evaluate(r => __net.count(r), HISTORY), 0);
+});
+
 test('a refresh still in flight at sign-out does not refill the cache', async ({ page }) => {
     await page.evaluate(() => Storage.getTicketHistory('7'));
     await page.evaluate(r => __net.hold(r), HISTORY);

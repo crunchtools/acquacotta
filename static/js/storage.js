@@ -168,11 +168,6 @@
                     for (const index of def.indexes || []) store.createIndex(index, index, { unique: false });
                 }
 
-                // v5 cached a thread as { id, history }; it is a cache, so drop it
-                // rather than carry two record shapes.
-                if (event.oldVersion >= 5 && event.oldVersion < 6) {
-                    tx.objectStore(STORES.TICKET_HISTORY).clear();
-                }
                 if (event.oldVersion < 6) {
                     const social = tx.objectStore(STORES.SOCIAL_CACHE);
                     const moved = [];
@@ -2137,7 +2132,9 @@
          * @returns {Promise<*>}
          */
         readThrough: async function(storeName, key, fetcher, onFresh) {
-            const cached = await getFromStore(storeName, key);
+            // A record without `value` predates readThrough (v5 { id, history }): a miss
+            const record = await getFromStore(storeName, key);
+            const cached = record && 'value' in record ? record : null;
             if (!isOnline) return cached ? cached.value : null;
             const generation = cacheGeneration;
             const refresh = fetcher().then(async value => {
