@@ -995,6 +995,11 @@ def _generation_config(schema):
     return {"responseMimeType": "application/json", "responseSchema": schema}
 
 
+def gemini_text(config, prompt, system):
+    """Public plain-text Gemini call (no response schema), shared with other plugins such as the Assistant."""
+    return _gemini_generate(config, prompt, system=system, schema=None)
+
+
 def _gemini_generate(config, prompt, system=VOICE_INSTRUCTIONS, schema=_DRAFT_SCHEMA):
     key = config.get("gemini_api_key") or ""
     if not key:
