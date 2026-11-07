@@ -4638,7 +4638,9 @@
                         const open = openPluginPanels.has(plugin.id);
                         buttons.push(`<button class="secondary" id="plugin-settings-btn-${plugin.id}" onclick="togglePluginSettings('${plugin.id}')" aria-expanded="${open}" aria-controls="${plugin.id}-settings-panel">&#9881; Settings</button>`);
                     }
-                    if (isActive && plugin.has_import_export) {
+                    if (isActive && plugin.id === 'rt' && plugin.has_import_export) {
+                        buttons.push(`<button class="secondary" onclick="importRTHistory(this)">Import RT history</button>`);
+                    } else if (isActive && plugin.has_import_export) {
                         const uploadId = `plugin-csv-upload-${plugin.id}`;
                         buttons.push(`<button class="secondary" onclick="exportPluginCSV('${plugin.id}')">Export CSV</button>`);
                         buttons.push(`<button class="secondary" onclick="document.getElementById('${uploadId}').click()">Import CSV</button>
@@ -7222,6 +7224,20 @@
                 statusEl.textContent = 'Connected to RT ' + (r.version || '') + '.';
             } catch (e) {
                 statusEl.textContent = 'Failed: ' + (e.message || 'error');
+            }
+        }
+
+        // Explicit, user-triggered backfill of RT time entries; reports what happened.
+        async function importRTHistory(btn) {
+            if (!confirm('Import time logged in RT as pomodoros? Entries already imported are skipped.')) return;
+            btn.disabled = true;
+            try {
+                const r = await Storage.importRTHistory();
+                alert(`RT import: ${r.entries_read} entries read, ${r.records_created} records created, ${r.entries_skipped} skipped as already imported.`);
+            } catch (e) {
+                alert('RT import failed: ' + (e.message || 'error'));
+            } finally {
+                btn.disabled = false;
             }
         }
 

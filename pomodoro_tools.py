@@ -41,13 +41,16 @@ def query_pomodoros(drive_service, folder_id, start_date=None, end_date=None, ty
     return pomodoros
 
 
-def time_summary(drive_service, folder_id, start_date=None, end_date=None, category=None):
+def time_summary(drive_service, folder_id, start_date=None, end_date=None, category=None, include_imported=True):
     """Aggregate minutes by category over a date range.
 
     Returns ``{"total_minutes", "total_count", "by_category": {cat: {minutes, count}}}``.
-    If ``category`` is given, only that category is included.
+    If ``category`` is given, only that category is included. Pass
+    ``include_imported=False`` to leave out ``source: "rt_import"`` records.
     """
     pomodoros = drive_storage.get_pomodoros(drive_service, folder_id, start_date, end_date)
+    if not include_imported:
+        pomodoros = [p for p in pomodoros if p.get("source") != "rt_import"]
     by_category = {}
     total_minutes = 0
     total_count = 0

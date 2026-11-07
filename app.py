@@ -1725,6 +1725,24 @@ def api_rt_sync():
     return jsonify({"tickets": tickets, "configured": True})
 
 
+@app.route("/api/rt/import", methods=["POST"])
+def api_rt_import():
+    """Backfill RT time entries as pomodoros (user-triggered; re-runnable)."""
+    drive_service, folder_id = _plugin_drive_context()
+    if not drive_service:
+        return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
+    try:
+        config = rt_plugin.read_config(drive_service, folder_id)
+        if not rt_plugin.config_is_connectable(config):
+            return jsonify({"error": "RT is not configured"}), HTTPStatus.BAD_REQUEST
+        result = rt_plugin.import_history(drive_service, folder_id, config)
+    except (ValueError, rt_plugin.RTError) as exc:
+        return _rt_error_response(exc)
+    except HttpError as e:
+        return _error_response(e)
+    return jsonify(result)
+
+
 @app.route("/api/rt/ticket/<ticket_id>", methods=["GET"])
 def api_rt_ticket(ticket_id):
     """Fetch one ticket live by id, for deep links to tickets outside the query."""
