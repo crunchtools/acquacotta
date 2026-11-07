@@ -947,4 +947,53 @@ test('changing timezone moves a report on today to the new today, and leaves a p
     assert.equal((await change('2020-01-15', 'Pacific/Kiritimati')).currentDate, '2020-01-15');
 });
 
+// RT leaves Due unset as the epoch or "Not set"; priority 0 is a real value, null is unset.
+const TICKETS = [
+    { id: '1', subject: 'old', status: 'open', queue: 'Ops', priority: 10, created: '2026-01-01T00:00:00Z', last_updated: '2026-11-01T00:00:00Z', due: '1970-01-01T00:00:00Z' },
+    { id: '2', subject: 'urgent', status: 'open', queue: 'Ops', priority: 90, created: '2026-03-01T00:00:00Z', last_updated: '2026-10-01T00:00:00Z', due: '2026-12-01T00:00:00Z' },
+    { id: '3', subject: 'new', status: 'new', queue: 'Web', priority: null, created: '2026-11-05T00:00:00Z', last_updated: '2026-09-01T00:00:00Z', due: '2026-11-20T00:00:00Z' },
+    { id: '4', subject: 'zero', status: 'open', queue: 'Web', priority: 0, created: '2026-02-01T00:00:00Z', last_updated: '2026-08-01T00:00:00Z', due: 'Not set' },
+];
+const RT_VIEW = { path: '/#rt', tickets: TICKETS };
+const ticketIds = page => page.$$eval('#rt-list-container .discussion-person', els => els.map(e => e.textContent));
+const showTickets = page => page.evaluate(() => loadTickets());
+
+test('tickets default to last updated, newest first', RT_VIEW, async ({ page }) => {
+    await showTickets(page);
+    assert.equal(await page.$eval('#rt-sort', s => s.value), 'updated');
+    assert.deepEqual(await ticketIds(page), ['#1', '#2', '#3', '#4']);
+});
+
+test('each ticket sort orders the list; unset priority and due go last', RT_VIEW, async ({ page }) => {
+    await showTickets(page);
+    const sorted = async mode => { await page.select('#rt-sort', mode); return ticketIds(page); };
+    assert.deepEqual(await sorted('priority'), ['#2', '#1', '#4', '#3']);
+    assert.deepEqual(await sorted('due_date'), ['#3', '#2', '#1', '#4']);
+    assert.deepEqual(await sorted('created'), ['#3', '#2', '#4', '#1']);
+});
+
+test('the ticket sort is saved per queue, as list sorts are', RT_VIEW, async ({ page }) => {
+    await showTickets(page);
+    await page.evaluate(() => selectTicketQueue('Web'));
+    await page.select('#rt-sort', 'created');
+    const saved = await page.evaluate(() => window.__storageCalls.filter(c => c[1] === 'rt_sort_orders').pop());
+    assert.deepEqual(saved, ['saveSetting', 'rt_sort_orders', { Web: 'created' }]);
+    await page.evaluate(() => selectTicketQueue('all'));
+    assert.equal(await page.$eval('#rt-sort', s => s.value), 'updated', 'another queue keeps its own sort');
+    await page.evaluate(() => selectTicketQueue('Web'));
+    assert.equal(await page.$eval('#rt-sort', s => s.value), 'created');
+});
+
+test('a saved ticket sort is restored on load', { ...RT_VIEW, settings: { rt_sort_orders: { all: 'priority' } } }, async ({ page }) => {
+    await page.waitForFunction(() => rtSortOrder === 'priority');
+    await showTickets(page);
+    assert.deepEqual(await ticketIds(page), ['#2', '#1', '#4', '#3']);
+});
+
+test('a ticket shows its due date only when RT has one', RT_VIEW, async ({ page }) => {
+    await showTickets(page);
+    const dues = await page.$$eval('#rt-list-container > div', items => items.map(i => i.querySelector('[class$="-due"]')?.textContent || ''));
+    assert.deepEqual(dues, ['', 'Due: 2026-12-01', 'Due: 2026-11-20', '']);
+});
+
 run(tests);

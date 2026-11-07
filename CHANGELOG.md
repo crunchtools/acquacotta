@@ -7,6 +7,10 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Tickets tab sort, matching the To-do lists: Last Updated (the default and the old
+  fixed order), Priority (RT's numeric priority, highest first), Due Date and Newest.
+  The choice is saved per queue in `rt_sort_orders` and synced like `todo_sort_orders`.
+  No manual order, since RT owns the tickets. A ticket's due date now shows on its row.
 - RT history import (Settings > Plugins > RT Tickets > "Import RT history", `POST /api/rt/import`):
   backfills RT time entries as pomodoros flagged `source: "rt_import"` and carrying
   `ticket_id`. Deduplicated per RT history entry (keys in `plugins/rt/data.json`), so

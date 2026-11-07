@@ -1120,6 +1120,12 @@
                     <option value="open">Status: Open</option>
                     <option value="all">Status: All</option>
                 </select>
+                <select id="rt-sort" onchange="setTicketSort(this.value)">
+                    <option value="updated">Sort: Last Updated</option>
+                    <option value="priority">Sort: Priority</option>
+                    <option value="due_date">Sort: Due Date</option>
+                    <option value="created">Sort: Newest</option>
+                </select>
             </div>
             <div id="rt-status-msg" style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 0.5rem;"></div>
             <div id="rt-list-container"></div>
@@ -6954,10 +6960,41 @@
         let rtSelectedQueue = 'all';
         let rtStatusFilter = 'open';
         let rtCurrentTicketId = null;
+        // Per-queue sort preferences ({ queue|'all': sortMode }), persisted like
+        // todo_sort_orders. There is no manual mode: RT owns the ticket order.
+        let rtSortOrder = 'updated';
+        let rtSortOrders = {};
 
         function rtStatusIsOpen(status) {
             const s = (status || '').toLowerCase();
             return s !== 'resolved' && s !== 'rejected' && s !== 'deleted';
+        }
+
+        // RT reports an unset date as the epoch (or "Not set"); treat both as empty.
+        function rtDate(value) {
+            const v = value || '';
+            return v.startsWith('1970-01-01') || v === 'Not set' ? '' : v;
+        }
+
+        function sortTickets(tickets) {
+            if (rtSortOrder === 'priority') {
+                // RT priority is numeric, higher is more urgent; unset sorts last
+                const rank = t => (t.priority === null || t.priority === undefined || t.priority === '' ? -Infinity : Number(t.priority) || 0);
+                return tickets.sort((a, b) => rank(b) - rank(a));
+            }
+            if (rtSortOrder === 'due_date') {
+                return tickets.sort((a, b) => {
+                    const ad = rtDate(a.due), bd = rtDate(b.due);
+                    if (!ad && !bd) return 0;
+                    if (!ad) return 1;
+                    if (!bd) return -1;
+                    return ad.localeCompare(bd);
+                });
+            }
+            if (rtSortOrder === 'created') {
+                return tickets.sort((a, b) => (b.created || '').localeCompare(a.created || ''));
+            }
+            return tickets.sort((a, b) => (b.last_updated || '').localeCompare(a.last_updated || ''));
         }
 
         async function loadTickets() {
@@ -6977,11 +7014,13 @@
 
             const statusSel = document.getElementById('rt-status-filter');
             if (statusSel) statusSel.value = rtStatusFilter;
+            const sortSel = document.getElementById('rt-sort');
+            if (sortSel) sortSel.value = rtSortOrder;
 
             let filtered = rtTickets;
             if (rtStatusFilter === 'open') filtered = filtered.filter(t => rtStatusIsOpen(t.status));
             if (rtSelectedQueue !== 'all') filtered = filtered.filter(t => (t.queue || '').trim() === rtSelectedQueue);
-            filtered = filtered.slice().sort((a, b) => (b.last_updated || '').localeCompare(a.last_updated || ''));
+            filtered = sortTickets(filtered.slice());
 
             const container = document.getElementById('rt-list-container');
             if (!filtered.length) {
@@ -6997,6 +7036,8 @@
             if (t.status) meta.push(`<span class="todo-priority ${rtStatusIsOpen(t.status) ? '' : 'low'}">${escapeHtml(t.status)}</span>`);
             if (t.owner) meta.push(`<span>${escapeHtml(t.owner)}</span>`);
             if (t.last_updated) meta.push(`<span>${escapeHtml((t.last_updated || '').slice(0, 10))}</span>`);
+            const due = rtDate(t.due);
+            if (due) meta.push(`<span class="todo-due">Due: ${escapeHtml(due.slice(0, 10))}</span>`);
             const link = discussionSafeUrl(t.url);
             return `<div class="todo-item" onclick="openTicketDetail('${escapeHtml(t.id)}')">
                 <div class="todo-content">
@@ -7006,7 +7047,12 @@
             </div>`;
         }
 
-        function selectTicketQueue(q) { rtSelectedQueue = q; syncRoute('rt'); renderTickets(); }
+        function selectTicketQueue(q) {
+            rtSelectedQueue = q;
+            rtSortOrder = rtSortOrders[q] || 'updated';
+            syncRoute('rt');
+            renderTickets();
+        }
         function selectTicketQueueByIndex(i) { selectTicketQueue(rtQueues[i] || 'all'); }
 
         // #rt/queue/<queue>, #rt/ticket/<id>. A ticket outside the cached list is
@@ -7020,6 +7066,13 @@
             },
         };
         function setTicketStatusFilter(v) { rtStatusFilter = v; renderTickets(); }
+
+        function setTicketSort(value) {
+            rtSortOrder = value;
+            rtSortOrders[rtSelectedQueue] = value;
+            Storage.saveSetting('rt_sort_orders', rtSortOrders);
+            renderTickets();
+        }
 
         async function refreshTickets() {
             const msg = document.getElementById('rt-status-msg');
@@ -8768,6 +8821,8 @@
                 todoSortOrder = todoSortOrders[todoSelectedListId] || 'manual';
                 discussionSortOrders = _settings.discussion_sort_orders || {};
                 discussionSortOrder = discussionSortOrders[discussionSelectedPerson] || 'manual';
+                rtSortOrders = _settings.rt_sort_orders || {};
+                rtSortOrder = rtSortOrders[rtSelectedQueue] || 'updated';
             } catch (e) { /* fall back to defaults */ }
             await loadTodos();
             // Discussions render from the IndexedDB cache first (offline-first) — the
