@@ -6,6 +6,7 @@
  *   plugins      the /api/plugins body pluginFetch() returns
  *   auth         what getAuthStatus() returns (default: logged out)
  *   rtConfig     what getRTConfig() returns
+ *   tickets      what getTickets() returns (the cached RT tickets)
  *   socialIntegrations  what getSocialIntegrations() returns
  *   socialIntegrationsDelayMs  hold that answer this long (to see the cached render)
  *   socialDraft  what socialDraft() returns (the call is recorded)
@@ -58,6 +59,7 @@
         },
         authenticatedFetch: async () => json({}),
         getRTConfig: async () => clone(cfg.rtConfig || {}),
+        getTickets: async () => clone(cfg.tickets || []),
         getSocialIntegrations: async () => {
             calls.push(['getSocialIntegrations']);
             if (cfg.socialIntegrationsDelayMs) await new Promise(r => setTimeout(r, cfg.socialIntegrationsDelayMs));
