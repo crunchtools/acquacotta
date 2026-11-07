@@ -224,6 +224,17 @@ test('sign-out clears the RT and Postiz copies but keeps local todos', async ({ 
     assert.deepEqual(await todoTitles(page), ['keep me']);
 });
 
+test('a refresh still in flight at sign-out does not refill the cache', async ({ page }) => {
+    await page.evaluate(() => Storage.getTicketHistory('7'));
+    await page.evaluate(r => __net.hold(r), HISTORY);
+    await page.evaluate(() => Storage.getTicketHistory('7'));
+    await page.waitForFunction(r => __net.heldCount(r) === 1, {}, HISTORY);
+    await page.evaluate(() => Storage.logout());
+    await page.evaluate(r => __net.release(r), HISTORY);
+    await page.evaluate(() => new Promise(r => requestAnimationFrame(r)));
+    assert.equal(await page.evaluate(() => Storage.getCached('ticket_history', '7')), null);
+});
+
 test("Social's localStorage copy moves into IndexedDB on upgrade", async ({ page }) => {
     assert.deepEqual(await page.evaluate(() => Storage.getCached('social_cache', 'selection')), ['m1']);
     assert.equal(await page.evaluate(() => localStorage.getItem('acquacotta_social_selection')), null);

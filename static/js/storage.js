@@ -127,6 +127,7 @@
     let pendingSyncCount = 0;
     let lastSyncError = null;
     let initialSyncPromise = null;  // Background bidirectional sync started at login
+    let cacheGeneration = 0;  // Bumped at sign-out so in-flight refreshes can't refill a cleared cache
 
     /**
      * Generate a UUID v4
@@ -1115,6 +1116,7 @@
             // Clear sync status so next login will re-sync from Sheet
             await clearStore(STORES.SYNC_STATUS);
             // Copies of RT/Postiz data belong to the account leaving
+            cacheGeneration++;
             for (const def of STORE_SCHEMA.filter(d => d.cache)) {
                 try {
                     await clearStore(def.name);
@@ -2137,7 +2139,10 @@
         readThrough: async function(storeName, key, fetcher, onFresh) {
             const cached = await getFromStore(storeName, key);
             if (!isOnline) return cached ? cached.value : null;
+            const generation = cacheGeneration;
             const refresh = fetcher().then(async value => {
+                // Signed out mid-fetch: this belongs to the account that left
+                if (generation !== cacheGeneration) throw new Error('signed out during refresh');
                 await putInStore(storeName, { id: key, value, cached_at: Date.now() });
                 return value;
             });
@@ -2153,12 +2158,24 @@
             return cached.value;
         },
 
-        // Plain get/put for a cache-store record ({ id, value, cached_at }).
+        /**
+         * The cached value of one read-through record, without refreshing it.
+         * @param {string} storeName - a cache store (see STORE_SCHEMA)
+         * @param {string} key - record id
+         * @returns {Promise<*>} the value, or null when nothing is cached
+         */
         getCached: async function(storeName, key) {
             const record = await getFromStore(storeName, key);
             return record ? record.value : null;
         },
 
+        /**
+         * Store one read-through record as { id, value, cached_at }.
+         * @param {string} storeName - a cache store (see STORE_SCHEMA)
+         * @param {string} key - record id
+         * @param {*} value - what to cache; null or undefined deletes the record
+         * @returns {Promise}
+         */
         putCached: async function(storeName, key, value) {
             if (value === null || value === undefined) return deleteFromStore(storeName, key);
             return putInStore(storeName, { id: key, value, cached_at: Date.now() });
