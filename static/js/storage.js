@@ -168,6 +168,16 @@
                     for (const index of def.indexes || []) store.createIndex(index, index, { unique: false });
                 }
 
+                // v5 cached a thread as { id, history }; readThrough reads { id, value }
+                if (event.oldVersion === 5) {
+                    tx.objectStore(STORES.TICKET_HISTORY).openCursor().onsuccess = e => {
+                        const cursor = e.target.result;
+                        if (!cursor) return;
+                        const { id, history, cached_at } = cursor.value;
+                        if (!('value' in cursor.value)) cursor.update({ id, value: history || [], cached_at: cached_at || Date.now() });
+                        cursor.continue();
+                    };
+                }
                 if (event.oldVersion < 6) {
                     const social = tx.objectStore(STORES.SOCIAL_CACHE);
                     const moved = [];
@@ -2132,9 +2142,7 @@
          * @returns {Promise<*>}
          */
         readThrough: async function(storeName, key, fetcher, onFresh) {
-            // A record without `value` predates readThrough (v5 { id, history }): a miss
-            const record = await getFromStore(storeName, key);
-            const cached = record && 'value' in record ? record : null;
+            const cached = await getFromStore(storeName, key);
             if (!isOnline) return cached ? cached.value : null;
             const generation = cacheGeneration;
             const refresh = fetcher().then(async value => {

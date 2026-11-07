@@ -237,6 +237,28 @@ test('offline with nothing cached, a thread is empty and RT is not asked', async
     assert.equal(await page.evaluate(r => __net.count(r), HISTORY), 0);
 });
 
+test('a v5 cached thread survives the upgrade and still serves offline', async ({ page }) => {
+    // Leave the app's page so its connection closes, then build a v5 database.
+    await page.goto(new URL('/v5', page.url()).href);
+    await page.evaluate(() => new Promise((resolve, reject) => {
+        const del = indexedDB.deleteDatabase('acquacotta');
+        del.onerror = () => reject(del.error);
+        del.onsuccess = () => {
+            const open = indexedDB.open('acquacotta', 5);
+            open.onupgradeneeded = () => {
+                open.result.createObjectStore('ticket_history', { keyPath: 'id' })
+                    .put({ id: '7', history: [{ id: 't1', content: 'from v5' }], cached_at: 1 });
+            };
+            open.onsuccess = () => { open.result.close(); resolve(); };
+            open.onerror = () => reject(open.error);
+        };
+    }));
+    await page.goto(new URL('/', page.url()).href, { waitUntil: 'load' });
+    await page.evaluate(() => Storage.init({ google_configured: true }));
+    await page.evaluate(() => window.dispatchEvent(new Event('offline')));
+    assert.deepEqual(contents(await page.evaluate(() => Storage.getTicketHistory('7'))), ['from v5']);
+});
+
 test('a refresh still in flight at sign-out does not refill the cache', async ({ page }) => {
     await page.evaluate(() => Storage.getTicketHistory('7'));
     await page.evaluate(r => __net.hold(r), HISTORY);
