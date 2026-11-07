@@ -988,7 +988,14 @@ _DRAFT_SCHEMA = {
 }
 
 
-def _gemini_generate(config, prompt):
+def _generation_config(schema):
+    """Schema-bound JSON output, or plain text when ``schema`` is None."""
+    if schema is None:
+        return {"responseMimeType": "text/plain"}
+    return {"responseMimeType": "application/json", "responseSchema": schema}
+
+
+def _gemini_generate(config, prompt, system=VOICE_INSTRUCTIONS, schema=_DRAFT_SCHEMA):
     key = config.get("gemini_api_key") or ""
     if not key:
         raise ValueError("Gemini is not configured: add an API key in Social settings")
@@ -996,9 +1003,9 @@ def _gemini_generate(config, prompt):
     if not re.fullmatch(r"[A-Za-z0-9._-]+", model) or model in (".", ".."):
         raise SocialError("Invalid Gemini model name")
     body = {
-        "systemInstruction": {"parts": [{"text": VOICE_INSTRUCTIONS}]},
+        "systemInstruction": {"parts": [{"text": system}]},
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-        "generationConfig": {"responseMimeType": "application/json", "responseSchema": _DRAFT_SCHEMA},
+        "generationConfig": _generation_config(schema),
     }
     try:
         resp = requests.post(
