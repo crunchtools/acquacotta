@@ -947,12 +947,12 @@ test('changing timezone moves a report on today to the new today, and leaves a p
     assert.equal((await change('2020-01-15', 'Pacific/Kiritimati')).currentDate, '2020-01-15');
 });
 
-// RT leaves Due unset as the epoch; priority 0 is a real value, null is unset.
+// RT leaves Due unset as the epoch or "Not set"; priority 0 is a real value, null is unset.
 const TICKETS = [
     { id: '1', subject: 'old', status: 'open', queue: 'Ops', priority: 10, created: '2026-01-01T00:00:00Z', last_updated: '2026-11-01T00:00:00Z', due: '1970-01-01T00:00:00Z' },
     { id: '2', subject: 'urgent', status: 'open', queue: 'Ops', priority: 90, created: '2026-03-01T00:00:00Z', last_updated: '2026-10-01T00:00:00Z', due: '2026-12-01T00:00:00Z' },
     { id: '3', subject: 'new', status: 'new', queue: 'Web', priority: null, created: '2026-11-05T00:00:00Z', last_updated: '2026-09-01T00:00:00Z', due: '2026-11-20T00:00:00Z' },
-    { id: '4', subject: 'zero', status: 'open', queue: 'Web', priority: 0, created: '2026-02-01T00:00:00Z', last_updated: '2026-08-01T00:00:00Z', due: '' },
+    { id: '4', subject: 'zero', status: 'open', queue: 'Web', priority: 0, created: '2026-02-01T00:00:00Z', last_updated: '2026-08-01T00:00:00Z', due: 'Not set' },
 ];
 const RT_VIEW = { path: '/#rt', tickets: TICKETS };
 const ticketIds = page => page.$$eval('#rt-list-container .discussion-person', els => els.map(e => e.textContent));
