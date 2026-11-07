@@ -2142,9 +2142,10 @@
          * @returns {Promise<*>}
          */
         readThrough: async function(storeName, key, fetcher, onFresh) {
+            // Taken first: a sign-out during the cache read must still stop the write
+            const generation = cacheGeneration;
             const cached = await getFromStore(storeName, key);
             if (!isOnline) return cached ? cached.value : null;
-            const generation = cacheGeneration;
             const refresh = fetcher().then(async value => {
                 // Signed out mid-fetch: this belongs to the account that left
                 if (generation !== cacheGeneration) throw new Error('signed out during refresh');

@@ -51,7 +51,12 @@ def _require_local_stores(plugin_id, metadata):
 
 
 def register(plugin_type, plugin_id, module, metadata):
-    """Register a plugin. Validates it implements the required contract."""
+    """Register a plugin. Validates it implements the required contract.
+
+    A plugin whose metadata sets ``has_tab`` must also list ``local_stores``: the
+    IndexedDB stores its tab renders from, each a ``STORE_SCHEMA`` entry in
+    static/js/storage.js. Raises ValueError otherwise.
+    """
     if plugin_type not in PLUGIN_TYPES:
         raise ValueError(f"Unknown plugin type: {plugin_type}")
 
