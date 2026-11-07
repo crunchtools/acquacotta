@@ -239,7 +239,7 @@ test('offline with nothing cached, a thread is empty and RT is not asked', async
 
 test('a v5 cached thread survives the upgrade and still serves offline', async ({ page }) => {
     // Leave the app's page so its connection closes, then build a v5 database.
-    await page.goto(new URL('/v5', page.url()).href);
+    await page.goto(new URL('/blank', page.url()).href);
     await page.evaluate(() => new Promise((resolve, reject) => {
         const del = indexedDB.deleteDatabase('acquacotta');
         del.onerror = () => reject(del.error);
@@ -280,6 +280,8 @@ test("Social's localStorage copy moves into IndexedDB on upgrade", async ({ page
     const server = http.createServer((req, res) => {
         const url = new URL(req.url, 'http://localhost');
         if (url.pathname === '/') return send(res, 'text/html', PAGE);
+        // Same origin, no storage.js: lets a test rebuild the database while nothing holds it open
+        if (url.pathname === '/blank') return send(res, 'text/html', '<!DOCTYPE html><html><body></body></html>');
         if (url.pathname === '/stubs.js') {
             return send(res, 'text/javascript', fs.readFileSync(path.join(__dirname, 'storage_harness', 'stubs.js')));
         }

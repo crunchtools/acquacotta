@@ -2145,6 +2145,7 @@
             // Taken first: a sign-out during the cache read must still stop the write
             const generation = cacheGeneration;
             const cached = await getFromStore(storeName, key);
+            if (generation !== cacheGeneration) return null;  // signed out during the read
             if (!isOnline) return cached ? cached.value : null;
             const refresh = fetcher().then(async value => {
                 // Signed out mid-fetch: this belongs to the account that left

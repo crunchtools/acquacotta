@@ -7904,7 +7904,15 @@
         }
 
         // The first range: a window either side of today. Cached copy first, then the live one.
-        async function socialLoadPosts() {
+        // The latest load: a load overtaken during its cache read hands this back,
+        // so whoever awaits the older call (a #social/post link) still waits for posts.
+        let socialPostsLoad = Promise.resolve();
+        function socialLoadPosts() {
+            socialPostsLoad = socialLoadPostsOnce();
+            return socialPostsLoad;
+        }
+
+        async function socialLoadPostsOnce() {
             const token = ++socialPostsToken;
             socialPostsBusy = false;
             socialPostsStatus('');
@@ -7924,7 +7932,7 @@
             // Only this account's copy: a shared browser must not show another
             // account's posts (sign-out also clears it).
             const cached = await socialLocal(SOCIAL_POSTS_CACHE_KEY);
-            if (token !== socialPostsToken) return;
+            if (token !== socialPostsToken) return socialPostsLoad;
             const fromCache = AcquacottaUtils.socialPostsCacheUsable(cached, authStatus.email, from.toISOString());
             if (fromCache) {
                 socialPosts = cached.posts || [];
