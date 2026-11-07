@@ -882,7 +882,8 @@ class TestAssetUrls:
         page = client.get("/").data.decode()
         for name in ("js/utils.js", "js/storage.js"):
             assert f"/static/{name}?v={app_module._asset_version(name)}" in page
-        assert "?v=14" not in page
+        # The hand-bumped version this replaced; a hash may start with "14", so match the quote
+        assert '?v=14"' not in page
 
     def test_hash_follows_file_content(self, tmp_path, monkeypatch):
         (tmp_path / "a.js").write_text("one")
