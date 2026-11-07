@@ -173,16 +173,25 @@
                     tx.objectStore(STORES.TICKET_HISTORY).clear();
                 }
                 if (event.oldVersion < 6) {
-                    try {
-                        const social = tx.objectStore(STORES.SOCIAL_CACHE);
-                        for (const [legacy, id] of Object.entries(LEGACY_SOCIAL_KEYS)) {
+                    const social = tx.objectStore(STORES.SOCIAL_CACHE);
+                    const moved = [];
+                    for (const [legacy, id] of Object.entries(LEGACY_SOCIAL_KEYS)) {
+                        try {
                             const raw = localStorage.getItem(legacy);
                             if (raw) social.put({ id, value: JSON.parse(raw), cached_at: Date.now() });
-                            localStorage.removeItem(legacy);
+                            moved.push(legacy);
+                        } catch (e) {
+                            console.warn(`Could not move ${legacy} out of localStorage:`, e);
                         }
-                    } catch (e) {
-                        console.warn('Could not move the Social cache out of localStorage:', e);
                     }
+                    // Only once IndexedDB has them: an aborted upgrade keeps the originals.
+                    tx.addEventListener('complete', () => {
+                        try {
+                            moved.forEach(legacy => localStorage.removeItem(legacy));
+                        } catch (e) {
+                            console.warn('Could not remove the old Social cache from localStorage:', e);
+                        }
+                    });
                 }
             };
         });
@@ -2134,8 +2143,13 @@
             });
             if (!cached) return refresh;
             refresh.then(value => {
-                if (onFresh && JSON.stringify(value) !== JSON.stringify(cached.value)) onFresh(value);
-            }).catch(e => console.warn(`${storeName}/${key}: refresh failed, showing the cached copy:`, e));
+                if (!onFresh || JSON.stringify(value) === JSON.stringify(cached.value)) return;
+                try {
+                    onFresh(value);
+                } catch (e) {
+                    console.error(`${storeName}/${key}: onFresh failed on the refreshed copy:`, e);
+                }
+            }, e => console.warn(`${storeName}/${key}: refresh failed, showing the cached copy:`, e));
             return cached.value;
         },
 
@@ -2208,11 +2222,12 @@
         // thread paints at once and onFresh gets RT's copy when it arrives.
         getTicketHistory: async function(id, onFresh) {
             const key = String(id);
-            return this.readThrough(STORES.TICKET_HISTORY, key, async () => {
+            const history = await this.readThrough(STORES.TICKET_HISTORY, key, async () => {
                 const res = await authenticatedFetch(`/api/rt/ticket/${encodeURIComponent(key)}/history`);
                 if (!res.ok) throw new Error(await apiErrorMessage(res));
                 return (await res.json()).history || [];
             }, onFresh);
+            return history || [];
         },
 
         getRTConfig: async function() {
