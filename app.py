@@ -38,6 +38,7 @@ from googleapiclient.errors import HttpError
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from werkzeug.middleware.proxy_fix import ProxyFix
 
+import checklists_plugin
 import discussions_plugin
 import json_google_drive_storage
 import json_pcloud_storage
@@ -97,6 +98,11 @@ plugin_registry.activate_extension("social")
 # plugins/timer-sync/synchronization.json in the user's own Drive; no tab.
 plugin_registry.register("extension", "timer-sync", timer_sync_plugin, timer_sync_plugin.PLUGIN_METADATA)
 plugin_registry.activate_extension("timer-sync")
+
+# Checklists — optional plugin, per-user. Recurring checklists stored in
+# plugins/checklists/data.json; "due" is derived at read time, never stored.
+plugin_registry.register("extension", "checklists", checklists_plugin, checklists_plugin.PLUGIN_METADATA)
+plugin_registry.activate_extension("checklists")
 
 # MCP access appears in the plugin list. It has no server-side module contract —
 # enable/disable and per-user state live in the /api/mcp/* routes + the user's Drive, so a
@@ -1575,6 +1581,52 @@ def api_save_discussions():
         return jsonify({"status": "ok"})
     except HttpError:
         return jsonify({"error": "Google Drive request failed"}), HTTPStatus.INTERNAL_SERVER_ERROR
+
+
+@app.route("/api/checklists/sync", methods=["GET"])
+def api_get_checklists():
+    """Return the checklists document plus a derived ``due`` list (computed now, never stored)."""
+    if not is_logged_in():
+        return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
+    try:
+        credentials = get_credentials()
+        if not credentials:
+            return jsonify({"error": "No credentials"}), HTTPStatus.UNAUTHORIZED
+        request_creds = get_credentials_from_request()
+        folder_id = request_creds.get("folder_id") if request_creds else None
+        if not folder_id:
+            doc = {"templates": [], "runs": []}
+        else:
+            drive_service = build("drive", "v3", credentials=credentials)
+            doc = checklists_plugin.read_checklists(drive_service, folder_id)
+        return jsonify({**doc, "due": checklists_plugin.due_status(doc)})
+    except HttpError as e:
+        return _error_response(e)
+
+
+@app.route("/api/checklists/sync", methods=["POST"])
+def api_save_checklists():
+    """Upload the checklists document (full replace)."""
+    if not is_logged_in():
+        return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
+    try:
+        credentials = get_credentials()
+        if not credentials:
+            return jsonify({"error": "No credentials"}), HTTPStatus.UNAUTHORIZED
+        payload = get_request_data()
+        request_creds = get_credentials_from_request()
+        folder_id = request_creds.get("folder_id") if request_creds else None
+        if not folder_id:
+            return jsonify({"error": "No folder_id configured"}), HTTPStatus.BAD_REQUEST
+        try:
+            doc = checklists_plugin.validate_sync_payload(payload)
+        except ValueError:
+            return jsonify({"error": "Invalid checklists payload"}), HTTPStatus.BAD_REQUEST
+        drive_service = build("drive", "v3", credentials=credentials)
+        checklists_plugin.write_checklists(drive_service, folder_id, doc)
+        return jsonify({"status": "ok"})
+    except HttpError as e:
+        return _error_response(e)
 
 
 @app.route("/api/timer-sync", methods=["GET"])
