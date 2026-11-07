@@ -38,6 +38,7 @@ from googleapiclient.errors import HttpError
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from werkzeug.middleware.proxy_fix import ProxyFix
 
+import assistant_plugin
 import discussions_plugin
 import json_google_drive_storage
 import json_pcloud_storage
@@ -92,6 +93,11 @@ plugin_registry.activate_extension("rt")
 # server-side.
 plugin_registry.register("extension", "social", social_plugin, social_plugin.PLUGIN_METADATA)
 plugin_registry.activate_extension("social")
+
+# Assistant — optional plugin, per-user. Read-only Q&A over the user's own data via
+# the registry; uses the Gemini key from the Social config. No tab yet.
+plugin_registry.register("extension", "assistant", assistant_plugin, assistant_plugin.PLUGIN_METADATA)
+plugin_registry.activate_extension("assistant")
 
 # Timer Sync — optional plugin, per-user. Advertises the running timer through
 # plugins/timer-sync/synchronization.json in the user's own Drive; no tab.
@@ -1958,6 +1964,30 @@ def api_social_draft():
     except HttpError as e:
         return _error_response(e)
     return jsonify({"page": page, "drafts": drafts})
+
+
+@app.route("/api/assistant/chat", methods=["POST"])
+def api_assistant_chat():
+    """Answer a question from the caller's own dashboard data. Body: ``{"question": "..."}``.
+
+    Returns ``{"answer": "..."}``. Nothing is stored.
+    """
+    drive_service, folder_id = _plugin_drive_context()
+    if not drive_service:
+        return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
+    try:
+        payload = _social_payload()
+        settings = json_google_drive_storage.get_settings(drive_service, folder_id, {})
+        context = assistant_plugin.gather_context(
+            drive_service, folder_id, enabled=lambda pid: settings.get(f"plugin_state_{pid}", True)
+        )
+        config = social_plugin.read_config(drive_service, folder_id)
+        answer = assistant_plugin.chat(config, payload.get("question"), context)
+    except (ValueError, social_plugin.SocialError) as exc:
+        return _social_error_response(exc)
+    except HttpError as e:
+        return _error_response(e)
+    return jsonify({"answer": answer})
 
 
 @app.route("/api/social/preview", methods=["POST"])
