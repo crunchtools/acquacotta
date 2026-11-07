@@ -295,6 +295,47 @@ class TestRTConfigSave:
         monkeypatch.setattr(rt_plugin, "read_config", boom)
         assert client.post("/api/rt/config", json={"base_url": "http://rt2"}).status_code == 500
 
+    def test_exception_text_not_returned_to_caller(self, client, drive, monkeypatch):
+        def boom(_s, _f):
+            raise RuntimeError("secret /srv/app/path detail")
+
+        monkeypatch.setattr(rt_plugin, "read_config", boom)
+        resp = client.post("/api/rt/config", json={"base_url": "http://rt2"})
+        assert resp.status_code == 500
+        body = resp.get_json()
+        assert "secret" not in json.dumps(body)
+        assert body["error"] and body["correlation_id"]
+
+
+class TestExceptionLogging:
+    """_log_exception writes one sanitized line whose id matches the client's."""
+
+    def _raise_and_respond(self):
+        with app_module.app.app_context():
+            try:
+                raise RuntimeError("first line\r\nFAKE forged entry\nthird")
+            except RuntimeError as exc:
+                resp, status = app_module._error_response(exc)
+            return resp.get_json(), status
+
+    def test_log_entry_is_single_sanitized_line(self, monkeypatch):
+        logged = []
+        monkeypatch.setattr(app_module.app.logger, "error", lambda msg, *args: logged.append(msg % args))
+        body, status = self._raise_and_respond()
+        assert status == 500
+        assert len(logged) == 1
+        line = logged[0]
+        assert "\r" not in line and "\n" not in line
+        assert "first line" in line and "FAKE forged entry" in line
+        assert "Traceback" in line and "RuntimeError" in line
+
+    def test_correlation_id_matches_response(self, monkeypatch):
+        logged = []
+        monkeypatch.setattr(app_module.app.logger, "error", lambda msg, *args: logged.append(args))
+        body, _status = self._raise_and_respond()
+        assert logged[0][0] == body["correlation_id"]
+        assert "first line" not in json.dumps(body)
+
 
 class TestExtensionTogglePerUser:
     """Extension enablement is a per-user client preference; the toggle endpoint

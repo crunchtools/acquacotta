@@ -118,6 +118,26 @@ README.md                    # User documentation
 | `/api/sync/now` | POST | Trigger manual sync |
 | `/api/migrate` | POST | Handle data migration |
 
+#### Error Responses
+
+Unexpected server-side failures on `/api/*` endpoints return HTTP 500 with a
+fixed body; exception text and tracebacks are never sent to the client:
+
+```json
+{"error": "An internal error occurred", "correlation_id": "3f9c0a1b2d4e"}
+```
+
+The `correlation_id` (12 hex characters) is written to the server log next to
+the full exception and traceback, so a user reporting a failure can quote it and
+an operator can find the matching log entry. Non-API routes (OAuth start and
+callback) return a plain-text `An internal error occurred. Reference: <id>` page
+carrying the same id.
+
+Expected errors keep a specific message: 400 for invalid input (validation
+messages written for the user), 401 when not signed in, and 502 when an upstream
+service (RT, Postiz, Gemini) fails — the 502 message names the service but does
+not include the underlying network error.
+
 ### Database Schema
 
 **pomodoros table**:

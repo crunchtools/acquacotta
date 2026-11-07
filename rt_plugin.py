@@ -269,7 +269,7 @@ def _request(session, method, url, **kwargs):
     try:
         resp = session.request(method, url, **kwargs)
     except requests.RequestException as exc:
-        raise RTError(f"Could not reach RT: {exc}") from exc
+        raise RTError("Could not reach RT") from exc
     if resp.status_code in (HTTPStatus.UNAUTHORIZED, HTTPStatus.FORBIDDEN):
         raise RTError("RT rejected the credentials (check the Basic-Auth user/token)")
     if resp.status_code >= HTTPStatus.BAD_REQUEST:
@@ -452,8 +452,8 @@ def fetch_ticket(config, ticket_id):
     has no such ticket. Raises ValueError on a bad id/config, RTError on an
     RT/network problem.
     """
-    _require_ticket_id(ticket_id)
-    tickets = fetch_tickets(config, query=f"id = {int(ticket_id)}")
+    tid = _require_ticket_id(ticket_id)
+    tickets = fetch_tickets(config, query=f"id = {tid}")
     return tickets[0] if tickets else None
 
 
@@ -464,14 +464,14 @@ def fetch_ticket_history(config, ticket_id):
     correspondence/comments, best-effort). Raises ValueError on a bad id/config,
     RTError on an RT/network problem.
     """
-    _require_ticket_id(ticket_id)
+    tid = _require_ticket_id(ticket_id)
     session = _session(config)
     params = {
         "fields": "Type,Creator,Created,Description,_hyperlinks",
         "fields[Creator]": "Name",
         "orderby": "-Created",
     }
-    url = f"{_rest_base(config)}/ticket/{ticket_id}/history"
+    url = f"{_rest_base(config)}/ticket/{tid}/history"
     items = []
     for item in _paged_items(session, url, params):
         items.append(item)
@@ -492,8 +492,14 @@ def fetch_ticket_history(config, ticket_id):
 
 
 def _require_ticket_id(ticket_id):
+    """Validate ``ticket_id`` and return it as an int.
+
+    Callers build RT URLs from the returned int, never the raw input, so a
+    request-supplied id cannot inject path segments into the URL.
+    """
     if not _TICKET_ID_RE.match(str(ticket_id)):
         raise ValueError("ticket_id must be a positive integer")
+    return int(ticket_id)
 
 
 # RT endpoints and HTTP verbs for each write action, keyed by the action name the
@@ -520,13 +526,13 @@ def act_on_ticket(config, ticket_id, action, value):
         ValueError: on a bad ticket id, unknown action, or blank value.
         RTError: on an RT/network problem.
     """
-    _require_ticket_id(ticket_id)
+    tid = _require_ticket_id(ticket_id)
     if action not in _TICKET_ACTIONS:
         raise ValueError(f"unknown action: {action}")
     if not isinstance(value, str) or not value.strip():
         raise ValueError(("status" if action == "status" else "content") + " must be a non-empty string")
     method, sub_path = _TICKET_ACTIONS[action]
-    base = f"{_rest_base(config)}/ticket/{ticket_id}"
+    base = f"{_rest_base(config)}/ticket/{tid}"
     if action == "status":
         url, body = base, {"Status": value.strip()}
     else:
