@@ -307,6 +307,48 @@ class TestRTConfigSave:
         assert body["error"] and body["correlation_id"]
 
 
+class TestRTImportEndpoint:
+    """POST /api/rt/import: auth, config, error mapping and success."""
+
+    @pytest.fixture
+    def logged_in(self, monkeypatch):
+        monkeypatch.setattr(app_module, "_plugin_drive_context", lambda: (object(), "folder"))
+        cfg = rt_plugin.validate_config({"base_url": "http://rt", "rest_token": "tok123"})
+        monkeypatch.setattr(rt_plugin, "read_config", lambda _s, _f: dict(cfg))
+
+    def test_requires_auth(self, client):
+        assert client.post("/api/rt/import").status_code == 401
+
+    def test_unconfigured_is_400(self, client, monkeypatch):
+        monkeypatch.setattr(app_module, "_plugin_drive_context", lambda: (object(), "folder"))
+        monkeypatch.setattr(rt_plugin, "read_config", lambda _s, _f: rt_plugin.validate_config({}))
+        called = []
+        monkeypatch.setattr(rt_plugin, "import_history", lambda *a: called.append(a))
+        assert client.post("/api/rt/import").status_code == 400
+        assert called == []
+
+    def test_success_returns_counts(self, client, logged_in, monkeypatch):
+        result = {"entries_read": 3, "records_created": 2, "entries_skipped": 1}
+        monkeypatch.setattr(rt_plugin, "import_history", lambda _s, _f, _c: result)
+        resp = client.post("/api/rt/import")
+        assert resp.status_code == 200
+        assert resp.get_json() == result
+
+    def test_rt_error_is_502(self, client, logged_in, monkeypatch):
+        def boom(_s, _f, _c):
+            raise rt_plugin.RTError("RT unreachable")
+
+        monkeypatch.setattr(rt_plugin, "import_history", boom)
+        assert client.post("/api/rt/import").status_code == 502
+
+    def test_drive_error_is_500(self, client, logged_in, monkeypatch):
+        def boom(_s, _f, _c):
+            raise HttpError(MagicMock(status=500, reason="boom"), b"boom")
+
+        monkeypatch.setattr(rt_plugin, "import_history", boom)
+        assert client.post("/api/rt/import").status_code == 500
+
+
 class TestExceptionLogging:
     """_log_exception writes one sanitized line whose id matches the client's."""
 

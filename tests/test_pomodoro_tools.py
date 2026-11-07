@@ -37,6 +37,17 @@ class TestTimeSummary:
         assert summary["total_count"] == 2
         assert set(summary["by_category"]) == {"Product"}
 
+    def test_include_imported_flag(self, pomodoros):
+        imported = {"id": "5", "type": "Product", "duration_minutes": 30, "source": "rt_import"}
+        pomodoros.append(imported)
+        default = pomodoro_tools.time_summary(None, "folder")
+        assert default["total_minutes"] == 140
+        assert default["by_category"]["Product"] == {"minutes": 80, "count": 3}
+        excluded = pomodoro_tools.time_summary(None, "folder", include_imported=False)
+        assert excluded["total_minutes"] == 110
+        assert excluded["total_count"] == 4
+        assert excluded["by_category"]["Product"] == {"minutes": 50, "count": 2}
+
 
 class TestQueryPomodoros:
     def test_type_filter(self, pomodoros):

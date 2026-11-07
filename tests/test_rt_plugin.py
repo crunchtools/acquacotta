@@ -541,6 +541,14 @@ class TestImportHistory:
         assert [p["duration_minutes"] for p in env["pomodoros"]] == [30, 15]
 
 
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [(None, 0), ("", 0), ("abc", 0), ([1], 0), (-5, 0), ("-5", 0), ("45", 45), (20, 20)],
+)
+def test_transaction_time_taken_normalized(raw, expected):
+    assert rt_plugin._transaction_base({"id": 1, "TimeTaken": raw})["time_taken"] == expected
+
+
 # --------------------------------------------------------------------------- #
 # Write-through actions
 # --------------------------------------------------------------------------- #
