@@ -22,6 +22,9 @@ PLUGIN_METADATA = {
     "mandatory": True,
 }
 
+ASSISTANT_WEEK_DAYS = 7
+ASSISTANT_MONTH_DAYS = 30
+
 
 def _iso_z(dt):
     """ISO 8601 with a trailing 'Z', matching the timestamps the web UI writes."""
@@ -132,6 +135,18 @@ def compare_time_summary(drive_service, folder_id, start_a, end_a, start_b, end_
         "by_category": by_category,
     }
     return {"period_a": period_a, "period_b": period_b, "delta": delta}
+
+
+def assistant_context(drive_service, folder_id):
+    """Time summaries for the Assistant's prompt: read-only, last 7 and 30 days."""
+    now = datetime.now(timezone.utc)
+    end = _iso_z(now)
+    week_start = _iso_z(now - timedelta(days=ASSISTANT_WEEK_DAYS))
+    month_start = _iso_z(now - timedelta(days=ASSISTANT_MONTH_DAYS))
+    return {
+        "last_7_days": time_summary(drive_service, folder_id, week_start, end),
+        "last_30_days": time_summary(drive_service, folder_id, month_start, end),
+    }
 
 
 def register_mcp_tools(mcp, require_ctx):
