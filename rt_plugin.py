@@ -25,12 +25,15 @@ RT REST 2.0 token (``Authorization: token <t>``).
 import base64
 import json
 import re
+import uuid
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 
 import requests
 
 import deep_links
+import json_google_drive_storage as drive_storage
 import plugin_common
 
 # RT ticket and transaction ids are integers. The sync boundary enforces this so a
@@ -51,7 +54,7 @@ PLUGIN_METADATA = {
     "tab_id": "rt",
     "has_counts": True,
     "has_sync": True,
-    "has_import_export": False,
+    "has_import_export": True,
 }
 
 CONFIG_FILE = plugin_common.CONFIG_FILE
@@ -398,13 +401,21 @@ def _attachment_text(session, config, attachment_id):
 
 
 def _transaction_base(item):
-    """Normalize one history transaction into a record (without its message body)."""
+    """Normalize one history transaction into a record (without its message body).
+
+    ``time_taken`` is RT's TimeTaken in minutes; anything unparseable counts as 0.
+    """
+    try:
+        time_taken = max(int(item.get("TimeTaken") or 0), 0)
+    except (TypeError, ValueError):
+        time_taken = 0
     return {
         "id": str(item.get("id", "")).strip(),
         "type": str(item.get("Type") or ""),
         "creator": str(_flat(item.get("Creator"))),
         "created": str(item.get("Created") or ""),
         "description": str(item.get("Description") or ""),
+        "time_taken": time_taken,
         "content": "",
     }
 
@@ -457,17 +468,19 @@ def fetch_ticket(config, ticket_id):
     return tickets[0] if tickets else None
 
 
-def fetch_ticket_history(config, ticket_id):
-    """Return a ticket's recent history thread, newest first (see ``_HISTORY_LIMIT``).
+def fetch_ticket_history(config, ticket_id, limit=None, with_content=True):
+    """Return a ticket's history thread, newest first (``limit`` defaults to ``_HISTORY_LIMIT``).
 
-    Each entry: id, type, creator, created, description, content (message body for
-    correspondence/comments, best-effort). Raises ValueError on a bad id/config,
-    RTError on an RT/network problem.
+    Each entry: id, type, creator, created, description, time_taken (minutes),
+    content (message body for correspondence/comments, best-effort; skipped when
+    ``with_content`` is False). Raises ValueError on a bad id/config, RTError on an
+    RT/network problem.
     """
     tid = _require_ticket_id(ticket_id)
+    limit = _HISTORY_LIMIT if limit is None else limit
     session = _session(config)
     params = {
-        "fields": "Type,Creator,Created,Description,_hyperlinks",
+        "fields": "Type,Creator,Created,Description,TimeTaken,_hyperlinks",
         "fields[Creator]": "Name",
         "orderby": "-Created",
     }
@@ -475,14 +488,14 @@ def fetch_ticket_history(config, ticket_id):
     items = []
     for item in _paged_items(session, url, params):
         items.append(item)
-        if len(items) >= _HISTORY_LIMIT:
+        if len(items) >= limit:
             break
     records = [_transaction_base(item) for item in items]
     # Fetch message bodies for the newest messages, bounded in count
     # and fetched concurrently so a long thread doesn't serialize dozens of round
     # trips (each body is a separate RT request).
     pending = [(i, items[i]) for i, rec in enumerate(records) if rec["type"] in _BODY_TYPES]
-    pending = pending[:_CONTENT_FETCH_LIMIT]
+    pending = pending[:_CONTENT_FETCH_LIMIT] if with_content else []
     if pending:
         with ThreadPoolExecutor(max_workers=_CONTENT_FETCH_WORKERS) as pool:
             contents = pool.map(lambda pair: _transaction_content(config, pair[1]), pending)
@@ -500,6 +513,98 @@ def _require_ticket_id(ticket_id):
     if not _TICKET_ID_RE.match(str(ticket_id)):
         raise ValueError("ticket_id must be a positive integer")
     return int(ticket_id)
+
+
+# --------------------------------------------------------------------------- #
+# History import: one-way, user-triggered backfill of RT time entries.
+# --------------------------------------------------------------------------- #
+
+DATA_FILE = "data.json"
+IMPORT_SOURCE = "rt_import"
+IMPORT_TYPE = "RT"
+# Backfill needs resolved tickets too, which the Tickets tab query excludes.
+IMPORT_QUERY = "Owner = '__CurrentUser__'"
+# Upper bound on history transactions read per ticket during an import.
+_IMPORT_HISTORY_LIMIT = 10000
+_IMPORT_NAMESPACE = uuid.UUID("6f1d2a4e-5b8c-4e0a-9a53-1c7d2b9e4f10")
+
+
+def _read_import_state(transport):
+    """The set of already-imported RT transaction ids from ``plugins/rt/data.json``."""
+    content = transport.download_file(DATA_FILE)
+    if not content:
+        return set()
+    try:
+        stored = json.loads(content)
+    except (json.JSONDecodeError, TypeError):
+        return set()
+    keys = stored.get("imported_entries") if isinstance(stored, dict) else None
+    return {str(k) for k in keys} if isinstance(keys, list) else set()
+
+
+def _import_pomodoro(ticket, entry):
+    """Build the pomodoro record for one RT time entry (same shape as ``record_pomodoro``)."""
+    minutes = entry["time_taken"]
+    try:
+        end_dt = datetime.fromisoformat(entry["created"].replace("Z", "+00:00"))
+    except ValueError:
+        end_dt = datetime.now(timezone.utc)
+    if end_dt.tzinfo is None:
+        end_dt = end_dt.replace(tzinfo=timezone.utc)
+    start_dt = end_dt - timedelta(minutes=minutes)
+
+    def iso(dt):
+        return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+    return {
+        # Stable per transaction: if the data.json write fails after the pomodoros
+        # are saved, a re-run is still deduplicated because storage skips known ids.
+        "id": str(uuid.uuid5(_IMPORT_NAMESPACE, entry["id"])),
+        "name": f"RT#{ticket['id']} {ticket['subject']}".strip(),
+        "type": IMPORT_TYPE,
+        "start_time": iso(start_dt),
+        "end_time": iso(end_dt),
+        "duration_minutes": minutes,
+        "notes": None,
+        "linked_todo_id": None,
+        "ticket_id": ticket["id"],
+        "source": IMPORT_SOURCE,
+        "synced": False,
+    }
+
+
+def import_history(drive_service, folder_id, config):
+    """Import RT time entries as pomodoros. Explicit, one-way, safe to re-run.
+
+    Reads each ticket's history (``fetch_ticket_history``) and creates one pomodoro
+    per history entry that logged time, tagged ``source: "rt_import"`` and carrying
+    ``ticket_id``. Entries are deduplicated on the RT transaction id, recorded in
+    ``plugins/rt/data.json``, so a later run imports only new entries.
+
+    Returns ``{"entries_read", "records_created", "entries_skipped"}``. Raises
+    ValueError on a bad config, RTError on an RT/network problem (nothing is
+    recorded for a ticket set that failed part-way).
+    """
+    transport = plugin_common.config_transport(drive_service, folder_id, PLUGIN_METADATA["id"])
+    imported = _read_import_state(transport)
+    entries_read = skipped = 0
+    new_records, new_keys = [], []
+    for ticket in fetch_tickets(config, query=IMPORT_QUERY):
+        history = fetch_ticket_history(config, ticket["id"], limit=_IMPORT_HISTORY_LIMIT, with_content=False)
+        for entry in history:
+            if entry["time_taken"] <= 0 or not _TICKET_ID_RE.match(entry["id"]):
+                continue
+            entries_read += 1
+            if entry["id"] in imported or entry["id"] in new_keys:
+                skipped += 1
+                continue
+            new_records.append(_import_pomodoro(ticket, entry))
+            new_keys.append(entry["id"])
+    created = drive_storage.save_pomodoros_batch(drive_service, folder_id, new_records)
+    if new_keys:
+        state = {"imported_entries": sorted(imported | set(new_keys), key=int)}
+        transport.upload_file(DATA_FILE, json.dumps(state, indent=2))
+    return {"entries_read": entries_read, "records_created": created, "entries_skipped": skipped}
 
 
 # RT endpoints and HTTP verbs for each write action, keyed by the action name the

@@ -479,6 +479,69 @@ class TestHistory:
 
 
 # --------------------------------------------------------------------------- #
+# History import
+# --------------------------------------------------------------------------- #
+
+
+class TestImportHistory:
+    @pytest.fixture
+    def env(self, fake_rt, monkeypatch):
+        files, pomodoros = {}, []
+
+        class FakeTransport:
+            def download_file(self, name):
+                return files.get(name)
+
+            def upload_file(self, name, content):
+                files[name] = content
+
+        def save_batch(service, folder, new):
+            known = {p["id"] for p in pomodoros}
+            added = [p for p in new if p["id"] not in known]
+            pomodoros.extend(added)
+            return len(added)
+
+        monkeypatch.setattr(plugin_common, "config_transport", lambda s, f, plugin_id: FakeTransport())
+        monkeypatch.setattr(rt_plugin.drive_storage, "save_pomodoros_batch", save_batch)
+        history = [
+            {"id": 100, "Type": "Create", "Created": "2020-01-01T10:00:00Z", "TimeTaken": 0},
+            {"id": 101, "Type": "Correspond", "Created": "2020-01-02T10:00:00Z", "TimeTaken": 30},
+        ]
+
+        def handler(method, url, kw):
+            if url.endswith("/tickets"):
+                return FakeResp(json_data={"items": [{"id": 42, "Subject": "Fix it"}], "pages": 1})
+            if "/history" in url:
+                return FakeResp(json_data={"items": list(history), "pages": 1})
+            return FakeResp(json_data={})
+
+        fake_rt.handler = handler
+        return {"files": files, "pomodoros": pomodoros, "history": history}
+
+    def test_import_creates_tagged_records(self, env):
+        result = rt_plugin.import_history(None, "f", _cfg())
+        assert result == {"entries_read": 1, "records_created": 1, "entries_skipped": 0}
+        rec = env["pomodoros"][0]
+        assert rec["source"] == "rt_import"
+        assert rec["ticket_id"] == "42"
+        assert rec["duration_minutes"] == 30
+        assert json.loads(env["files"]["data.json"])["imported_entries"] == ["101"]
+
+    def test_rerun_is_a_noop(self, env):
+        rt_plugin.import_history(None, "f", _cfg())
+        result = rt_plugin.import_history(None, "f", _cfg())
+        assert result == {"entries_read": 1, "records_created": 0, "entries_skipped": 1}
+        assert len(env["pomodoros"]) == 1
+
+    def test_later_run_imports_only_new_entries(self, env):
+        rt_plugin.import_history(None, "f", _cfg())
+        env["history"].append({"id": 205, "Type": "Comment", "Created": "2020-02-01T10:00:00Z", "TimeTaken": 15})
+        result = rt_plugin.import_history(None, "f", _cfg())
+        assert result == {"entries_read": 2, "records_created": 1, "entries_skipped": 1}
+        assert [p["duration_minutes"] for p in env["pomodoros"]] == [30, 15]
+
+
+# --------------------------------------------------------------------------- #
 # Write-through actions
 # --------------------------------------------------------------------------- #
 

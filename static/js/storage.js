@@ -2210,6 +2210,12 @@
             return await res.json();
         },
 
+        importRTHistory: async function() {
+            const res = await authenticatedFetch('/api/rt/import', { method: 'POST', body: JSON.stringify({}) });
+            if (!res.ok) throw new Error(await apiErrorMessage(res));
+            return await res.json();
+        },
+
         // Social Share: live calls through the server to Postiz and Gemini; nothing
         // is cached, the drafts live in the page until scheduled.
         getSocialConfig: async function() {

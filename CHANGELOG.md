@@ -7,6 +7,12 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- RT history import (Settings > Plugins > RT Tickets > "Import RT history", `POST /api/rt/import`):
+  backfills RT time entries as pomodoros flagged `source: "rt_import"` and carrying
+  `ticket_id`. Deduplicated per RT history entry (keys in `plugins/rt/data.json`), so
+  re-running adds nothing new and later runs add only newly logged time. Reports entries
+  read, records created and entries skipped. `time_summary` takes `include_imported=False`
+  to leave imported records out.
 - Timer Sync plugin backend: `GET`/`POST /api/timer-sync` share the running timer
   through `plugins/timer-sync/synchronization.json` in the user's storage. Remaining
   time is computed from `start_time` and `duration_minutes`, never stored. Writes are
