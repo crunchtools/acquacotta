@@ -42,8 +42,21 @@ _plugins: dict[str, dict[str, dict[str, Any]]] = {}
 _active_storage = None
 
 
+def _require_local_stores(plugin_id, metadata):
+    """A tab renders from the browser's IndexedDB copy first (offline-first), so a
+    plugin with one must name the stores that hold it (STORE_SCHEMA in
+    static/js/storage.js)."""
+    if metadata.get("has_tab") and not metadata.get("local_stores"):
+        raise ValueError(f"Plugin '{plugin_id}' has a tab but declares no local_stores")
+
+
 def register(plugin_type, plugin_id, module, metadata):
-    """Register a plugin. Validates it implements the required contract."""
+    """Register a plugin. Validates it implements the required contract.
+
+    A plugin whose metadata sets ``has_tab`` must also list ``local_stores``: the
+    IndexedDB stores its tab renders from, each a ``STORE_SCHEMA`` entry in
+    static/js/storage.js. Raises ValueError otherwise.
+    """
     if plugin_type not in PLUGIN_TYPES:
         raise ValueError(f"Unknown plugin type: {plugin_type}")
 
@@ -51,6 +64,7 @@ def register(plugin_type, plugin_id, module, metadata):
     missing = [fn for fn in contract if not callable(getattr(module, fn, None))]
     if missing:
         raise ValueError(f"Plugin '{plugin_id}' missing required functions: {', '.join(missing)}")
+    _require_local_stores(plugin_id, metadata)
 
     if plugin_type not in _plugins:
         _plugins[plugin_type] = {}

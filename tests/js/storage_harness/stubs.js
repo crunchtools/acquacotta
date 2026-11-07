@@ -8,6 +8,9 @@
  *                 and can hold a route until the test releases it.
  * window.__timers setTimeout/clearTimeout stub: timers never fire on their own; the
  *                 test fires them, so retry and debounce delays are inspectable.
+ *
+ * A pre-v6 Social selection is left in localStorage so every fresh database
+ * runs the move into IndexedDB.
  */
 (function() {
     'use strict';
@@ -16,6 +19,8 @@
         credentials: { token: 'test-token', user_email: 'test@example.com' },
         settings: { spreadsheet_id: 'test-sheet' },
     }));
+
+    localStorage.setItem('acquacotta_social_selection', JSON.stringify(['m1']));
 
     const json = (status, body) => new Response(JSON.stringify(body), {
         status, headers: { 'Content-Type': 'application/json' },
@@ -29,6 +34,7 @@
         'GET /api/sheets/settings': () => json(200, {}),
         'GET /api/todos/sync': () => json(200, { todos: [], lists: [] }),
         'POST /api/todos/sync': () => json(200, { status: 'ok' }),
+        'GET /api/rt/ticket/7/history': () => json(200, { history: [{ id: 't1', content: 'first' }] }),
     };
     const held = {};
 

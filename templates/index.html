@@ -5845,13 +5845,6 @@
 
             await Storage.logout();
             authStatus = { logged_in: false, google_configured: true };
-            // Social keeps Postiz data in localStorage; it belongs to the account leaving.
-            try {
-                localStorage.removeItem(SOCIAL_POSTS_CACHE_KEY);
-                localStorage.removeItem(SOCIAL_CACHE_KEY);
-            } catch (e) {
-                console.warn('Could not clear Social caches:', e);
-            }
             socialPosts = [];
             updateAuthUI();
             await updateStorageIndicator();
@@ -7126,9 +7119,12 @@
             histEl.innerHTML = '<div class="empty">Loading history…</div>';
             document.getElementById('rt-detail-modal').classList.add('active');
             setRoute('rt', 'ticket', id);
+            const paint = history => {
+                if (rtCurrentTicketId !== id) return;  // another ticket opened meanwhile
+                histEl.innerHTML = history && history.length ? history.map(renderTxn).join('') : '<div class="empty">No history.</div>';
+            };
             try {
-                const history = await Storage.getTicketHistory(id);
-                histEl.innerHTML = history.length ? history.map(renderTxn).join('') : '<div class="empty">No history.</div>';
+                paint(await Storage.getTicketHistory(id, paint));
             } catch (e) {
                 histEl.innerHTML = `<div class="empty">Could not load history: ${escapeHtml(e.message || '')}</div>`;
             }
@@ -7324,8 +7320,9 @@
         let socialChosenExact = false; // chosen from the exact-time input, not a slot
         const SOCIAL_SECRET_SAVED = '••••••••';
         const SOCIAL_URL_RE = /https?:\/\/\S+/i;
-        const SOCIAL_CACHE_KEY = 'acquacotta_social_channels';
-        const SOCIAL_PICK_KEY = 'acquacotta_social_selection';
+        // Records in the social_cache IndexedDB store
+        const SOCIAL_CACHE_KEY = 'channels';
+        const SOCIAL_PICK_KEY = 'selection';
         const SOCIAL_URL_WEIGHT = { x: 23, mastodon: 23 };  // these count any link as 23 chars
         const SOCIAL_SLOT_DAYS = 7;
         const SOCIAL_PLATFORMS = {
@@ -7360,11 +7357,16 @@
             try { return sessionStorage.getItem(SOCIAL_SHARE_KEY) || ''; } catch (e) { return ''; }
         }
 
-        function socialLocal(key, value) {
+        // Social's device copy of Postiz data, in IndexedDB. A read or write that
+        // fails only costs the cached paint, so it never throws.
+        async function socialLocal(key, value) {
             try {
-                if (value === undefined) return JSON.parse(localStorage.getItem(key) || 'null');
-                localStorage.setItem(key, JSON.stringify(value));
-            } catch (e) { return null; }
+                if (value === undefined) return await Storage.getCached('social_cache', key);
+                await Storage.putCached('social_cache', key, value);
+            } catch (e) {
+                console.warn(`Social cache ${key}:`, e);
+                return null;
+            }
         }
 
         function socialPlatform(c) {
@@ -7380,8 +7382,8 @@
                 return;
             }
             if (!socialChannelsLoaded) {
-                const cached = socialLocal(SOCIAL_CACHE_KEY);
-                if (cached) socialApplyChannels(cached);
+                const cached = await socialLocal(SOCIAL_CACHE_KEY);
+                if (cached && !socialChannelsLoaded) await socialApplyChannels(cached);
                 socialLoadChannels();  // refresh in the background; never block typing
             }
             if (socialLink && !socialLink.title && !socialLink.loading) socialFetchPreview();
@@ -7389,10 +7391,10 @@
             else document.getElementById('social-text').focus();
         }
 
-        function socialApplyChannels(data) {
+        async function socialApplyChannels(data) {
             socialChannels = (data.integrations || []).filter(c => !c.disabled);
             const ids = new Set(socialChannels.map(c => c.id));
-            const picked = (socialLocal(SOCIAL_PICK_KEY) || []).filter(id => ids.has(id));
+            const picked = ((await socialLocal(SOCIAL_PICK_KEY)) || []).filter(id => ids.has(id));
             const defaults = (data.default_channels || []).filter(id => ids.has(id));
             socialIncluded = new Set(picked.length ? picked : defaults.length ? defaults : [...ids]);
             socialHasGemini = !!data.has_gemini_api_key;
@@ -7413,7 +7415,7 @@
                 }
                 socialLocal(SOCIAL_CACHE_KEY, data);
                 socialChannelsLoaded = true;
-                socialApplyChannels(data);
+                await socialApplyChannels(data);
             } catch (e) {
                 if (!socialChannels.length) socialStatus('Could not load channels: ' + (e.message || 'error'), { error: true });
             }
@@ -7812,7 +7814,7 @@
         const SOCIAL_STATE_LABELS = { QUEUE: 'Scheduled', PUBLISHED: 'Published', ERROR: 'Failed', DRAFT: 'Draft' };
         // The first range loaded, like the channel cache: it paints at once and
         // stays readable offline while the live copy loads.
-        const SOCIAL_POSTS_CACHE_KEY = 'acquacotta_social_posts';
+        const SOCIAL_POSTS_CACHE_KEY = 'posts';
         const SOCIAL_POSTS_PAGE = 10;
         // One request's span. Postiz answers up to 62 days; 56 keeps a range of
         // local midnights under that across a DST change.
@@ -7902,7 +7904,15 @@
         }
 
         // The first range: a window either side of today. Cached copy first, then the live one.
-        async function socialLoadPosts() {
+        // The latest load: a load overtaken during its cache read hands this back,
+        // so whoever awaits the older call (a #social/post link) still waits for posts.
+        let socialPostsLoad = Promise.resolve();
+        function socialLoadPosts() {
+            socialPostsLoad = socialLoadPostsOnce();
+            return socialPostsLoad;
+        }
+
+        async function socialLoadPostsOnce() {
             const token = ++socialPostsToken;
             socialPostsBusy = false;
             socialPostsStatus('');
@@ -7921,7 +7931,8 @@
             socialPostsUntil = socialAddDays(today, SOCIAL_POSTS_WINDOW);
             // Only this account's copy: a shared browser must not show another
             // account's posts (sign-out also clears it).
-            const cached = socialLocal(SOCIAL_POSTS_CACHE_KEY);
+            const cached = await socialLocal(SOCIAL_POSTS_CACHE_KEY);
+            if (token !== socialPostsToken) return socialPostsLoad;
             const fromCache = AcquacottaUtils.socialPostsCacheUsable(cached, authStatus.email, from.toISOString());
             if (fromCache) {
                 socialPosts = cached.posts || [];

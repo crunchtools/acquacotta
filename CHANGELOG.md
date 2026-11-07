@@ -7,6 +7,13 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Plugin local-cache contract. A plugin with a tab declares its IndexedDB stores in
+  `PLUGIN_METADATA["local_stores"]`; `plugin_registry.register()` refuses one that
+  declares none, and `tests/test_plugin_local_stores.py` checks every declared store
+  exists in `storage.js` and that `index.html` keeps no data in `localStorage`. Stores
+  are created from one `STORE_SCHEMA` table. `Storage.readThrough()` is the shared
+  cache-first read: return the cached copy, refresh in the background, call back with
+  a newer one.
 - Tickets tab sort, matching the To-do lists: Last Updated (the default and the old
   fixed order), Priority (RT's numeric priority, highest first), Due Date and Newest.
   The choice is saved per queue in `rt_sort_orders` and synced like `todo_sort_orders`.
@@ -24,6 +31,12 @@ All notable changes to this project are documented here. The format follows
   check-in for 3 minutes (3 x the 60 s cadence) is stale and the timer reads as idle.
 
 ### Fixed
+- Opening a ticket waited on RT even when its thread was cached. The cached thread now
+  shows at once and RT's copy replaces it when it arrives.
+- Social kept its Postiz channels, posts and channel selection in `localStorage`; they
+  now live in IndexedDB (`social_cache`), moved over on upgrade (database v6).
+- Sign-out left cached RT tickets and threads behind for the next account on the
+  browser. It now clears every store that copies another system's data.
 - The MCP server never received `RT_ALLOWED_HOSTS`, so every RT tool over MCP failed
   with "resolves to a non-public address" on a deployment whose RT is reached at a
   private address (the documented topology when RT sits behind an auth proxy). The web

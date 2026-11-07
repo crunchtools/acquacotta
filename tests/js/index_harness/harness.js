@@ -81,11 +81,6 @@ async function openPage(browser, baseUrl, cfg) {
 
     await page.evaluateOnNewDocument(c => {
         window.__TEST__ = c;
-        // Seed per-device storage once, before the app's first read.
-        if (c.localStorage && !sessionStorage.getItem('__seeded')) {
-            for (const [k, v] of Object.entries(c.localStorage)) localStorage.setItem(k, v);
-            sessionStorage.setItem('__seeded', '1');
-        }
     }, {
         plugins: PLUGINS,
         settings: {},
