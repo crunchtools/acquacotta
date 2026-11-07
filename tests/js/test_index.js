@@ -433,13 +433,13 @@ test('a Postiz failure keeps the text and lets you retry', {
 
 test('channels render from the device cache before Postiz answers', {
     ...SOCIAL_SIGNED_IN, path: '/?view=social', socialIntegrationsDelayMs: 3000,
-    localStorage: { acquacotta_social_channels: JSON.stringify({ configured: true, default_channels: [], integrations: [{ id: 'm1', name: 'Me', identifier: 'mastodon', max_length: 500 }] }) },
+    cache: { social_cache: { channels: { configured: true, default_channels: [], integrations: [{ id: 'm1', name: 'Me', identifier: 'mastodon', max_length: 500 }] } } },
 }, async ({ page }) => {
     await page.waitForFunction(() => document.querySelectorAll('.social-chip').length > 0);
     assert.deepEqual(await page.$$eval('.social-chip', els => els.map(e => e.getAttribute('aria-label'))), ['Mastodon (Me)'],
         'cached channels while Postiz is still answering');
     await page.waitForFunction(() => document.querySelectorAll('.social-chip').length === 2, { timeout: 8000 });
-    assert.match(await page.evaluate(() => localStorage.getItem('acquacotta_social_channels')), /Scott on X/, 'cache refreshed');
+    assert.match(await page.evaluate(() => JSON.stringify(window.__cache.social_cache.channels)), /Scott on X/, 'cache refreshed');
 });
 
 // ---- Social → Posts ----
@@ -671,11 +671,11 @@ test('Postiz unreachable with no copy: the list says so and retries', { ...POSTS
 test("Postiz unreachable with this account's copy: the copy shows, the status says why", {
     ...POSTS_SIGNED_IN,
     socialPostsError: 'HTTP 502',
-    localStorage: {
-        acquacotta_social_posts: JSON.stringify({ email: 'test@example.com', from: localDay(-56), postiz_url: '', posts: [
+    cache: { social_cache: {
+        posts: { email: 'test@example.com', from: localDay(-56), postiz_url: '', posts: [
             { id: 'c1', group: 'c1', date: localDay(1), state: 'QUEUE', text: 'From the cache', release_url: '', channel: CH.x },
-        ] }),
-    },
+        ] },
+    } },
 }, async ({ page }) => {
     await page.waitForFunction(() => document.getElementById('social-posts-status').textContent.includes('last copy'));
     assert.equal(await postsStatus(page), 'Couldn’t reach Postiz · showing the last copyRetry');
@@ -686,11 +686,11 @@ test("Postiz unreachable with this account's copy: the copy shows, the status sa
 test("another account's cached posts never show", {
     ...POSTS_SIGNED_IN,
     socialPostsError: 'HTTP 502',
-    localStorage: {
-        acquacotta_social_posts: JSON.stringify({ email: 'someone@else.com', from: localDay(-56), postiz_url: '', posts: [
+    cache: { social_cache: {
+        posts: { email: 'someone@else.com', from: localDay(-56), postiz_url: '', posts: [
             { id: 'c1', group: 'c1', date: localDay(1), state: 'QUEUE', text: 'Not yours', release_url: '', channel: CH.x },
-        ] }),
-    },
+        ] },
+    } },
 }, async ({ page }) => {
     await page.waitForFunction(() => document.getElementById('social-posts').textContent.includes('Couldn’t reach Postiz'));
     assert.equal(await page.$eval('#social-posts', el => el.textContent.includes('Not yours')), false);
@@ -988,6 +988,31 @@ test('a saved ticket sort is restored on load', { ...RT_VIEW, settings: { rt_sor
     await page.waitForFunction(() => rtSortOrder === 'priority');
     await showTickets(page);
     assert.deepEqual(await ticketIds(page), ['#2', '#1', '#4', '#3']);
+});
+
+const THREADS = {
+    ...RT_VIEW,
+    ticketHistory: {
+        1: { cached: [{ content: 'cached post' }], fresh: [{ content: 'cached post' }, { content: 'new reply' }] },
+        2: { cached: [{ content: 'other ticket' }], fresh: [{ content: 'other ticket' }] },
+    },
+};
+const thread = page => page.$eval('#rt-detail-history', el => el.textContent);
+
+test("a ticket's cached thread shows at once, then RT's newer copy replaces it", THREADS, async ({ page }) => {
+    await showTickets(page);
+    await page.evaluate(() => openTicketDetail('1'));
+    assert.equal(await thread(page), 'cached post');
+    await page.evaluate(() => window.__releaseFresh('1'));
+    assert.equal(await thread(page), 'cached postnew reply');
+});
+
+test("a late refresh never paints over another ticket's thread", THREADS, async ({ page }) => {
+    await showTickets(page);
+    await page.evaluate(() => openTicketDetail('1'));
+    await page.evaluate(() => openTicketDetail('2'));
+    await page.evaluate(() => window.__releaseFresh('1'));
+    assert.equal(await thread(page), 'other ticket');
 });
 
 test('a ticket shows its due date only when RT has one', RT_VIEW, async ({ page }) => {

@@ -37,6 +37,7 @@ PLUGIN_METADATA = {
     "has_counts": True,
     "has_sync": True,
     "has_import_export": True,
+    "local_stores": ["discussions"],
 }
 
 DISCUSSIONS_FILE = "data.json"

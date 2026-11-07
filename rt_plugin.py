@@ -55,6 +55,7 @@ PLUGIN_METADATA = {
     "has_counts": True,
     "has_sync": True,
     "has_import_export": True,
+    "local_stores": ["tickets", "ticket_history"],
 }
 
 CONFIG_FILE = plugin_common.CONFIG_FILE

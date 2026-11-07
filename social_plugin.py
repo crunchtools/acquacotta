@@ -46,6 +46,7 @@ PLUGIN_METADATA = {
     "has_counts": False,
     "has_sync": False,
     "has_import_export": False,
+    "local_stores": ["social_cache"],
 }
 
 CONFIG_FILE = plugin_common.CONFIG_FILE

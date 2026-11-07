@@ -23,6 +23,7 @@ PLUGIN_METADATA = {
     "has_sync": True,
     "has_import_export": True,
     "has_history_decorators": True,
+    "local_stores": ["todos", "todo_lists"],
 }
 
 TODOS_FILE = "data.json"

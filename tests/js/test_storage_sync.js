@@ -173,6 +173,62 @@ test('a report for an unknown period is an error', async ({ page }) => {
     assert.deepEqual(await page.evaluate(() => Storage.getReport('year', '2026-11-03', 'UTC')), { error: 'Invalid period' });
 });
 
+const HISTORY = 'GET /api/rt/ticket/7/history';
+const contents = history => (history || []).map(t => t.content);
+
+test('an uncached ticket thread waits for RT, then is cached', async ({ page }) => {
+    assert.deepEqual(contents(await page.evaluate(() => Storage.getTicketHistory('7'))), ['first']);
+    const cached = await page.evaluate(() => Storage.getCached('ticket_history', '7'));
+    assert.deepEqual(contents(cached), ['first']);
+});
+
+test('a cached ticket thread returns at once and onFresh gets the newer copy', async ({ page }) => {
+    await page.evaluate(() => Storage.getTicketHistory('7'));
+    await page.evaluate(r => {
+        __net.respond(r, 200, { history: [{ id: 't1', content: 'first' }, { id: 't2', content: 'reply' }] });
+        __net.hold(r);
+        window.__fresh = [];
+    }, HISTORY);
+    // RT is held: the cached thread comes back without waiting for it.
+    const shown = await page.evaluate(() => Storage.getTicketHistory('7', h => window.__fresh.push(h)));
+    assert.deepEqual(contents(shown), ['first']);
+    await page.evaluate(r => __net.release(r), HISTORY);
+    await page.waitForFunction(() => window.__fresh.length === 1);
+    assert.deepEqual(contents(await page.evaluate(() => window.__fresh[0])), ['first', 'reply']);
+    assert.deepEqual(contents(await page.evaluate(() => Storage.getCached('ticket_history', '7'))), ['first', 'reply']);
+});
+
+test('an unchanged refresh does not call onFresh', async ({ page }) => {
+    await page.evaluate(() => Storage.getTicketHistory('7'));
+    await page.evaluate(() => { window.__fresh = 0; return Storage.getTicketHistory('7', () => window.__fresh++); });
+    await page.waitForFunction(r => __net.count(r) === 2, {}, HISTORY);
+    await page.evaluate(() => new Promise(r => requestAnimationFrame(r)));
+    assert.equal(await page.evaluate(() => window.__fresh), 0);
+});
+
+test('a failed refresh keeps the cached thread', async ({ page }) => {
+    await page.evaluate(() => Storage.getTicketHistory('7'));
+    await page.evaluate(r => __net.respond(r, 502, { error: 'RT down' }), HISTORY);
+    assert.deepEqual(contents(await page.evaluate(() => Storage.getTicketHistory('7'))), ['first']);
+    await page.waitForFunction(r => __net.count(r) === 2, {}, HISTORY);
+    assert.deepEqual(contents(await page.evaluate(() => Storage.getCached('ticket_history', '7'))), ['first']);
+});
+
+test('sign-out clears the RT and Postiz copies but keeps local todos', async ({ page }) => {
+    await page.evaluate(() => Storage.getTicketHistory('7'));
+    await page.evaluate(() => Storage.putCached('social_cache', 'channels', { integrations: [] }));
+    await createTodo(page, 'keep me');
+    await page.evaluate(() => Storage.logout());
+    assert.equal(await page.evaluate(() => Storage.getCached('ticket_history', '7')), null);
+    assert.equal(await page.evaluate(() => Storage.getCached('social_cache', 'channels')), null);
+    assert.deepEqual(await todoTitles(page), ['keep me']);
+});
+
+test("Social's localStorage copy moves into IndexedDB on upgrade", async ({ page }) => {
+    assert.deepEqual(await page.evaluate(() => Storage.getCached('social_cache', 'selection')), ['m1']);
+    assert.equal(await page.evaluate(() => localStorage.getItem('acquacotta_social_selection')), null);
+});
+
 (async () => {
     const send = (res, type, body) => { res.writeHead(200, { 'Content-Type': type }); res.end(body); };
     const server = http.createServer((req, res) => {

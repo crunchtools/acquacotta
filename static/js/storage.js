@@ -16,7 +16,7 @@
 
     // IndexedDB configuration
     const DB_NAME = 'acquacotta';
-    const DB_VERSION = 5;  // Bumped for RT tickets store
+    const DB_VERSION = 6;  // Bumped for the social_cache store
 
     // Debounce window before a local change is pushed to the cloud backend.
     const DISCUSSION_SYNC_DEBOUNCE_MS = 2000;
@@ -35,7 +35,36 @@
         TODO_LISTS: 'todo_lists',
         DISCUSSIONS: 'discussions',
         TICKETS: 'tickets',
-        TICKET_HISTORY: 'ticket_history'
+        TICKET_HISTORY: 'ticket_history',
+        SOCIAL_CACHE: 'social_cache'
+    };
+
+    // Every object store, created by onupgradeneeded from this table. A plugin
+    // with a tab names its stores in PLUGIN_METADATA["local_stores"] and
+    // tests/test_plugin_local_stores.py checks each one is listed here.
+    // `cache: true` marks a copy of data some other system owns (RT, Postiz):
+    // safe to drop, so sign-out clears it rather than leave it for the next account.
+    const STORE_SCHEMA = [
+        { name: STORES.POMODOROS, keyPath: 'id', indexes: ['start_time', 'type', 'synced'] },
+        { name: STORES.SETTINGS, keyPath: 'key' },
+        { name: STORES.SYNC_QUEUE, keyPath: 'id', autoIncrement: true, indexes: ['created_at'] },
+        { name: STORES.SYNC_STATUS, keyPath: 'key' },
+        // OAuth credentials live here, which keeps the server stateless
+        { name: STORES.AUTH, keyPath: 'key' },
+        { name: STORES.TODOS, keyPath: 'id', indexes: ['list_id', 'status'] },
+        { name: STORES.TODO_LISTS, keyPath: 'id' },
+        { name: STORES.DISCUSSIONS, keyPath: 'id', indexes: ['person', 'status'] },
+        { name: STORES.TICKETS, keyPath: 'id', indexes: ['queue', 'status'], cache: true },
+        // Read-through records: { id, value, cached_at } (see readThrough)
+        { name: STORES.TICKET_HISTORY, keyPath: 'id', cache: true },
+        { name: STORES.SOCIAL_CACHE, keyPath: 'id', cache: true },
+    ];
+
+    // Social's Postiz copies lived in localStorage before v6; moved on upgrade.
+    const LEGACY_SOCIAL_KEYS = {
+        acquacotta_social_channels: 'channels',
+        acquacotta_social_posts: 'posts',
+        acquacotta_social_selection: 'selection',
     };
 
     // Default settings (mirrors backend defaults)
@@ -130,68 +159,30 @@
 
             request.onupgradeneeded = (event) => {
                 const database = event.target.result;
+                const tx = event.target.transaction;
 
-                // Pomodoros store
-                if (!database.objectStoreNames.contains(STORES.POMODOROS)) {
-                    const pomodorosStore = database.createObjectStore(STORES.POMODOROS, { keyPath: 'id' });
-                    pomodorosStore.createIndex('start_time', 'start_time', { unique: false });
-                    pomodorosStore.createIndex('type', 'type', { unique: false });
-                    pomodorosStore.createIndex('synced', 'synced', { unique: false });
+                for (const def of STORE_SCHEMA) {
+                    if (database.objectStoreNames.contains(def.name)) continue;
+                    const store = database.createObjectStore(def.name, { keyPath: def.keyPath, autoIncrement: !!def.autoIncrement });
+                    for (const index of def.indexes || []) store.createIndex(index, index, { unique: false });
                 }
 
-                // Settings store
-                if (!database.objectStoreNames.contains(STORES.SETTINGS)) {
-                    database.createObjectStore(STORES.SETTINGS, { keyPath: 'key' });
+                // v5 cached a thread as { id, history }; it is a cache, so drop it
+                // rather than carry two record shapes.
+                if (event.oldVersion >= 5 && event.oldVersion < 6) {
+                    tx.objectStore(STORES.TICKET_HISTORY).clear();
                 }
-
-                // Sync queue store
-                if (!database.objectStoreNames.contains(STORES.SYNC_QUEUE)) {
-                    const syncStore = database.createObjectStore(STORES.SYNC_QUEUE, { keyPath: 'id', autoIncrement: true });
-                    syncStore.createIndex('created_at', 'created_at', { unique: false });
-                }
-
-                // Sync status store
-                if (!database.objectStoreNames.contains(STORES.SYNC_STATUS)) {
-                    database.createObjectStore(STORES.SYNC_STATUS, { keyPath: 'key' });
-                }
-
-                // Auth store (for OAuth credentials - keeps server stateless)
-                if (!database.objectStoreNames.contains(STORES.AUTH)) {
-                    database.createObjectStore(STORES.AUTH, { keyPath: 'key' });
-                }
-
-                // Todos store
-                if (!database.objectStoreNames.contains(STORES.TODOS)) {
-                    const todosStore = database.createObjectStore(STORES.TODOS, { keyPath: 'id' });
-                    todosStore.createIndex('list_id', 'list_id', { unique: false });
-                    todosStore.createIndex('status', 'status', { unique: false });
-                }
-
-                // Todo lists store
-                if (!database.objectStoreNames.contains(STORES.TODO_LISTS)) {
-                    database.createObjectStore(STORES.TODO_LISTS, { keyPath: 'id' });
-                }
-
-                // Discussions store (conversations to have, organized by person)
-                if (!database.objectStoreNames.contains(STORES.DISCUSSIONS)) {
-                    const discussionsStore = database.createObjectStore(STORES.DISCUSSIONS, { keyPath: 'id' });
-                    discussionsStore.createIndex('person', 'person', { unique: false });
-                    discussionsStore.createIndex('status', 'status', { unique: false });
-                }
-
-                // RT tickets store — a read-through cache of the user's Request
-                // Tracker tickets (RT is the source of truth; this is for offline
-                // reads only). Grouped by queue in the UI.
-                if (!database.objectStoreNames.contains(STORES.TICKETS)) {
-                    const ticketsStore = database.createObjectStore(STORES.TICKETS, { keyPath: 'id' });
-                    ticketsStore.createIndex('queue', 'queue', { unique: false });
-                    ticketsStore.createIndex('status', 'status', { unique: false });
-                }
-
-                // RT ticket history — cached per ticket id so the thread serves
-                // offline (constitution: the IndexedDB cache serves all reads).
-                if (!database.objectStoreNames.contains(STORES.TICKET_HISTORY)) {
-                    database.createObjectStore(STORES.TICKET_HISTORY, { keyPath: 'id' });
+                if (event.oldVersion < 6) {
+                    try {
+                        const social = tx.objectStore(STORES.SOCIAL_CACHE);
+                        for (const [legacy, id] of Object.entries(LEGACY_SOCIAL_KEYS)) {
+                            const raw = localStorage.getItem(legacy);
+                            if (raw) social.put({ id, value: JSON.parse(raw), cached_at: Date.now() });
+                            localStorage.removeItem(legacy);
+                        }
+                    } catch (e) {
+                        console.warn('Could not move the Social cache out of localStorage:', e);
+                    }
                 }
             };
         });
@@ -1114,6 +1105,14 @@
             cachedSpreadsheetId = null;  // Clear cached value (will reload from SETTINGS on next init)
             // Clear sync status so next login will re-sync from Sheet
             await clearStore(STORES.SYNC_STATUS);
+            // Copies of RT/Postiz data belong to the account leaving
+            for (const def of STORE_SCHEMA.filter(d => d.cache)) {
+                try {
+                    await clearStore(def.name);
+                } catch (e) {
+                    console.warn(`Logout: could not clear ${def.name}:`, e);
+                }
+            }
             authStatus = { logged_in: false, google_configured: true };
             dispatchSyncStatusEvent();
         },
@@ -2114,6 +2113,43 @@
             }
         },
 
+        /**
+         * Cache-first read of one record a remote system owns: the shared way a
+         * plugin keeps its data local. Returns the cached value straight away and
+         * refreshes in the background, passing the fresh value to onFresh when it
+         * changed. With nothing cached it waits for the fetch; offline it returns
+         * the cache, or null when there is none.
+         * @param {string} storeName - a STORE_SCHEMA store with keyPath 'id'
+         * @param {string} key - record id
+         * @param {function(): Promise<*>} fetcher - loads the live value
+         * @param {function(*)} [onFresh] - called with a newer value
+         * @returns {Promise<*>}
+         */
+        readThrough: async function(storeName, key, fetcher, onFresh) {
+            const cached = await getFromStore(storeName, key);
+            if (!isOnline) return cached ? cached.value : null;
+            const refresh = fetcher().then(async value => {
+                await putInStore(storeName, { id: key, value, cached_at: Date.now() });
+                return value;
+            });
+            if (!cached) return refresh;
+            refresh.then(value => {
+                if (onFresh && JSON.stringify(value) !== JSON.stringify(cached.value)) onFresh(value);
+            }).catch(e => console.warn(`${storeName}/${key}: refresh failed, showing the cached copy:`, e));
+            return cached.value;
+        },
+
+        // Plain get/put for a cache-store record ({ id, value, cached_at }).
+        getCached: async function(storeName, key) {
+            const record = await getFromStore(storeName, key);
+            return record ? record.value : null;
+        },
+
+        putCached: async function(storeName, key, value) {
+            if (value === null || value === undefined) return deleteFromStore(storeName, key);
+            return putInStore(storeName, { id: key, value, cached_at: Date.now() });
+        },
+
         // RT Tickets — read-through cache. RT is the source of truth: we pull tickets
         // live from RT (through the server proxy) and cache them for offline reads;
         // we never push ticket data back to the cloud. Writes (reply/comment/status)
@@ -2168,25 +2204,15 @@
             }
         },
 
-        // History is cached per ticket so the thread serves offline. Online, fetch
-        // fresh and update the cache; offline or on failure, fall back to the cache.
-        getTicketHistory: async function(id) {
+        // History is cached per ticket so the thread serves offline. A cached
+        // thread paints at once and onFresh gets RT's copy when it arrives.
+        getTicketHistory: async function(id, onFresh) {
             const key = String(id);
-            const cached = await getFromStore(STORES.TICKET_HISTORY, key);
-            if (!isOnline) return cached ? cached.history : [];
-            try {
+            return this.readThrough(STORES.TICKET_HISTORY, key, async () => {
                 const res = await authenticatedFetch(`/api/rt/ticket/${encodeURIComponent(key)}/history`);
-                if (!res.ok) {
-                    if (cached) return cached.history;
-                    throw new Error(await apiErrorMessage(res));
-                }
-                const history = (await res.json()).history || [];
-                await putInStore(STORES.TICKET_HISTORY, { id: key, history, cached_at: Date.now() });
-                return history;
-            } catch (fetchErr) {
-                if (cached) return cached.history;
-                throw fetchErr;
-            }
+                if (!res.ok) throw new Error(await apiErrorMessage(res));
+                return (await res.json()).history || [];
+            }, onFresh);
         },
 
         getRTConfig: async function() {

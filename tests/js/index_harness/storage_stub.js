@@ -7,6 +7,10 @@
  *   auth         what getAuthStatus() returns (default: logged out)
  *   rtConfig     what getRTConfig() returns
  *   tickets      what getTickets() returns (the cached RT tickets)
+ *   ticketHistory  { id: { cached, fresh } }: getTicketHistory() returns `cached`
+ *                and hands `fresh` to onFresh when window.__releaseFresh(id) runs
+ *   cache        IndexedDB cache records, { store: { id: value } }, behind
+ *                getCached()/putCached(); window.__cache is the live copy
  *   socialIntegrations  what getSocialIntegrations() returns
  *   socialIntegrationsDelayMs  hold that answer this long (to see the cached render)
  *   socialDraft  what socialDraft() returns (the call is recorded)
@@ -26,6 +30,7 @@
     const clone = v => JSON.parse(JSON.stringify(v));
     const settings = clone(cfg.settings || {});
     const calls = window.__storageCalls = [];
+    const cache = window.__cache = clone(cfg.cache || {});
     const json = body => new Response(JSON.stringify(body), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -34,6 +39,7 @@
     let release = () => {};
     const pluginGate = cfg.holdPlugins ? new Promise(r => { release = r; }) : Promise.resolve();
     window.__releasePlugins = () => release();
+    window.__releaseFresh = id => window.__freshWaiting[id]();
 
     const impl = {
         getSettings: async () => clone(settings),
@@ -60,6 +66,17 @@
         authenticatedFetch: async () => json({}),
         getRTConfig: async () => clone(cfg.rtConfig || {}),
         getTickets: async () => clone(cfg.tickets || []),
+        getTicketHistory: async (id, onFresh) => {
+            const h = (cfg.ticketHistory || {})[id] || {};
+            (window.__freshWaiting = window.__freshWaiting || {})[id] = () => onFresh && onFresh(clone(h.fresh));
+            return clone(h.cached || []);
+        },
+        getCached: async (store, key) => clone((cache[store] || {})[key] ?? null),
+        putCached: async (store, key, value) => {
+            cache[store] = cache[store] || {};
+            if (value === null || value === undefined) delete cache[store][key];
+            else cache[store][key] = clone(value);
+        },
         getSocialIntegrations: async () => {
             calls.push(['getSocialIntegrations']);
             if (cfg.socialIntegrationsDelayMs) await new Promise(r => setTimeout(r, cfg.socialIntegrationsDelayMs));
