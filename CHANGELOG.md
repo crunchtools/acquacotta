@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Checklists plugin backend (#87): recurring daily/weekly/monthly/quarterly checklist
+  templates and run history stored in `plugins/checklists/data.json`
+  (`GET`/`POST /api/checklists/sync`). Whether a checklist is due is derived at read time
+  from its schedule and last completed run, never stored. The tab UI (template editor,
+  runner, history, dashboard widget) is not part of this change.
+
 ## [2.34.0] - 2026-11-07
 
 ### Added
