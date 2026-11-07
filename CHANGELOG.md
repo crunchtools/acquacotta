@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.34.0] - 2026-11-07
+
 ### Added
 - Plugin local-cache contract. A plugin with a tab declares its IndexedDB stores in
   `PLUGIN_METADATA["local_stores"]`; `plugin_registry.register()` refuses one that
@@ -24,11 +26,6 @@ All notable changes to this project are documented here. The format follows
   re-running adds nothing new and later runs add only newly logged time. Reports entries
   read, records created and entries skipped. `time_summary` takes `include_imported=False`
   to leave imported records out.
-- Timer Sync plugin backend: `GET`/`POST /api/timer-sync` share the running timer
-  through `plugins/timer-sync/synchronization.json` in the user's storage. Remaining
-  time is computed from `start_time` and `duration_minutes`, never stored. Writes are
-  last-writer-wins (the storage layer has no compare-and-swap); an owner with no
-  check-in for 3 minutes (3 x the 60 s cadence) is stale and the timer reads as idle.
 
 ### Fixed
 - Opening a ticket waited on RT even when its thread was cached. The cached thread now
@@ -41,6 +38,28 @@ All notable changes to this project are documented here. The format follows
   with "resolves to a non-public address" on a deployment whose RT is reached at a
   private address (the documented topology when RT sits behind an auth proxy). The web
   path already passed it; `mcp.service` now does too.
+- `timer_sync_plugin.py` was not copied into the container image, so the Timer Sync
+  plugin shipped in 2.33.0 could not load in production.
+
+### Changed
+- CI fails when a module `app.py` imports is missing from the image, so the class of
+  break above cannot reach a release again.
+- python-sdlc v0.5.2.
+
+## [2.33.0] - 2026-11-07
+
+### Added
+- Timer Sync plugin backend: `GET`/`POST /api/timer-sync` share the running timer
+  through `plugins/timer-sync/synchronization.json` in the user's storage. Remaining
+  time is computed from `start_time` and `duration_minutes`, never stored. Writes are
+  last-writer-wins (the storage layer has no compare-and-swap); an owner with no
+  check-in for 3 minutes (3 x the 60 s cadence) is stale and the timer reads as idle.
+
+### Fixed
+- Flask handlers returned raw exception text to the caller. Errors now carry a
+  correlation id and the detail stays in the log.
+- Pruned the CodeQL baseline entries whose SSRF findings are fixed, and justified
+  the rest, so the baseline reflects the code.
 
 ### Security
 - The pCloud OAuth callback no longer honours a caller-supplied `hostname`, which
