@@ -19,6 +19,12 @@ All notable changes to this project are documented here. The format follows
   last-writer-wins (the storage layer has no compare-and-swap); an owner with no
   check-in for 3 minutes (3 x the 60 s cadence) is stale and the timer reads as idle.
 
+### Fixed
+- The MCP server never received `RT_ALLOWED_HOSTS`, so every RT tool over MCP failed
+  with "resolves to a non-public address" on a deployment whose RT is reached at a
+  private address (the documented topology when RT sits behind an auth proxy). The web
+  path already passed it; `mcp.service` now does too.
+
 ### Security
 - The pCloud OAuth callback no longer honours a caller-supplied `hostname`, which
   could have sent `PCLOUD_CLIENT_SECRET` to an arbitrary host. The API host now

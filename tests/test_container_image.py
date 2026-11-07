@@ -59,10 +59,10 @@ def _imports(path):
     return names
 
 
-def _required_local_modules():
-    """Transitive closure of repo-local modules reachable from the entrypoints."""
+def _required_local_modules(roots=ENTRYPOINTS):
+    """Transitive closure of repo-local modules reachable from ``roots``."""
     local = _local_modules()
-    seen, queue = set(), list(ENTRYPOINTS)
+    seen, queue = set(), list(roots)
     while queue:
         current = queue.pop()
         path = ROOT / current
@@ -85,11 +85,7 @@ def test_entrypoint_exists(entrypoint):
 
 def test_every_required_local_module_is_copied_into_the_image():
     copied = _copied_paths()
-    missing = sorted(
-        name
-        for name in _required_local_modules()
-        if f"{name}.py" not in copied and name not in copied
-    )
+    missing = sorted(name for name in _required_local_modules() if f"{name}.py" not in copied and name not in copied)
     assert not missing, (
         "These modules are imported inside the image but never COPYed into it, so the "
         "container will die on boot with ModuleNotFoundError. Add a COPY line to the "
@@ -101,7 +97,7 @@ def test_boot_guard_covers_every_copied_local_module():
     """The Containerfile's import guard must not drift behind the COPY list."""
     text = CONTAINERFILE.read_text()
     guard = re.search(r'RUN python3 -c "import (?P<mods>[^"]+)"', text)
-    assert guard, "the Containerfile boot guard (RUN python3 -c \"import ...\") is gone"
+    assert guard, 'the Containerfile boot guard (RUN python3 -c "import ...") is gone'
     guarded = {name.strip() for name in guard.group("mods").split(",")}
 
     # app.py itself needs runtime env to import, so it is legitimately excluded.
@@ -113,4 +109,44 @@ def test_boot_guard_covers_every_copied_local_module():
     assert not missing, (
         "The Containerfile boot guard does not import these modules, so a missing COPY "
         f"would not fail the build: {', '.join(missing)}"
+    )
+
+
+# Each entrypoint runs under its own systemd unit inside the image, and a unit only
+# sees the environment it lists in PassEnvironment.
+ENTRYPOINT_UNITS = {"app.py": ROOT / "static/gunicorn.service", "mcp_server.py": ROOT / "static/mcp.service"}
+
+# Operator security controls, read through plugin_common.check_destination. An
+# entrypoint whose code consults one but whose unit does not pass it fails closed:
+# every call is refused as "resolves to a non-public address", which is how the RT
+# tools over MCP broke while the same code worked over the web.
+_ALLOWLIST_ENV_RE = re.compile(r"\b([A-Z][A-Z0-9_]*_ALLOWED_HOSTS)\b")
+
+
+def _pass_environment(unit):
+    """Names listed in a unit file's PassEnvironment lines."""
+    names = set()
+    for line in unit.read_text().splitlines():
+        if line.startswith("PassEnvironment="):
+            names.update(line.split("=", 1)[1].split())
+    return names
+
+
+@pytest.mark.parametrize("entrypoint", sorted(ENTRYPOINT_UNITS))
+def test_unit_passes_every_allowlist_env_its_code_reads(entrypoint):
+    unit = ENTRYPOINT_UNITS[entrypoint]
+    assert unit.exists(), f"{unit.name} is missing from the repo"
+
+    sources = [ROOT / entrypoint] + [
+        ROOT / f"{name}.py" for name in _required_local_modules([entrypoint]) if (ROOT / f"{name}.py").exists()
+    ]
+    needed = set()
+    for source in sources:
+        needed.update(_ALLOWLIST_ENV_RE.findall(source.read_text()))
+
+    missing = sorted(needed - _pass_environment(unit))
+    assert not missing, (
+        f"{entrypoint} reads these allowlists but {unit.name} does not pass them, so "
+        f"inside the image they are unset and every destination check fails closed: "
+        f"{', '.join(missing)}"
     )
