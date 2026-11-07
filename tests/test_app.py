@@ -311,12 +311,12 @@ class TestExceptionLogging:
     """_log_exception writes one sanitized line whose id matches the client's."""
 
     def _raise_and_respond(self):
-        try:
-            raise RuntimeError("first line\r\nFAKE forged entry\nthird")
-        except RuntimeError as exc:
-            with app_module.app.app_context():
+        with app_module.app.app_context():
+            try:
+                raise RuntimeError("first line\r\nFAKE forged entry\nthird")
+            except RuntimeError as exc:
                 resp, status = app_module._error_response(exc)
-                return resp.get_json(), status
+            return resp.get_json(), status
 
     def test_log_entry_is_single_sanitized_line(self, monkeypatch):
         logged = []
