@@ -381,6 +381,17 @@
     }
 
     /**
+     * Whether an RT status is a closed one (resolved, rejected, deleted).
+     * Everything else, custom lifecycle statuses included, counts as active.
+     *
+     * @param {string} status - RT ticket status
+     * @returns {boolean}
+     */
+    function rtStatusIsClosed(status) {
+        return ['resolved', 'rejected', 'deleted'].indexOf(String(status || '').toLowerCase()) !== -1;
+    }
+
+    /**
      * The sub-tab a route names, as [kind, id], or null when it names an item or
      * the view keeps no sub-tab memory. Also validates a record read back from
      * IndexedDB, so a stale or hand-edited one is ignored rather than applied.
@@ -462,6 +473,7 @@
         parseRoute: parseRoute,
         formatRoute: formatRoute,
         subTabOf: subTabOf,
+        rtStatusIsClosed: rtStatusIsClosed,
         socialPostsCacheUsable: socialPostsCacheUsable,
         buildRTConfigPayload: buildRTConfigPayload
     };

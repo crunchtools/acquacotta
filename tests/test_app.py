@@ -257,6 +257,9 @@ class TestRTEndpoints:
     def test_sync_requires_auth(self, client):
         assert client.get("/api/rt/sync").status_code == 401
 
+    def test_sync_closed_scope_requires_auth(self, client):
+        assert client.get("/api/rt/sync?scope=closed").status_code == 401
+
     def test_test_requires_auth(self, client):
         assert client.post("/api/rt/test", json={}).status_code == 401
 
@@ -265,6 +268,35 @@ class TestRTEndpoints:
 
     def test_reply_requires_auth(self, client):
         assert client.post("/api/rt/ticket/5/reply", json={"content": "hi"}).status_code == 401
+
+
+class TestRTSync:
+    """GET /api/rt/sync picks the saved search or its closed counterpart."""
+
+    @pytest.fixture
+    def queries(self, monkeypatch):
+        seen = []
+        cfg = rt_plugin.validate_config(
+            {"base_url": "http://rt", "rest_token": "t", "query": "Queue = 'Deploy' AND Status != 'resolved'"}
+        )
+        monkeypatch.setattr(app_module, "_plugin_drive_context", lambda: (object(), "folder"))
+        monkeypatch.setattr(rt_plugin, "read_config", lambda _s, _f: dict(cfg))
+        monkeypatch.setattr(rt_plugin, "fetch_tickets", lambda _c, query=None: seen.append(query) or [])
+        return seen
+
+    def test_default_scope_is_the_saved_search(self, client, queries):
+        assert client.get("/api/rt/sync").get_json() == {"tickets": [], "configured": True}
+        assert queries == [None]
+
+    def test_closed_scope_drops_status_terms(self, client, queries):
+        assert client.get("/api/rt/sync?scope=closed").status_code == 200
+        assert queries[0].startswith(
+            "(Queue = 'Deploy') AND (Status = 'resolved' OR Status = 'rejected') AND LastUpdated > "
+        )
+
+    def test_unknown_scope_is_refused(self, client, queries):
+        assert client.get("/api/rt/sync?scope=everything").status_code == 400
+        assert queries == []
 
 
 class TestRTConfigSave:

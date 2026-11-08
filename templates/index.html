@@ -1117,8 +1117,7 @@
             <div class="todo-toolbar">
                 <button class="secondary" onclick="refreshTickets()" style="padding: 0.5rem 1rem; font-size: 0.875rem;" title="Reload tickets from RT">&#8635; Refresh</button>
                 <select id="rt-status-filter" onchange="setTicketStatusFilter(this.value)" style="margin-left: auto;">
-                    <option value="open">Status: Open</option>
-                    <option value="all">Status: All</option>
+                    <option value="active">Status: Active</option>
                 </select>
                 <select id="rt-sort" onchange="setTicketSort(this.value)">
                     <option value="updated">Sort: Last Updated</option>
@@ -7003,7 +7002,12 @@
         let rtTicketsLoaded = false;  // until then no queue is known, so none is missing
         let rtQueues = [];
         let rtSelectedQueue = 'all';
-        let rtStatusFilter = 'open';
+        // 'active' (not closed), 'all', or one RT status. Kept per device, like a sub-tab.
+        let rtStatusFilter = 'active';
+        const RT_STATUS_KEY = 'rt:status';
+        // RT's default lifecycle, in order: the status filter, then any custom
+        // status seen on a ticket, and the ticket editor's choices.
+        const RT_STATUSES = ['new', 'open', 'stalled', 'resolved', 'rejected'];
         let rtCurrentTicketId = null;
         // Per-queue sort preferences ({ queue|'all': sortMode }), persisted like
         // todo_sort_orders. There is no manual mode: RT owns the ticket order.
@@ -7011,8 +7015,24 @@
         let rtSortOrders = {};
 
         function rtStatusIsOpen(status) {
-            const s = (status || '').toLowerCase();
-            return s !== 'resolved' && s !== 'rejected' && s !== 'deleted';
+            return !AcquacottaUtils.rtStatusIsClosed(status);
+        }
+
+        function rtStatusMatches(t) {
+            if (rtStatusFilter === 'all') return true;
+            if (rtStatusFilter === 'active') return rtStatusIsOpen(t.status);
+            return (t.status || '').toLowerCase() === rtStatusFilter;
+        }
+
+        function renderTicketStatusOptions() {
+            const seen = rtTickets.map(t => (t.status || '').toLowerCase()).filter(s => s && !RT_STATUSES.includes(s));
+            const statuses = [...RT_STATUSES, ...[...new Set(seen)].sort()];
+            if (!['active', 'all', ...statuses].includes(rtStatusFilter)) statuses.push(rtStatusFilter);
+            const label = s => s.charAt(0).toUpperCase() + s.slice(1);
+            const sel = document.getElementById('rt-status-filter');
+            sel.innerHTML = ['active', ...statuses, 'all']
+                .map(s => `<option value="${escapeHtml(s)}">Status: ${escapeHtml(label(s))}</option>`).join('');
+            sel.value = rtStatusFilter;
         }
 
         // RT reports an unset date as the epoch (or "Not set"); treat both as empty.
@@ -7049,8 +7069,12 @@
         }
 
         function renderTickets() {
-            const visibleForBar = rtStatusFilter === 'open' ? rtTickets.filter(t => rtStatusIsOpen(t.status)) : rtTickets;
-            rtQueues = [...new Set(visibleForBar.map(t => (t.queue || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+            // Queues with tickets in this status, plus the chosen one while it has
+            // any ticket at all, so switching status doesn't drop the queue.
+            const queueOf = t => (t.queue || '').trim();
+            const inBar = new Set(rtTickets.filter(rtStatusMatches).map(queueOf).filter(Boolean));
+            if (rtSelectedQueue !== 'all' && rtTickets.some(t => queueOf(t) === rtSelectedQueue)) inBar.add(rtSelectedQueue);
+            rtQueues = [...inBar].sort((a, b) => a.localeCompare(b));
             // A deep link (#rt/queue/X, kept across a reload) renders before the
             // cache is read; resetting then would drop the queue it names.
             if (rtTicketsLoaded && rtSelectedQueue !== 'all' && !rtQueues.includes(rtSelectedQueue)) rtSelectedQueue = 'all';
@@ -7060,13 +7084,12 @@
             barHtml += rtQueues.map((q, i) => `<button class="${rtSelectedQueue === q ? 'active' : ''}" onclick="selectTicketQueueByIndex(${i})">${escapeHtml(q)}</button>`).join('');
             bar.innerHTML = barHtml;
 
-            const statusSel = document.getElementById('rt-status-filter');
-            if (statusSel) statusSel.value = rtStatusFilter;
+            renderTicketStatusOptions();
             const sortSel = document.getElementById('rt-sort');
             if (sortSel) sortSel.value = rtSortOrder;
 
             let filtered = rtTickets;
-            if (rtStatusFilter === 'open') filtered = filtered.filter(t => rtStatusIsOpen(t.status));
+            filtered = filtered.filter(rtStatusMatches);
             if (rtSelectedQueue !== 'all') filtered = filtered.filter(t => (t.queue || '').trim() === rtSelectedQueue);
             filtered = sortTickets(filtered.slice());
 
@@ -7115,7 +7138,20 @@
                 await openTicketDetail(id);
             },
         };
-        function setTicketStatusFilter(v) { rtStatusFilter = v; renderTickets(); }
+        function setTicketStatusFilter(v) {
+            rtStatusFilter = v;
+            renderTickets();
+            Storage.putCached(SUBTAB_STORE, RT_STATUS_KEY, v).catch(e => console.warn('Could not remember the ticket status:', e));
+        }
+
+        async function restoreTicketStatusFilter() {
+            try {
+                const v = await Storage.getCached(SUBTAB_STORE, RT_STATUS_KEY);
+                if (typeof v === 'string' && /^[a-z_]+$/.test(v)) rtStatusFilter = v;
+            } catch (e) {
+                console.warn('Could not restore the ticket status:', e);
+            }
+        }
 
         function setTicketSort(value) {
             rtSortOrder = value;
@@ -7202,8 +7238,7 @@
             syncRoute('rt');
         }
 
-        // RT's default lifecycle. A ticket in a custom status keeps it as an option.
-        const RT_STATUSES = ['new', 'open', 'stalled', 'resolved', 'rejected'];
+        // A ticket in a custom status keeps it as an option (see RT_STATUSES).
         let rtOriginalStatus = '';
 
         function fillTicketStatuses(current) {
@@ -8858,7 +8893,7 @@
             await Storage.openDatabase();
             await loadSettings();
             // Each tab's last sub-tab, before anything renders one
-            await restoreSubTabs();
+            await Promise.all([restoreSubTabs(), restoreTicketStatusFilter()]);
 
             // Phase 2: Run auth (network) and view rendering (IndexedDB) in parallel.
             await Promise.all([

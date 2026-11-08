@@ -5,7 +5,9 @@
  * consumePendingAuth() to write into IndexedDB during Storage.init().
  *
  * window.__net    fetch stub: records every call, answers from per-route handlers,
- *                 and can hold a route until the test releases it.
+ *                 and can hold a route until the test releases it. A route
+ *                 with a query ('GET /api/rt/sync?scope=closed') wins over
+ *                 the bare path for a request carrying exactly that query.
  * window.__timers setTimeout/clearTimeout stub: timers never fire on their own; the
  *                 test fires them, so retry and debounce delays are inspectable.
  *
@@ -53,7 +55,9 @@
     };
 
     window.fetch = function(url, options = {}) {
-        const route = `${(options.method || 'GET').toUpperCase()} ${new URL(url, location.href).pathname}`;
+        const u = new URL(url, location.href);
+        const bare = `${(options.method || 'GET').toUpperCase()} ${u.pathname}`;
+        const route = u.search && (routes[bare + u.search] || held[bare + u.search]) ? bare + u.search : bare;
         window.__net.calls.push({ route, body: options.body ? JSON.parse(options.body) : null });
         if (held[route]) return new Promise(resolve => held[route].push(resolve));
         return Promise.resolve(routes[route] ? routes[route]() : json(404, { error: 'not stubbed' }));

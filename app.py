@@ -20,6 +20,7 @@ import os
 import time
 import traceback
 import uuid
+from datetime import date
 from functools import cache
 from http import HTTPStatus
 from pathlib import Path
@@ -1767,15 +1768,23 @@ def api_rt_test():
 
 @app.route("/api/rt/sync", methods=["GET"])
 def api_rt_sync():
-    """Fetch the caller's RT tickets live (read-through). Cached client-side."""
+    """Fetch the caller's RT tickets live (read-through). Cached client-side.
+
+    ``?scope=closed`` returns the saved search's recently resolved and rejected
+    tickets instead (rt_plugin.closed_query); the default is the search itself.
+    """
     drive_service, folder_id = _plugin_drive_context()
     if not drive_service:
         return jsonify({"error": "Not logged in"}), HTTPStatus.UNAUTHORIZED
+    scope = request.args.get("scope", "active")
+    if scope not in ("active", "closed"):
+        return jsonify({"error": "scope must be active or closed"}), HTTPStatus.BAD_REQUEST
     try:
         config = rt_plugin.read_config(drive_service, folder_id)
         if not rt_plugin.config_is_connectable(config):
             return jsonify({"tickets": [], "configured": False})
-        tickets = rt_plugin.fetch_tickets(config)
+        query = rt_plugin.closed_query(config.get("query"), date.today()) if scope == "closed" else None
+        tickets = rt_plugin.fetch_tickets(config, query=query)
     except (ValueError, rt_plugin.RTError) as exc:
         return _rt_error_response(exc)
     except HttpError as e:

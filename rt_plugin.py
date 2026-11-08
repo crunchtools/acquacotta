@@ -66,6 +66,14 @@ PLUGIN_FOLDER = "plugins/rt"
 # name and travels to any instance. Fully editable in the plugin's settings.
 DEFAULT_QUERY = "Owner = '__CurrentUser__' AND Status != 'resolved' AND Status != 'rejected' AND Status != 'deleted'"
 
+# Closed tickets come from the saved search with its Status conditions taken
+# out, so they are from the same queues and people the search picks; only
+# those updated in the last CLOSED_DAYS, to keep the list and the sync small.
+CLOSED_STATUSES = ("resolved", "rejected")
+CLOSED_DAYS = 90
+_STATUS_TERM = re.compile(r"""\bStatus\s*(?:!=|<>|=|NOT\s+LIKE|LIKE)\s*(?:'[^']*'|"[^"]*")""", re.IGNORECASE)
+_GAP = "\x00"  # where a Status term was, until its AND/OR and parentheses go too
+
 # Fields requested from RT for the ticket list. Queue/Owner are RT records; ask RT
 # to inline their Name so we get a flat string without a follow-up fetch.
 _TICKET_FIELDS = "Subject,Status,Queue,Owner,Requestor,Priority,Created,LastUpdated,Due"
@@ -380,6 +388,26 @@ def fetch_tickets(config, query=None):
         if len(tickets) >= _MAX_TICKETS:
             break
     return tickets
+
+
+def without_status(query):
+    """The TicketSQL ``query`` with every Status condition removed ("" if nothing is left)."""
+    q = _STATUS_TERM.sub(_GAP, query or "")
+    previous = None
+    while previous != q:
+        previous = q
+        q = re.sub(r"\(\s*\x00\s*\)", _GAP, q)
+        q = re.sub(r"\x00\s+(?:AND|OR)\s+", "", q, flags=re.IGNORECASE)
+        q = re.sub(r"\s+(?:AND|OR)\s+\x00", "", q, flags=re.IGNORECASE)
+    return q.replace(_GAP, "").strip()
+
+
+def closed_query(query, today):
+    """TicketSQL for the saved search's recently closed tickets (see CLOSED_STATUSES)."""
+    base = without_status(query or DEFAULT_QUERY)
+    statuses = " OR ".join(f"Status = '{s}'" for s in CLOSED_STATUSES)
+    since = (today - timedelta(days=CLOSED_DAYS)).isoformat()
+    return " AND ".join(([f"({base})"] if base else []) + [f"({statuses})", f"LastUpdated > '{since}'"])
 
 
 def _attachment_text(session, config, attachment_id):

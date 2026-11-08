@@ -467,6 +467,37 @@
         return `HTTP ${res.status}`;
     }
 
+    // Replace one scope of the RT ticket cache with RT's copy: 'active' is the
+    // saved search, 'closed' its recently resolved and rejected tickets. Each
+    // drops only its own cached tickets RT no longer returns, so a resolved
+    // ticket leaves the active scope and arrives in the closed one.
+    async function syncTickets(scope) {
+        try {
+            // A stalled request must not leave the tab on "Loading…" forever;
+            // on timeout we fall back to the cached tickets like any other error.
+            const res = await authenticatedFetch(`/api/rt/sync?scope=${scope}`, { signal: AbortSignal.timeout(RT_SYNC_TIMEOUT_MS) });
+            if (!res.ok) {
+                return { ok: false, configured: true, error: await apiErrorMessage(res) };
+            }
+            const payload = await res.json();
+            if (!payload.configured) return { ok: true, configured: false };
+            const remote = payload.tickets || [];
+            const closed = scope === 'closed';
+            const local = await getAllFromStore(STORES.TICKETS);
+            const remoteIds = new Set(remote.map(t => t.id));
+            const toDelete = local
+                .filter(t => global.AcquacottaUtils.rtStatusIsClosed(t.status) === closed && !remoteIds.has(t.id))
+                .map(t => t.id);
+            await bulkDelete(STORES.TICKETS, toDelete);
+            await bulkPut({ [STORES.TICKETS]: remote });
+            return { ok: true, configured: true };
+        } catch (loadErr) {
+            console.error(`RT ${scope} ticket load failed:`, loadErr);
+            const error = loadErr.name === 'TimeoutError' ? 'RT took too long to respond' : loadErr.message;
+            return { ok: false, configured: true, error };
+        }
+    }
+
     /**
      * Fetch a /api/plugins endpoint with the user's credentials attached.
      *
@@ -2219,31 +2250,12 @@
             }
         },
 
+        // The saved search and its recently closed tickets sync side by side, so
+        // the Tickets tab can filter by any RT status offline and at once.
         loadTicketsFromCloud: async function() {
             if (!authStatus || !authStatus.logged_in || !isOnline) return { ok: false, configured: true };
-            try {
-                // A stalled request must not leave the tab on "Loading…" forever;
-                // on timeout we fall back to the cached tickets like any other error.
-                const res = await authenticatedFetch('/api/rt/sync', { signal: AbortSignal.timeout(RT_SYNC_TIMEOUT_MS) });
-                if (!res.ok) {
-                    return { ok: false, configured: true, error: await apiErrorMessage(res) };
-                }
-                const payload = await res.json();
-                if (!payload.configured) return { ok: true, configured: false };
-                const remote = payload.tickets || [];
-                // Full replace: drop cached tickets RT no longer returns (closed, or
-                // dropped out of the query), then write the current set.
-                const local = await getAllFromStore(STORES.TICKETS);
-                const remoteIds = new Set(remote.map(t => t.id));
-                const toDelete = local.filter(t => !remoteIds.has(t.id)).map(t => t.id);
-                await bulkDelete(STORES.TICKETS, toDelete);
-                await bulkPut({ [STORES.TICKETS]: remote });
-                return { ok: true, configured: true };
-            } catch (loadErr) {
-                console.error('RT ticket load failed:', loadErr);
-                const error = loadErr.name === 'TimeoutError' ? 'RT took too long to respond' : loadErr.message;
-                return { ok: false, configured: true, error };
-            }
+            const [active, closed] = await Promise.all([syncTickets('active'), syncTickets('closed')]);
+            return !active.configured || !active.ok ? active : closed;
         },
 
         // History is cached per ticket so the thread serves offline. A cached

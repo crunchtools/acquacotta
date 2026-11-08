@@ -1031,6 +1031,52 @@ test('a queue that is gone once tickets load falls back to All', {
     assert.equal(await page.$eval('#rt-queue-bar button.active', b => b.textContent), 'All');
 });
 
+// The status filter lists RT's own statuses, and is kept per device.
+const STATUS_TICKETS = [
+    { id: '1', subject: 'a', status: 'open', queue: 'Deploy', last_updated: '2026-11-08T03:00:00Z' },
+    { id: '2', subject: 'b', status: 'stalled', queue: 'Deploy', last_updated: '2026-11-08T02:00:00Z' },
+    { id: '3', subject: 'c', status: 'resolved', queue: 'Deploy', last_updated: '2026-11-08T01:00:00Z' },
+    { id: '4', subject: 'd', status: 'resolved', queue: 'Ops', last_updated: '2026-11-07T00:00:00Z' },
+    { id: '5', subject: 'e', status: 'triage', queue: 'Ops', last_updated: '2026-11-06T00:00:00Z' },
+];
+const STATUS_VIEW = { path: '/#rt', tickets: STATUS_TICKETS, rtSync: { ok: true, configured: true } };
+const ticketsShown = page => page.waitForFunction(() => document.querySelectorAll('#rt-list-container .todo-item').length > 0);
+const statusOptions = page => page.$$eval('#rt-status-filter option', os => os.map(o => o.value));
+const queueBar = page => page.$$eval('#rt-queue-bar button', bs => bs.map(b => b.textContent));
+
+test('the status filter lists RT statuses, custom ones too, and defaults to Active', STATUS_VIEW, async ({ page }) => {
+    await ticketsShown(page);
+    assert.deepEqual(await statusOptions(page), ['active', 'new', 'open', 'stalled', 'resolved', 'rejected', 'triage', 'all']);
+    assert.equal(await page.$eval('#rt-status-filter', s => s.value), 'active');
+    assert.deepEqual(await ticketIds(page), ['#1', '#2', '#5']);
+});
+
+test('Resolved shows resolved tickets, and the queues that have them', STATUS_VIEW, async ({ page }) => {
+    await ticketsShown(page);
+    await page.select('#rt-status-filter', 'resolved');
+    assert.deepEqual(await ticketIds(page), ['#3', '#4']);
+    assert.deepEqual(await queueBar(page), ['All', 'Deploy', 'Ops']);
+    await page.select('#rt-status-filter', 'stalled');
+    assert.deepEqual(await ticketIds(page), ['#2']);
+    assert.deepEqual(await page.evaluate(() => window.__cache.ui_state['rt:status']), 'stalled');
+});
+
+test('switching status keeps the chosen queue, even with nothing in it', STATUS_VIEW, async ({ page }) => {
+    await ticketsShown(page);
+    await page.evaluate(() => selectTicketQueue('Deploy'));
+    await page.select('#rt-status-filter', 'rejected');
+    assert.equal(await page.$eval('#rt-queue-bar button.active', b => b.textContent), 'Deploy');
+    assert.deepEqual(await ticketIds(page), []);
+});
+
+test('a reload keeps the chosen status', {
+    ...STATUS_VIEW, cache: { ui_state: { 'rt:status': 'resolved' } },
+}, async ({ page }) => {
+    await ticketsShown(page);
+    assert.equal(await page.$eval('#rt-status-filter', s => s.value), 'resolved');
+    assert.deepEqual(await ticketIds(page), ['#3', '#4']);
+});
+
 test('a ticket shows its due date only when RT has one', RT_VIEW, async ({ page }) => {
     await showTickets(page);
     const dues = await page.$$eval('#rt-list-container > div', items => items.map(i => i.querySelector('[class$="-due"]')?.textContent || ''));

@@ -6,6 +6,19 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- The Tickets status filter lists RT's own statuses: Active (the default, anything
+  not closed), New, Open, Stalled, Resolved, Rejected, any custom status seen on a
+  ticket, and All. Resolved and rejected tickets are now synced: the saved search
+  with its Status conditions taken out, limited to the last 90 days
+  (`/api/rt/sync?scope=closed`), so a queue's closed tickets, such as finished
+  deploys, can be looked back over. The chosen status is kept per device like the
+  queue.
+
+### Changed
+- Switching the status filter keeps the chosen queue instead of falling back to All
+  when that queue has no tickets in the new status.
+
 ## [2.36.1] - 2026-11-08
 
 ### Fixed
