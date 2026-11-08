@@ -1,5 +1,6 @@
 """Tests for checklists_plugin: derived due status and payload validation."""
 
+import json
 from datetime import date
 
 import pytest
@@ -73,3 +74,72 @@ class TestValidate:
     def test_rejects_invalid(self, bad):
         with pytest.raises(ValueError):
             checklists_plugin.validate_sync_payload(bad)
+
+
+def _after(schedule, run_date):
+    doc = _doc(schedule, run_date)
+    doc["templates"][0]["mode"] = "after_completion"
+    return doc
+
+
+class TestAfterCompletion:
+    def test_weekly_waits_a_full_week(self):
+        # Completed on a Sunday: fixed mode is due Monday, after_completion a week later.
+        assert checklists_plugin.due_status(_doc("weekly", "2026-05-17"), date(2026, 5, 18))[0]["due"] is True
+        assert checklists_plugin.due_status(_after("weekly", "2026-05-17"), date(2026, 5, 18))[0]["due"] is False
+        assert checklists_plugin.due_status(_after("weekly", "2026-05-17"), date(2026, 5, 24))[0]["due"] is True
+
+    def test_monthly_clamps_to_month_end(self):
+        assert checklists_plugin.next_due("monthly", date(2026, 1, 31)) == date(2026, 2, 28)
+        assert checklists_plugin.next_due("quarterly", date(2026, 11, 30)) == date(2027, 2, 28)
+        assert checklists_plugin.next_due("daily", date(2026, 12, 31)) == date(2027, 1, 1)
+
+    def test_unknown_mode_rejected(self):
+        doc = {"templates": [{"id": "x", "name": "X", "schedule": "daily", "mode": "sometimes"}]}
+        with pytest.raises(ValueError):
+            checklists_plugin.validate_sync_payload(doc)
+
+
+class TestStrictParsing:
+    @pytest.mark.parametrize("value", ["2026-05-20", "2024-02-29"])
+    def test_accepts_real_dates(self, value):
+        assert checklists_plugin._parse_date(value) is not None
+
+    @pytest.mark.parametrize("value", ["2026-05-20junk", "2026-02-30", "20260520", None, 20260520])
+    def test_rejects_garbage(self, value):
+        assert checklists_plugin._parse_date(value) is None
+
+    @pytest.mark.parametrize("bad_id", ["Has Space", "UPPER", "../x", "a" * 65])
+    def test_rejects_non_slug_ids(self, bad_id):
+        with pytest.raises(ValueError):
+            checklists_plugin.validate_sync_payload({"templates": [{"id": bad_id, "name": "X", "schedule": "daily"}]})
+
+    def test_rejects_bad_timestamp(self):
+        run = {"template_id": "x", "date": "2026-05-20", "completed_at": "yesterday"}
+        with pytest.raises(ValueError):
+            checklists_plugin.validate_sync_payload({"runs": [run]})
+
+
+class _FakeTransport:
+    def __init__(self, raw):
+        self.raw = raw
+
+    def download_file(self, _name):
+        return self.raw
+
+
+class TestReadChecklists:
+    def _read(self, monkeypatch, raw):
+        monkeypatch.setattr(checklists_plugin, "_transport", lambda *_: _FakeTransport(raw))
+        return checklists_plugin.read_checklists(None, "folder")
+
+    def test_one_bad_record_does_not_blank_the_rest(self, monkeypatch):
+        good = {"id": "ok", "name": "OK", "schedule": "daily"}
+        bad = {"id": "bad", "name": "Bad", "schedule": "hourly"}
+        doc = self._read(monkeypatch, json.dumps({"templates": [good, bad], "runs": "nope"}))
+        assert [t["id"] for t in doc["templates"]] == ["ok"]
+        assert doc["runs"] == []
+
+    @pytest.mark.parametrize("raw", [None, "", "{not json", "[]"])
+    def test_missing_or_corrupt_reads_empty(self, monkeypatch, raw):
+        assert self._read(monkeypatch, raw) == {"templates": [], "runs": []}

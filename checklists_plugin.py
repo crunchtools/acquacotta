@@ -8,10 +8,17 @@ flip a flag, so ``due_status`` derives it at read time from the template's sched
 and the completed runs: a template is due when no run of it was completed within the
 current period (day, ISO week starting Monday, calendar month or calendar quarter).
 The four schedules are explicit cases, not a general recurrence-rule engine.
+
+A template's ``mode`` picks the recurrence: ``fixed`` (the default) is due once per
+calendar period; ``after_completion`` is due once a whole period has passed since the
+last completed run, so a late run pushes the next one back instead of piling up.
 """
 
+import calendar
 import json
-from datetime import date, datetime, timezone
+import logging
+import re
+from datetime import date, datetime, timedelta, timezone
 
 import plugin_common
 from transports.google_drive_transport import GoogleDriveTransport
@@ -30,9 +37,17 @@ CHECKLISTS_FILE = "data.json"
 PLUGIN_FOLDER = "plugins/checklists"
 
 SCHEDULES = ("daily", "weekly", "monthly", "quarterly")
+MODES = ("fixed", "after_completion")
+_DAYS_PER_WEEK = 7
+_MONTHS_PER_YEAR = 12
+_MONTHS_PER_PERIOD = {"monthly": 1, "quarterly": 3}
+_ID_RE = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
+_DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 _MAX_STR = 200
 _MAX_ITEMS = 200
 _MAX_RECORDS = 10000
+
+logger = logging.getLogger(__name__)
 
 
 def _empty_doc():
@@ -52,20 +67,52 @@ def period_start(schedule, today):
     raise ValueError(f"schedule must be one of {SCHEDULES}")
 
 
+def _add_months(day, months):
+    """``day`` moved forward ``months`` calendar months, clamped to the month's last day."""
+    year, month_index = divmod(day.month - 1 + months, _MONTHS_PER_YEAR)
+    year, month = day.year + year, month_index + 1
+    return date(year, month, min(day.day, calendar.monthrange(year, month)[1]))
+
+
+def next_due(schedule, completed):
+    """For ``after_completion``: the first day a run completed on ``completed`` is stale."""
+    if schedule == "daily":
+        return completed + timedelta(days=1)
+    if schedule == "weekly":
+        return completed + timedelta(days=_DAYS_PER_WEEK)
+    if schedule in _MONTHS_PER_PERIOD:
+        return _add_months(completed, _MONTHS_PER_PERIOD[schedule])
+    raise ValueError(f"schedule must be one of {SCHEDULES}")
+
+
 def _parse_date(value):
-    if not isinstance(value, str):
+    """An exact ``YYYY-MM-DD`` string naming a real date, else None."""
+    if not isinstance(value, str) or not _DATE_RE.fullmatch(value):
         return None
     try:
-        return date.fromisoformat(value[:10])
+        return date.fromisoformat(value)
     except ValueError:
+        logger.debug("Rejected impossible date %r", value)
+        return None
+
+
+def _parse_timestamp(value):
+    """An ISO 8601 timestamp; a trailing "Z" is mapped to +00:00 for Python before 3.11."""
+    if not isinstance(value, str) or len(value) > _MAX_STR:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        logger.debug("Rejected malformed timestamp %r", value)
         return None
 
 
 def due_status(doc, today=None):
     """Return one entry per template: ``{template, due, last_completed}``.
 
-    ``due`` is True when no run of the template with a ``completed_at`` falls on or
-    after the start of the current period. Computed from the data on every call.
+    In ``fixed`` mode ``due`` is True when no completed run of the template falls on
+    or after the start of the current period. In ``after_completion`` mode it is True
+    once ``next_due`` of the last completed run has arrived. Computed on every call.
     """
     today = today or datetime.now(timezone.utc).date()
     statuses = []
@@ -78,10 +125,16 @@ def due_status(doc, today=None):
         ]
         completed = [d for d in completed if d is not None]
         last = max(completed, default=None)
+        if last is None:
+            due = True
+        elif template.get("mode") == "after_completion":
+            due = today >= next_due(template["schedule"], last)
+        else:
+            due = last < start
         statuses.append(
             {
                 "template": template,
-                "due": last is None or last < start,
+                "due": due,
                 "last_completed": last.isoformat() if last else None,
             }
         )
@@ -114,28 +167,44 @@ def _clean_template(template):
         raise ValueError("each template must be an object")
     if template.get("schedule") not in SCHEDULES:
         raise ValueError(f"schedule must be one of {SCHEDULES}")
+    mode = template.get("mode", "fixed")
+    if mode not in MODES:
+        raise ValueError(f"mode must be one of {MODES}")
+    template_id = template.get("id")
+    if not isinstance(template_id, str) or not _ID_RE.fullmatch(template_id):
+        raise ValueError("id must be a short lowercase slug")
     items = template.get("items", [])
     if not isinstance(items, list) or len(items) > _MAX_ITEMS:
         raise ValueError("items must be a list")
     return {
-        "id": _clean_str(template.get("id"), "id"),
+        "id": template_id,
         "name": _clean_str(template.get("name"), "name"),
         "schedule": template["schedule"],
+        "mode": mode,
         "items": [_clean_template_item(item, n) for n, item in enumerate(items, start=1)],
     }
 
 
+def _clean_timestamp(run, name):
+    value = run.get(name)
+    if value is None:
+        return None
+    if _parse_timestamp(value) is None:
+        raise ValueError(f"{name} must be an ISO 8601 timestamp or null")
+    return value
+
+
 def _clean_run(run):
     if not isinstance(run, dict) or _parse_date(run.get("date")) is None:
-        raise ValueError("each run needs an ISO date")
+        raise ValueError("each run needs a YYYY-MM-DD date")
     items = run.get("items", [])
     if not isinstance(items, list) or len(items) > _MAX_ITEMS:
         raise ValueError("run items must be a list")
     return {
         "template_id": _clean_str(run.get("template_id"), "template_id"),
-        "date": run["date"][:10],
-        "started_at": run.get("started_at"),
-        "completed_at": run.get("completed_at"),
+        "date": run["date"],
+        "started_at": _clean_timestamp(run, "started_at"),
+        "completed_at": _clean_timestamp(run, "completed_at"),
         "items": [_clean_run_item(i) for i in items],
     }
 
@@ -160,13 +229,34 @@ def _transport(drive_service, folder_id):
     return GoogleDriveTransport(drive_service, plugin_folder_id)
 
 
+def _keep_valid(records, clean, kind):
+    kept = []
+    for record in records if isinstance(records, list) else []:
+        try:
+            kept.append(clean(record))
+        except ValueError as exc:
+            logger.warning("Dropping invalid stored checklist %s: %s", kind, exc)
+    return kept
+
+
 def read_checklists(drive_service, folder_id):
-    """Read the document; a missing, malformed or invalid file reads as empty."""
-    try:
-        stored = json.loads(_transport(drive_service, folder_id).download_file(CHECKLISTS_FILE) or "")
-        return validate_sync_payload(stored)
-    except (json.JSONDecodeError, TypeError, ValueError):
+    """Read the document. A missing or unparseable file reads as empty; an invalid
+    record is dropped on its own, so one bad entry cannot blank the rest."""
+    raw = _transport(drive_service, folder_id).download_file(CHECKLISTS_FILE)
+    if not raw:
         return _empty_doc()
+    try:
+        stored = json.loads(raw)
+    except json.JSONDecodeError:
+        logger.warning("Stored checklists file is not valid JSON; reading it as empty")
+        return _empty_doc()
+    if not isinstance(stored, dict):
+        logger.warning("Stored checklists file is not an object; reading it as empty")
+        return _empty_doc()
+    return {
+        "templates": _keep_valid(stored.get("templates"), _clean_template, "template"),
+        "runs": _keep_valid(stored.get("runs"), _clean_run, "run"),
+    }
 
 
 def write_checklists(drive_service, folder_id, doc):

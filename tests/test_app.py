@@ -220,6 +220,16 @@ class TestDiscussionsSyncEndpoints:
         assert client.post("/api/discussions/sync", json={"discussions": []}).status_code == 401
 
 
+class TestChecklistsSyncEndpoints:
+    """The /api/checklists/sync endpoints require auth."""
+
+    def test_get_requires_auth(self, client):
+        assert client.get("/api/checklists/sync").status_code == 401
+
+    def test_post_requires_auth(self, client):
+        assert client.post("/api/checklists/sync", json={"templates": [], "runs": []}).status_code == 401
+
+
 class TestRTRegistered:
     """RT Tickets is an optional extension plugin that owns a tab (spec 008)."""
 
