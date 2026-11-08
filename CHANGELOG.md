@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.35.0] - 2026-11-08
+
 ### Added
 - Tab memory (#237). Every tab with sub-tabs reopens on the one it was left on, after
   a tab switch or a page reload: the To-do list, Tickets queue, Discussions person,
@@ -13,6 +15,11 @@ All notable changes to this project are documented here. The format follows
   store, `ui_state`, which is never synced and is cleared at sign-out. It is part of
   the deep-link registry: a view declares `tabs` and `restore` beside its routes
   (spec 016).
+
+### Changed
+- The container image's `:latest` tag moves only on a release tag; a merge to main
+  publishes the branch tag. Production pulls `:latest`, so an unreleased main no longer
+  reaches it through auto-update (#239).
 
 ## [2.34.0] - 2026-11-07
 

@@ -1,8 +1,8 @@
 # Acquacotta Constitution
 
-> **Version:** 2.1.0
+> **Version:** 2.2.0
 > **Ratified:** 2025-12-27
-> **Amended:** 2026-10-02
+> **Amended:** 2026-11-08
 > **Status:** Active
 > **Inherits:** [crunchtools/constitution](https://github.com/crunchtools/constitution) v1.31.0
 > **Profile:** Web Application
@@ -78,14 +78,18 @@ Sheets schema; MINOR for new features; PATCH for fixes and minor tweaks.
   `parent-image-updated`.
 - `Containerfile` builds `quay.io/crunchtools/acquacotta` from
   `acquacotta-base`.
-- Every push to `main` rebuilds `:latest`, so production never lags `main`;
-  a `v*` tag also publishes an immutable `:vX.Y.Z`.
+- Every push to `main` publishes `:main`. Only a `v*` release tag moves
+  `:latest`, alongside an immutable `:vX.Y.Z`, so production runs what was
+  released, not whatever last merged (#239, RT#1559). `acquacotta-base` is the
+  exception: its `:latest` still tracks `main`, so a base erratum reaches the
+  app's next build.
 - Image tags are unique to this repository. No other repo, including archived
   siblings and forks, may publish to the same tag: on 2026-05-19
   `acquacotta-old`'s weekly cron overwrote the OAuth fix six times in a row.
 - Deployed units carry `--label io.containers.autoupdate=registry` and
   `--label PODMAN_SYSTEMD_UNIT=<unit>.service` so the nightly
-  `podman-auto-update.timer` pulls the new `:latest`.
+  `podman-auto-update.timer` pulls the new `:latest`, which means the newest
+  release. Finishing a change means cutting its release.
 
 ## Host Layout
 
