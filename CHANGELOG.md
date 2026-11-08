@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Assistant plugin backend: `POST /api/assistant/chat` answers a question from the
+  user's own data. Context comes read-only from active plugins through the registry
+  (`assistant_context` hook; pomodoro summaries and pending todos), and the answer comes
+  from the existing Gemini call using the key in the Social config. No tools, no writes,
+  nothing stored. The chat tab and streaming are not part of this change.
+
 ## [2.34.0] - 2026-11-07
 
 ### Added
@@ -49,11 +56,6 @@ All notable changes to this project are documented here. The format follows
 ## [2.33.0] - 2026-11-07
 
 ### Added
-- Assistant plugin backend: `POST /api/assistant/chat` answers a question from the
-  user's own data. Context comes read-only from active plugins through the registry
-  (`assistant_context` hook; pomodoro summaries and pending todos), and the answer comes
-  from the existing Gemini call using the key in the Social config. No tools, no writes,
-  nothing stored. The chat tab and streaming are not part of this change.
 - Timer Sync plugin backend: `GET`/`POST /api/timer-sync` share the running timer
   through `plugins/timer-sync/synchronization.json` in the user's storage. Remaining
   time is computed from `start_time` and `duration_minutes`, never stored. Writes are
