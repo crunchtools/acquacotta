@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.37.0] - 2026-11-08
+
 ### Added
 - The Tickets status filter lists RT's own statuses: Active (the default, anything
   not closed), New, Open, Stalled, Resolved, Rejected, any custom status seen on a
