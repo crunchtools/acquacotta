@@ -66,6 +66,19 @@ def ensure_plugin_folder(service, root_folder_id, plugin_id):
     return find_or_create_folder(service, plugins_id, plugin_id)
 
 
+def read_json_object(transport, filename):
+    """The JSON object stored in ``filename``, or None when it is missing, unparseable
+    or not an object. Callers fall back to their own empty document."""
+    content = transport.download_file(filename)
+    if not content:
+        return None
+    try:
+        stored = json.loads(content)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    return stored if isinstance(stored, dict) else None
+
+
 def config_transport(service, root_folder_id, plugin_id):
     """A Drive transport rooted at the plugin's ``plugins/<plugin_id>/`` folder."""
     return GoogleDriveTransport(service, ensure_plugin_folder(service, root_folder_id, plugin_id))

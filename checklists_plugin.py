@@ -92,7 +92,6 @@ def _parse_date(value):
     try:
         return date.fromisoformat(value)
     except ValueError:
-        logger.debug("Rejected impossible date %r", value)
         return None
 
 
@@ -103,7 +102,6 @@ def _parse_timestamp(value):
     try:
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
-        logger.debug("Rejected malformed timestamp %r", value)
         return None
 
 
@@ -242,16 +240,8 @@ def _keep_valid(records, clean, kind):
 def read_checklists(drive_service, folder_id):
     """Read the document. A missing or unparseable file reads as empty; an invalid
     record is dropped on its own, so one bad entry cannot blank the rest."""
-    raw = _transport(drive_service, folder_id).download_file(CHECKLISTS_FILE)
-    if not raw:
-        return _empty_doc()
-    try:
-        stored = json.loads(raw)
-    except json.JSONDecodeError:
-        logger.warning("Stored checklists file is not valid JSON; reading it as empty")
-        return _empty_doc()
-    if not isinstance(stored, dict):
-        logger.warning("Stored checklists file is not an object; reading it as empty")
+    stored = plugin_common.read_json_object(_transport(drive_service, folder_id), CHECKLISTS_FILE)
+    if stored is None:
         return _empty_doc()
     return {
         "templates": _keep_valid(stored.get("templates"), _clean_template, "template"),

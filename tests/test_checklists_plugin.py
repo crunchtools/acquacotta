@@ -8,8 +8,8 @@ import pytest
 import checklists_plugin
 
 
-def _doc(schedule, run_date=None, completed=True):
-    doc = {"templates": [{"id": "t", "name": "T", "schedule": schedule, "items": []}], "runs": []}
+def _doc(schedule, run_date=None, completed=True, mode="fixed"):
+    doc = {"templates": [{"id": "t", "name": "T", "schedule": schedule, "mode": mode, "items": []}], "runs": []}
     if run_date:
         doc["runs"].append(
             {"template_id": "t", "date": run_date, "completed_at": "2026-01-01T00:00:00Z" if completed else None}
@@ -76,18 +76,12 @@ class TestValidate:
             checklists_plugin.validate_sync_payload(bad)
 
 
-def _after(schedule, run_date):
-    doc = _doc(schedule, run_date)
-    doc["templates"][0]["mode"] = "after_completion"
-    return doc
-
-
 class TestAfterCompletion:
     def test_weekly_waits_a_full_week(self):
         # Completed on a Sunday: fixed mode is due Monday, after_completion a week later.
         assert checklists_plugin.due_status(_doc("weekly", "2026-05-17"), date(2026, 5, 18))[0]["due"] is True
-        assert checklists_plugin.due_status(_after("weekly", "2026-05-17"), date(2026, 5, 18))[0]["due"] is False
-        assert checklists_plugin.due_status(_after("weekly", "2026-05-17"), date(2026, 5, 24))[0]["due"] is True
+        assert checklists_plugin.due_status(_doc("weekly", "2026-05-17", mode="after_completion"), date(2026, 5, 18))[0]["due"] is False
+        assert checklists_plugin.due_status(_doc("weekly", "2026-05-17", mode="after_completion"), date(2026, 5, 24))[0]["due"] is True
 
     def test_monthly_clamps_to_month_end(self):
         assert checklists_plugin.next_due("monthly", date(2026, 1, 31)) == date(2026, 2, 28)
@@ -129,17 +123,29 @@ class _FakeTransport:
 
 
 class TestReadChecklists:
-    def _read(self, monkeypatch, raw):
+    @pytest.mark.parametrize(
+        ("raw", "template_ids"),
+        [
+            (None, []),
+            ("", []),
+            ("{not json", []),
+            ("[]", []),
+            (
+                json.dumps(
+                    {
+                        "templates": [
+                            {"id": "ok", "name": "OK", "schedule": "daily"},
+                            {"id": "bad", "name": "Bad", "schedule": "hourly"},
+                        ],
+                        "runs": "nope",
+                    }
+                ),
+                ["ok"],
+            ),
+        ],
+    )
+    def test_bad_input_degrades_per_record(self, monkeypatch, raw, template_ids):
         monkeypatch.setattr(checklists_plugin, "_transport", lambda *_: _FakeTransport(raw))
-        return checklists_plugin.read_checklists(None, "folder")
-
-    def test_one_bad_record_does_not_blank_the_rest(self, monkeypatch):
-        good = {"id": "ok", "name": "OK", "schedule": "daily"}
-        bad = {"id": "bad", "name": "Bad", "schedule": "hourly"}
-        doc = self._read(monkeypatch, json.dumps({"templates": [good, bad], "runs": "nope"}))
-        assert [t["id"] for t in doc["templates"]] == ["ok"]
+        doc = checklists_plugin.read_checklists(None, "folder")
+        assert [t["id"] for t in doc["templates"]] == template_ids
         assert doc["runs"] == []
-
-    @pytest.mark.parametrize("raw", [None, "", "{not json", "[]"])
-    def test_missing_or_corrupt_reads_empty(self, monkeypatch, raw):
-        assert self._read(monkeypatch, raw) == {"templates": [], "runs": []}
