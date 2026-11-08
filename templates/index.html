@@ -7000,6 +7000,7 @@
         // truth; loadTickets renders the IndexedDB cache, refreshTickets pulls live.
         // All RT-sourced text is rendered through escapeHtml (untrusted content).
         let rtTickets = [];
+        let rtTicketsLoaded = false;  // until then no queue is known, so none is missing
         let rtQueues = [];
         let rtSelectedQueue = 'all';
         let rtStatusFilter = 'open';
@@ -7043,13 +7044,16 @@
 
         async function loadTickets() {
             rtTickets = await Storage.getTickets();
+            rtTicketsLoaded = true;
             renderTickets();
         }
 
         function renderTickets() {
             const visibleForBar = rtStatusFilter === 'open' ? rtTickets.filter(t => rtStatusIsOpen(t.status)) : rtTickets;
             rtQueues = [...new Set(visibleForBar.map(t => (t.queue || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
-            if (rtSelectedQueue !== 'all' && !rtQueues.includes(rtSelectedQueue)) rtSelectedQueue = 'all';
+            // A deep link (#rt/queue/X, kept across a reload) renders before the
+            // cache is read; resetting then would drop the queue it names.
+            if (rtTicketsLoaded && rtSelectedQueue !== 'all' && !rtQueues.includes(rtSelectedQueue)) rtSelectedQueue = 'all';
 
             const bar = document.getElementById('rt-queue-bar');
             let barHtml = `<button class="${rtSelectedQueue === 'all' ? 'active' : ''}" onclick="selectTicketQueue('all')">All</button>`;

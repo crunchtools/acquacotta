@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- Reloading the Tickets tab on a queue (`#rt/queue/<queue>` in the URL) dropped back
+  to All: the deep link rendered before the cached tickets loaded, and the render reset
+  a queue it could not see yet. A queue is now checked only once tickets have loaded
+  (#237).
+
 ## [2.36.0] - 2026-11-08
 
 ### Added

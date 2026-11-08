@@ -7,6 +7,7 @@
  *   auth         what getAuthStatus() returns (default: logged out)
  *   rtConfig     what getRTConfig() returns
  *   tickets      what getTickets() returns (the cached RT tickets)
+ *   rtSync       what loadTicketsFromCloud() returns (default: RT not connected)
  *   ticketHistory  { id: { cached, fresh } }: getTicketHistory() returns `cached`
  *                and hands `fresh` to onFresh when window.__releaseFresh(id) runs
  *   cache        IndexedDB cache records, { store: { id: value } }, behind
@@ -67,6 +68,7 @@
         authenticatedFetch: async () => json({}),
         getRTConfig: async () => clone(cfg.rtConfig || {}),
         getTickets: async () => clone(cfg.tickets || []),
+        loadTicketsFromCloud: async () => clone(cfg.rtSync || { ok: true, configured: false }),
         getTicketHistory: async (id, onFresh) => {
             const h = (cfg.ticketHistory || {})[id] || {};
             (window.__freshWaiting = window.__freshWaiting || {})[id] = () => onFresh && onFresh(clone(h.fresh));
