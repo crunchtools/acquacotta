@@ -214,6 +214,40 @@ test('a failed refresh keeps the cached thread', async ({ page }) => {
     assert.deepEqual(contents(await page.evaluate(() => Storage.getCached('ticket_history', '7'))), ['first']);
 });
 
+// The saved search and its recently closed tickets sync as two scopes.
+const ACTIVE = 'GET /api/rt/sync?scope=active';
+const CLOSED = 'GET /api/rt/sync?scope=closed';
+const ticketStatuses = page => page.evaluate(async () =>
+    Object.fromEntries((await Storage.getTickets()).map(t => [t.id, t.status])));
+
+test('both ticket scopes land in the cache; each prunes only its own', async ({ page }) => {
+    await page.evaluate((a, c) => {
+        __net.respond(a, 200, { configured: true, tickets: [{ id: '1', status: 'open' }, { id: '2', status: 'stalled' }] });
+        __net.respond(c, 200, { configured: true, tickets: [{ id: '3', status: 'resolved' }] });
+    }, ACTIVE, CLOSED);
+    assert.deepEqual(await page.evaluate(() => Storage.loadTicketsFromCloud()), { ok: true, configured: true });
+    assert.deepEqual(await ticketStatuses(page), { 1: 'open', 2: 'stalled', 3: 'resolved' });
+
+    // Ticket 2 is resolved in RT: it leaves the search and arrives in the closed scope.
+    await page.evaluate((a, c) => {
+        __net.respond(a, 200, { configured: true, tickets: [{ id: '1', status: 'open' }] });
+        __net.respond(c, 200, { configured: true, tickets: [{ id: '2', status: 'resolved' }, { id: '3', status: 'resolved' }] });
+    }, ACTIVE, CLOSED);
+    await page.evaluate(() => Storage.loadTicketsFromCloud());
+    assert.deepEqual(await ticketStatuses(page), { 1: 'open', 2: 'resolved', 3: 'resolved' });
+});
+
+test('a failed closed sync keeps the cached closed tickets and reports the error', async ({ page }) => {
+    await page.evaluate((a, c) => {
+        __net.respond(a, 200, { configured: true, tickets: [{ id: '1', status: 'open' }] });
+        __net.respond(c, 200, { configured: true, tickets: [{ id: '3', status: 'resolved' }] });
+    }, ACTIVE, CLOSED);
+    await page.evaluate(() => Storage.loadTicketsFromCloud());
+    await page.evaluate(c => __net.respond(c, 502, { error: 'RT said no' }), CLOSED);
+    assert.deepEqual(await page.evaluate(() => Storage.loadTicketsFromCloud()), { ok: false, configured: true, error: 'RT said no' });
+    assert.deepEqual(await ticketStatuses(page), { 1: 'open', 3: 'resolved' });
+});
+
 test('sign-out clears the RT and Postiz copies but keeps local todos', async ({ page }) => {
     await page.evaluate(() => Storage.getTicketHistory('7'));
     await page.evaluate(() => Storage.putCached('social_cache', 'channels', { integrations: [] }));

@@ -470,6 +470,20 @@ describe('subTabOf', function() {
     });
 });
 
+describe('rtStatusIsClosed', function() {
+    it('should treat resolved, rejected and deleted as closed, any case', function() {
+        expect(utils.rtStatusIsClosed('resolved')).toBe(true);
+        expect(utils.rtStatusIsClosed('Rejected')).toBe(true);
+        expect(utils.rtStatusIsClosed('deleted')).toBe(true);
+    });
+
+    it('should treat the rest, custom statuses and blanks included, as active', function() {
+        expect(utils.rtStatusIsClosed('stalled')).toBe(false);
+        expect(utils.rtStatusIsClosed('triage')).toBe(false);
+        expect(utils.rtStatusIsClosed(undefined)).toBe(false);
+    });
+});
+
 describe('socialPostsCacheUsable', function() {
     var from = '2026-10-21T04:00:00.000Z';
     var cached = { email: 'a@example.com', from: from, posts: [] };

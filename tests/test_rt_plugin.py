@@ -8,6 +8,7 @@ the write-through actions, and the error mapping.
 
 import base64
 import json
+from datetime import date
 
 import pytest
 from cryptography.fernet import Fernet
@@ -362,6 +363,36 @@ class TestFetchTickets:
         tickets = rt_plugin.fetch_tickets(_cfg(public_url="", base_url="http://rt-internal"))
         # falls back to base_url for the link
         assert tickets[0]["url"] == "http://rt-internal/Ticket/Display.html?id=9"
+
+
+class TestClosedQuery:
+    @pytest.mark.parametrize(
+        ("query", "expected"),
+        [
+            (rt_plugin.DEFAULT_QUERY, "Owner = '__CurrentUser__'"),
+            ("(Status = 'new' OR Status = 'open') AND Queue = 'Deploy'", "Queue = 'Deploy'"),
+            ("Queue = 'Deploy' AND (Status != 'resolved')", "Queue = 'Deploy'"),
+            (
+                "(Owner = 'scott' OR Owner = 'Nobody') AND status != \"resolved\"",
+                "(Owner = 'scott' OR Owner = 'Nobody')",
+            ),
+            ("Status = '__Active__'", ""),
+            ("Queue = 'Ops'", "Queue = 'Ops'"),
+        ],
+    )
+    def test_without_status(self, query, expected):
+        assert rt_plugin.without_status(query) == expected
+
+    def test_closed_query_keeps_the_search_and_bounds_the_window(self):
+        q = rt_plugin.closed_query("Queue = 'Deploy' AND Status != 'resolved'", date(2026, 11, 8))
+        assert q == "(Queue = 'Deploy') AND (Status = 'resolved' OR Status = 'rejected') AND LastUpdated > '2026-08-10'"
+
+    def test_closed_query_with_only_status_terms(self):
+        q = rt_plugin.closed_query("Status = '__Active__'", date(2026, 11, 8))
+        assert q == "(Status = 'resolved' OR Status = 'rejected') AND LastUpdated > '2026-08-10'"
+
+    def test_blank_search_uses_the_default(self):
+        assert rt_plugin.closed_query("", date(2026, 11, 8)).startswith("(Owner = '__CurrentUser__') AND ")
 
 
 class TestFetchTicket:
