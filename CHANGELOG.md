@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.36.0] - 2026-11-08
+
 ### Added
 - Assistant plugin backend: `POST /api/assistant/chat` answers a question from the
   user's own data. Context comes read-only from active plugins through the registry
