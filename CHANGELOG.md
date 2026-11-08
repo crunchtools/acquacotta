@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.36.1] - 2026-11-08
+
 ### Fixed
 - Reloading the Tickets tab on a queue (`#rt/queue/<queue>` in the URL) dropped back
   to All: the deep link rendered before the cached tickets loaded, and the render reset
