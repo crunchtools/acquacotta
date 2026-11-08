@@ -19,6 +19,7 @@
  *   socialSlotsError / socialSlotsDelayMs / socialSlotsTaken  see socialSlots() below
  *   socialPosts / socialPostsError / socialPostsConfigured  see socialPosts() below
  *   holdPlugins  when true, /api/plugins waits for window.__releasePlugins()
+ *   todoLists    what getTodoLists() returns (default: one list, General)
  *
  * Every saveSettings() call is recorded in window.__storageCalls. Methods the
  * tests don't care about resolve to an empty array.
@@ -135,7 +136,7 @@
             return { date: '2026-10-25T14:00:00Z', posts: [], warnings: [], postiz_url: 'https://postiz.example.com' };
         },
         // loadTodos() creates a list and reloads until one exists.
-        getTodoLists: async () => [{ id: 'general', name: 'General', sort_order: 0 }],
+        getTodoLists: async () => clone(cfg.todoLists || [{ id: 'general', name: 'General', sort_order: 0 }]),
         getSyncStatus: async () => ({}),
         getLocalPomodoroCount: async () => 0,
         // An empty report, shaped like the real one: the Reports tab renders it.

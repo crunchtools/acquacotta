@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Tab memory (#237). Every tab with sub-tabs reopens on the one it was left on, after
+  a tab switch or a page reload: the To-do list, Tickets queue, Discussions person,
+  Social pane and list, and Reports period. It is kept per device in a new IndexedDB
+  store, `ui_state`, which is never synced and is cleared at sign-out. It is part of
+  the deep-link registry: a view declares `tabs` and `restore` beside its routes
+  (spec 016).
+
 ## [2.34.0] - 2026-11-07
 
 ### Added
