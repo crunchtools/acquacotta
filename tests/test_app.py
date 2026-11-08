@@ -763,6 +763,7 @@ class TestAssistantChatRoute:
         def fake_generate(config, prompt, system, schema):
             seen["config"] = config
             seen["prompt"] = prompt
+            seen["schema"] = schema
             return {"candidates": [{"content": {"parts": [{"text": "25 minutes"}]}}]}
 
         monkeypatch.setattr(assistant_plugin, "gather_context", fake_gather)
@@ -782,6 +783,7 @@ class TestAssistantChatRoute:
         assert fakes["pomodoro_enabled"] is True
         assert fakes["config"] == {"gemini_api_key": "k"}
         assert "How long?" in fakes["prompt"] and '"minutes": 25' in fakes["prompt"]
+        assert fakes["schema"] is None
 
     def test_invalid_question_is_400(self, client, fakes):
         assert client.post("/api/assistant/chat", json={"question": ""}).status_code == 400

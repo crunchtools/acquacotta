@@ -997,8 +997,17 @@ def _generation_config(schema):
 
 
 def gemini_generate(config, prompt, system=VOICE_INSTRUCTIONS, schema=_DRAFT_SCHEMA):
-    """One Gemini call with the user's key and model. ``schema=None`` asks for plain
-    text; the Assistant plugin uses it that way with its own system instructions."""
+    """One ``generateContent`` call with the user's Gemini key and model.
+
+    Args:
+        config: the user's Social config; reads ``gemini_api_key`` and ``gemini_model``.
+        prompt: the user turn.
+        system: the system instruction; defaults to the Social drafting voice.
+        schema: a JSON response schema, or None for plain text (the Assistant's use).
+
+    Returns the decoded Gemini response body. Raises ValueError when no key is
+    configured and SocialError for an invalid model name or a failed upstream call.
+    """
     key = config.get("gemini_api_key") or ""
     if not key:
         raise ValueError("Gemini is not configured: add an API key in Social settings")
