@@ -381,6 +381,23 @@
     }
 
     /**
+     * The sub-tab a route names, as [kind, id], or null when it names an item or
+     * the view keeps no sub-tab memory. Also validates a record read back from
+     * IndexedDB, so a stale or hand-edited one is ignored rather than applied.
+     *
+     * @param {string[]} [tabs] - The view's sub-tab kinds ('' is its default tab)
+     * @param {string} [kind] - Route kind (e.g. 'list'); empty for the default tab
+     * @param {string} [id] - Route id (e.g. a list id)
+     * @returns {string[]|null} - e.g. ['list', 'professional']
+     */
+    function subTabOf(tabs, kind, id) {
+        kind = kind === undefined || kind === null ? '' : kind;
+        id = id === undefined || id === null ? '' : id;
+        if (!Array.isArray(tabs) || typeof kind !== 'string' || typeof id !== 'string') return null;
+        return tabs.indexOf(kind) === -1 ? null : [kind, id];
+    }
+
+    /**
      * Whether a cached Social posts window may be shown: it must belong to the
      * signed-in account and be the same window. No account, no cache.
      *
@@ -444,6 +461,7 @@
         resolveTabOrder: resolveTabOrder,
         parseRoute: parseRoute,
         formatRoute: formatRoute,
+        subTabOf: subTabOf,
         socialPostsCacheUsable: socialPostsCacheUsable,
         buildRTConfigPayload: buildRTConfigPayload
     };

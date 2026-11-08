@@ -532,14 +532,8 @@ _IMPORT_NAMESPACE = uuid.UUID("6f1d2a4e-5b8c-4e0a-9a53-1c7d2b9e4f10")
 
 def _read_import_state(transport):
     """The set of already-imported RT transaction ids from ``plugins/rt/data.json``."""
-    content = transport.download_file(DATA_FILE)
-    if not content:
-        return set()
-    try:
-        stored = json.loads(content)
-    except (json.JSONDecodeError, TypeError):
-        return set()
-    keys = stored.get("imported_entries") if isinstance(stored, dict) else None
+    stored = plugin_common.read_json_object(transport, DATA_FILE) or {}
+    keys = stored.get("imported_entries")
     return {str(k) for k in keys} if isinstance(keys, list) else set()
 
 

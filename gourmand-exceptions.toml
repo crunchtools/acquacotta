@@ -60,6 +60,12 @@ justification = "storage.js implements the Todos feature — 'Todo' in section h
 classification = "gourmand_bug"
 
 [[exceptions]]
+check = "deferred_work"
+path = "tests/js/test_index.js"
+justification = "The To-do tab's DOM ids (#todo-lists-bar) in browser-test selectors are the feature's name, not deferred work markers"
+classification = "gourmand_bug"
+
+[[exceptions]]
 check = "random_scripts"
 path = "mcp_server.py"
 justification = "Second entry point — the FastMCP server systemd runs alongside Flask, same status as app.py"
@@ -216,4 +222,10 @@ check = "EV001-lint_suppression"
 path = "app.py"
 pattern = "type: ignore[method-assign]"
 justification = "Flask's documented ProxyFix idiom is `app.wsgi_app = ProxyFix(app.wsgi_app, ...)`; mypy classes that as method-assign. The alternative is not writing the proxy, which would drop X-Forwarded-For handling behind the reverse proxy. Narrowed to the single error code rather than a bare `type: ignore`."
+classification = "by_design"
+
+[[exceptions]]
+check = "copy_paste_detection"
+path = "checklists_plugin.py"
+justification = "_clean_template and timer_sync_plugin.validate_timer are both payload validators: a run of type check, enum membership check, raise ValueError. The fields, enums and messages differ; the shared part is the shape of validating one dict."
 classification = "by_design"

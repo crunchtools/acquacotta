@@ -450,6 +450,26 @@ describe('parseRoute / formatRoute', function() {
     });
 });
 
+describe('subTabOf', function() {
+    var tabs = ['', 'list'];
+
+    it('should return a listed sub-tab, the default one included', function() {
+        expect(utils.subTabOf(tabs, 'list', 'pro')).toEqual(['list', 'pro']);
+        expect(utils.subTabOf(tabs)).toEqual(['', '']);
+        expect(utils.subTabOf(['posts'], 'posts')).toEqual(['posts', '']);
+    });
+
+    it('should not remember items or views without sub-tabs', function() {
+        expect(utils.subTabOf(tabs, 'item', 'abc')).toBe(null);
+        expect(utils.subTabOf(undefined, 'list', 'pro')).toBe(null);
+    });
+
+    it('should reject a malformed stored record', function() {
+        expect(utils.subTabOf(tabs, 'list', 42)).toBe(null);
+        expect(utils.subTabOf(tabs, {}, 'pro')).toBe(null);
+    });
+});
+
 describe('socialPostsCacheUsable', function() {
     var from = '2026-10-21T04:00:00.000Z';
     var cached = { email: 'a@example.com', from: from, posts: [] };
