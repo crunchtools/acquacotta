@@ -223,3 +223,9 @@ path = "app.py"
 pattern = "type: ignore[method-assign]"
 justification = "Flask's documented ProxyFix idiom is `app.wsgi_app = ProxyFix(app.wsgi_app, ...)`; mypy classes that as method-assign. The alternative is not writing the proxy, which would drop X-Forwarded-For handling behind the reverse proxy. Narrowed to the single error code rather than a bare `type: ignore`."
 classification = "by_design"
+
+[[exceptions]]
+check = "copy_paste_detection"
+path = "checklists_plugin.py"
+justification = "_clean_template and timer_sync_plugin.validate_timer are both payload validators: a run of type check, enum membership check, raise ValueError. The fields, enums and messages differ; the shared part is the shape of validating one dict."
+classification = "by_design"
