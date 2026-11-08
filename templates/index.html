@@ -2730,7 +2730,10 @@
         // (#todos/item/<id>, #rt/ticket/<id>, … see AcquacottaUtils.parseRoute).
         // Each view registers its handlers beside its own code:
         //   ROUTES[view] = { current(): [kind, id] for the URL, <kind>(id): open it }
-        // A handler returns false when the item doesn't exist.
+        // A handler returns false when the item doesn't exist. A view with
+        // sub-tabs also names them, so it gets sub-tab memory (below):
+        //   tabs: the current() kinds that are a sub-tab ('' is the default one)
+        //   restore(kind, id): set that sub-tab's state without rendering
         const ROUTES = {};
         const PENDING_ROUTE_KEY = 'acquacotta_pending_route';
 
@@ -2744,6 +2747,39 @@
             if (activeView() !== view) return;
             const hash = AcquacottaUtils.formatRoute(view, kind, id);
             if (location.hash !== hash) history.replaceState(null, '', location.pathname + location.search + hash);
+            rememberSubTab(view, kind, id);
+        }
+
+        // Sub-tab memory: each view reopens where it was left (the Professional
+        // list, Past posts), across tab switches and reloads. It is kept in this
+        // device's IndexedDB and never synced. setRoute records it as it mirrors
+        // the URL, and restoreSubTabs puts it back before the first render.
+        // Items (a to-do, a ticket) are never remembered, only sub-tabs.
+        const SUBTAB_STORE = 'ui_state';
+        const subTabs = {};
+        let subTabsRestored = false;  // until then a write could clobber the saved one
+
+        function rememberSubTab(view, kind, id) {
+            const tab = AcquacottaUtils.subTabOf(ROUTES[view]?.tabs, kind, id);
+            if (!tab || !subTabsRestored || subTabs[view]?.join('/') === tab.join('/')) return;
+            subTabs[view] = tab;
+            Storage.putCached(SUBTAB_STORE, `subtab:${view}`, tab)
+                .catch(e => console.warn(`Could not remember the ${view} sub-tab:`, e));
+        }
+
+        async function restoreSubTabs() {
+            for (const [view, route] of Object.entries(ROUTES)) {
+                if (!route.restore) continue;
+                try {
+                    const tab = AcquacottaUtils.subTabOf(route.tabs, ...(await Storage.getCached(SUBTAB_STORE, `subtab:${view}`) || [null]));
+                    if (!tab || (!tab[0] && !tab[1])) continue;
+                    subTabs[view] = tab;
+                    route.restore(...tab);
+                } catch (e) {
+                    console.warn(`Could not restore the ${view} sub-tab:`, e);
+                }
+            }
+            subTabsRestored = true;
         }
 
         function syncRoute(view) {
@@ -4064,7 +4100,14 @@
         });
 
         // #reports/<day|week|month>
-        ROUTES.reports = { current: () => [currentPeriod] };
+        ROUTES.reports = {
+            current: () => [currentPeriod],
+            tabs: ['day', 'week', 'month'],
+            restore: (period) => {
+                currentPeriod = period;
+                document.querySelectorAll('.period-selector button').forEach(b => b.classList.toggle('active', b.dataset.period === period));
+            },
+        };
         document.querySelectorAll('.period-selector button').forEach(btn => {
             ROUTES.reports[btn.dataset.period] = () => btn.click();
         });
@@ -6483,6 +6526,12 @@
                 return loadTodos();
             }
 
+            // A remembered list may have been deleted since, here or elsewhere
+            if (todoSelectedListId !== 'all' && !lists.some(l => l.id === todoSelectedListId)) {
+                todoSelectedListId = 'all';
+                todoSortOrder = todoSortOrders.all || 'manual';
+            }
+
             // Render list bar
             const bar = document.getElementById('todo-lists-bar');
             bar.innerHTML = `<button class="${todoSelectedListId === 'all' ? 'active' : ''}" onclick="selectTodoList('all')">All</button>` +
@@ -6611,6 +6660,8 @@
         // #todos/list/<listId>, #todos/item/<todoId> (opens in its own list)
         ROUTES.todos = {
             current: () => todoSelectedListId === 'all' ? [] : ['list', todoSelectedListId],
+            tabs: ['', 'list'],
+            restore: (kind, listId) => { todoSelectedListId = listId || 'all'; },
             list: async (listId) => {
                 const lists = await Storage.getTodoLists();
                 if (listId !== 'all' && !lists.some(l => l.id === listId)) return false;
@@ -7052,6 +7103,8 @@
         // fetched from RT, so a link to any ticket works, not only the ones listed.
         ROUTES.rt = {
             current: () => rtSelectedQueue === 'all' ? [] : ['queue', rtSelectedQueue],
+            tabs: ['', 'queue'],
+            restore: (kind, q) => { rtSelectedQueue = q || 'all'; },
             queue: (q) => selectTicketQueue(q),
             ticket: async (id) => {
                 if (!/^\d+$/.test(id)) return false;
@@ -7823,14 +7876,18 @@
         const SOCIAL_POSTS_HORIZON = 364;
 
         function socialShowPane(pane, list) {
+            socialSetPane(pane);
+            if (list) socialSetList(list);
+            syncRoute('social');
+            return socialPane === 'posts' ? socialLoadPosts() : Promise.resolve();
+        }
+
+        function socialSetPane(pane) {
             socialPane = pane === 'posts' ? 'posts' : 'compose';
             for (const p of ['compose', 'posts']) {
                 document.getElementById(`social-pane-${p}-btn`).setAttribute('aria-checked', String(p === socialPane));
                 document.getElementById(`social-pane-${p}`).hidden = p !== socialPane;
             }
-            if (list) socialSetList(list);
-            syncRoute('social');
-            return socialPane === 'posts' ? socialLoadPosts() : Promise.resolve();
         }
 
         function socialSetList(list) {
@@ -8253,6 +8310,8 @@
             current: () => socialPane !== 'posts' ? []
                 : socialPostOpen ? ['post', socialPostOpen.split('|')[0]]
                 : socialPostsList === 'past' ? ['posts', 'past'] : ['posts'],
+            tabs: ['', 'posts'],
+            restore: (kind, list) => { socialSetPane(kind || 'compose'); socialSetList(list); },
             compose: () => socialShowPane('compose'),
             posts: (id) => socialShowPane('posts', id === 'past' ? 'past' : 'upcoming'),
             post: async (id) => {
@@ -8557,6 +8616,8 @@
         // #discussions/person/<name>, #discussions/item/<id> (opens under its person)
         ROUTES.discussions = {
             current: () => discussionSelectedPerson === 'all' ? [] : ['person', discussionSelectedPerson],
+            tabs: ['', 'person'],
+            restore: (kind, person) => { discussionSelectedPerson = person || 'all'; },
             person: (person) => selectDiscussionPerson(person),
             item: async (id) => {
                 const d = (await Storage.getDiscussions()).find(x => x.id === id);
@@ -8792,6 +8853,8 @@
             // This lets the UI render with correct timezone/date format immediately.
             await Storage.openDatabase();
             await loadSettings();
+            // Each tab's last sub-tab, before anything renders one
+            await restoreSubTabs();
 
             // Phase 2: Run auth (network) and view rendering (IndexedDB) in parallel.
             await Promise.all([

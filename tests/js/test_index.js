@@ -1021,4 +1021,71 @@ test('a ticket shows its due date only when RT has one', RT_VIEW, async ({ page 
     assert.deepEqual(dues, ['', 'Due: 2026-12-01', 'Due: 2026-11-20', '']);
 });
 
+// Sub-tab memory (#237): every tab reopens on the sub-tab it was left on.
+const TWO_LISTS = {
+    todoLists: [{ id: 'general', name: 'General', sort_order: 0 }, { id: 'pro', name: 'Professional', sort_order: 1 }],
+};
+const subTabsRestored = page => page.waitForFunction(() => subTabsRestored);
+const activeListName = page => page.$eval('#todo-lists-bar button.active', b => b.textContent);
+const showTodos = async page => {
+    await page.click('#tab-todos');
+    await page.waitForFunction(() => document.querySelectorAll('#todo-lists-bar button').length > 1);
+};
+const rememberedSubTab = (page, view) => page.evaluate(v => (window.__cache.ui_state || {})[`subtab:${v}`], view);
+
+test('a to-do list stays selected across tab switches and is saved for the next load', TWO_LISTS, async ({ page }) => {
+    await subTabsRestored(page);
+    await showTodos(page);
+    await page.click('#todo-lists-bar button:nth-child(3)');
+    await page.click('#tab-rt');
+    await showTodos(page);
+    assert.equal(await activeListName(page), 'Professional');
+    assert.deepEqual(await rememberedSubTab(page, 'todos'), ['list', 'pro']);
+    // Back to All is remembered too, not left on the last named list.
+    await page.click('#todo-lists-bar button:nth-child(1)');
+    assert.deepEqual(await rememberedSubTab(page, 'todos'), ['', '']);
+});
+
+test('a reload reopens each tab on its remembered sub-tab', {
+    ...TWO_LISTS,
+    cache: { ui_state: { 'subtab:todos': ['list', 'pro'], 'subtab:reports': ['month'] } },
+}, async ({ page }) => {
+    await subTabsRestored(page);
+    await showTodos(page);
+    assert.equal(await activeListName(page), 'Professional');
+    assert.equal(await page.evaluate(() => location.hash), '#todos/list/pro');
+    await page.click('#tab-reports');
+    assert.equal(await page.$eval('.period-selector button.active', b => b.dataset.period), 'month');
+    assert.equal(await page.evaluate(() => location.hash), '#reports/month');
+});
+
+test('a remembered list that was deleted falls back to All', {
+    cache: { ui_state: { 'subtab:todos': ['list', 'gone'] } },
+}, async ({ page }) => {
+    await subTabsRestored(page);
+    await page.click('#tab-todos');
+    await page.waitForFunction(() => document.querySelector('#todo-lists-bar button.active'));
+    assert.equal(await activeListName(page), 'All');
+    assert.equal(await page.evaluate(() => location.hash), '#todos');
+});
+
+test('Social reopens on Past posts without fetching before the tab is shown', {
+    cache: { ui_state: { 'subtab:social': ['posts', 'past'] } },
+}, async ({ page }) => {
+    await subTabsRestored(page);
+    assert.equal(await page.$eval('#social-pane-posts', el => el.hidden), false);
+    assert.equal(await page.$eval('#social-list-past', el => el.getAttribute('aria-checked')), 'true');
+    assert.equal(await page.evaluate(() => window.__storageCalls.some(c => c[0] === 'socialPosts')), false);
+});
+
+test('opening an item does not replace the remembered sub-tab', {
+    ...TWO_LISTS,
+    cache: { ui_state: { 'subtab:todos': ['list', 'pro'] } },
+}, async ({ page }) => {
+    await subTabsRestored(page);
+    await showTodos(page);
+    await page.evaluate(() => setRoute('todos', 'item', 'abc'));
+    assert.deepEqual(await rememberedSubTab(page, 'todos'), ['list', 'pro']);
+});
+
 run(tests);
