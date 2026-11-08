@@ -16,7 +16,7 @@
 
     // IndexedDB configuration
     const DB_NAME = 'acquacotta';
-    const DB_VERSION = 6;  // Bumped for the social_cache store
+    const DB_VERSION = 7;  // Bumped for the ui_state store
 
     // Debounce window before a local change is pushed to the cloud backend.
     const DISCUSSION_SYNC_DEBOUNCE_MS = 2000;
@@ -36,7 +36,8 @@
         DISCUSSIONS: 'discussions',
         TICKETS: 'tickets',
         TICKET_HISTORY: 'ticket_history',
-        SOCIAL_CACHE: 'social_cache'
+        SOCIAL_CACHE: 'social_cache',
+        UI_STATE: 'ui_state'
     };
 
     // Every object store, created by onupgradeneeded from this table. A plugin
@@ -58,6 +59,9 @@
         // Read-through records: { id, value, cached_at } (see readThrough)
         { name: STORES.TICKET_HISTORY, keyPath: 'id', cache: true },
         { name: STORES.SOCIAL_CACHE, keyPath: 'id', cache: true },
+        // Where this device left each tab (the sub-tab memory in index.html).
+        // Never synced; sign-out drops it with the cached ids it points at.
+        { name: STORES.UI_STATE, keyPath: 'id', cache: true },
     ];
 
     // Social's Postiz copies lived in localStorage before v6; moved on upgrade.
