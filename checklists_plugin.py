@@ -4,14 +4,15 @@ Templates and run history live in ``plugins/checklists/data.json`` in the user's
 storage, as ``{"templates": [...], "runs": [...]}``.
 
 Whether a checklist is *due* is never stored. There is no server-side scheduler to
-flip a flag, so ``due_status`` derives it at read time from the template's schedule
-and the completed runs: a template is due when no run of it was completed within the
-current period (day, ISO week starting Monday, calendar month or calendar quarter).
-The four schedules are explicit cases, not a general recurrence-rule engine.
+flip a flag, so ``due_status`` derives it at read time from the template's schedule,
+its mode and its last completed run. The four schedules (day, ISO week starting
+Monday, calendar month, calendar quarter) are explicit cases, not a general
+recurrence-rule engine.
 
-A template's ``mode`` picks the recurrence: ``fixed`` (the default) is due once per
-calendar period; ``after_completion`` is due once a whole period has passed since the
-last completed run, so a late run pushes the next one back instead of piling up.
+A template's ``mode`` picks the rule. ``fixed`` (the default): due when no run was
+completed within the current period. ``after_completion``: due once a whole period
+has passed since the last completed run (``next_due``), so a late run pushes the next
+one back instead of piling up.
 """
 
 import calendar
@@ -21,10 +22,11 @@ import re
 from datetime import date, datetime, timedelta, timezone
 
 import plugin_common
-from transports.google_drive_transport import GoogleDriveTransport
+
+PLUGIN_ID = "checklists"
 
 PLUGIN_METADATA = {
-    "id": "checklists",
+    "id": PLUGIN_ID,
     "name": "Checklists",
     "description": "Recurring daily, weekly, monthly and quarterly checklists with run history",
     "version": "1.0.0",
@@ -113,16 +115,16 @@ def due_status(doc, today=None):
     once ``next_due`` of the last completed run has arrived. Computed on every call.
     """
     today = today or datetime.now(timezone.utc).date()
+    last_by_template = {}
+    for run in doc.get("runs", []):
+        day = _parse_date(run.get("date")) if run.get("completed_at") else None
+        template_id = run.get("template_id")
+        if day is not None and (template_id not in last_by_template or day > last_by_template[template_id]):
+            last_by_template[template_id] = day
     statuses = []
     for template in doc.get("templates", []):
         start = period_start(template["schedule"], today)
-        completed = [
-            _parse_date(run.get("date"))
-            for run in doc.get("runs", [])
-            if run.get("template_id") == template["id"] and run.get("completed_at")
-        ]
-        completed = [d for d in completed if d is not None]
-        last = max(completed, default=None)
+        last = last_by_template.get(template["id"])
         if last is None:
             due = True
         elif template.get("mode") == "after_completion":
@@ -222,25 +224,24 @@ def validate_sync_payload(payload):
     }
 
 
-def _transport(drive_service, folder_id):
-    plugin_folder_id = plugin_common.ensure_plugin_folder(drive_service, folder_id, "checklists")
-    return GoogleDriveTransport(drive_service, plugin_folder_id)
-
-
 def _keep_valid(records, clean, kind):
-    kept = []
+    kept, dropped = [], 0
     for record in records if isinstance(records, list) else []:
         try:
             kept.append(clean(record))
-        except ValueError as exc:
-            logger.warning("Dropping invalid stored checklist %s: %s", kind, exc)
+        except ValueError:
+            dropped += 1
+    if dropped:
+        logger.warning("Dropped %d invalid stored checklist %s record(s)", dropped, kind)
     return kept
 
 
 def read_checklists(drive_service, folder_id):
     """Read the document. A missing or unparseable file reads as empty; an invalid
     record is dropped on its own, so one bad entry cannot blank the rest."""
-    stored = plugin_common.read_json_object(_transport(drive_service, folder_id), CHECKLISTS_FILE)
+    stored = plugin_common.read_json_object(
+        plugin_common.config_transport(drive_service, folder_id, PLUGIN_ID), CHECKLISTS_FILE
+    )
     if stored is None:
         return _empty_doc()
     return {
@@ -252,4 +253,4 @@ def read_checklists(drive_service, folder_id):
 def write_checklists(drive_service, folder_id, doc):
     """Persist the document (full replace)."""
     content = json.dumps(doc, indent=2, ensure_ascii=False)
-    _transport(drive_service, folder_id).upload_file(CHECKLISTS_FILE, content)
+    plugin_common.config_transport(drive_service, folder_id, PLUGIN_ID).upload_file(CHECKLISTS_FILE, content)

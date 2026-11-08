@@ -69,11 +69,8 @@ def ensure_plugin_folder(service, root_folder_id, plugin_id):
 def read_json_object(transport, filename):
     """The JSON object stored in ``filename``, or None when it is missing, unparseable
     or not an object. Callers fall back to their own empty document."""
-    content = transport.download_file(filename)
-    if not content:
-        return None
     try:
-        stored = json.loads(content)
+        stored = json.loads(transport.download_file(filename) or "null")
     except (json.JSONDecodeError, TypeError):
         return None
     return stored if isinstance(stored, dict) else None

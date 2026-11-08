@@ -145,7 +145,7 @@ class TestReadChecklists:
         ],
     )
     def test_bad_input_degrades_per_record(self, monkeypatch, raw, template_ids):
-        monkeypatch.setattr(checklists_plugin, "_transport", lambda *_: _FakeTransport(raw))
+        monkeypatch.setattr(checklists_plugin.plugin_common, "config_transport", lambda *_: _FakeTransport(raw))
         doc = checklists_plugin.read_checklists(None, "folder")
         assert [t["id"] for t in doc["templates"]] == template_ids
         assert doc["runs"] == []
