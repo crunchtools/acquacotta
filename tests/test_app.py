@@ -760,13 +760,13 @@ class TestAssistantChatRoute:
             seen["pomodoro_enabled"] = enabled("pomodoro")
             return {"pomodoro": {"minutes": 25}}
 
-        def fake_generate(config, prompt, system):
+        def fake_generate(config, prompt, system, schema):
             seen["config"] = config
             seen["prompt"] = prompt
             return {"candidates": [{"content": {"parts": [{"text": "25 minutes"}]}}]}
 
         monkeypatch.setattr(assistant_plugin, "gather_context", fake_gather)
-        monkeypatch.setattr(social_plugin, "gemini_text", fake_generate)
+        monkeypatch.setattr(social_plugin, "gemini_generate", fake_generate)
         monkeypatch.setattr(social_plugin, "read_config", lambda _s, _f: {"gemini_api_key": "k"})
         return seen
 
@@ -788,10 +788,10 @@ class TestAssistantChatRoute:
         assert client.post("/api/assistant/chat", json=["not", "an", "object"]).status_code == 400
 
     def test_gemini_error_is_502(self, client, fakes, monkeypatch):
-        def boom(*_a):
+        def boom(*_a, **_k):
             raise social_plugin.SocialError("Gemini down")
 
-        monkeypatch.setattr(social_plugin, "gemini_text", boom)
+        monkeypatch.setattr(social_plugin, "gemini_generate", boom)
         assert client.post("/api/assistant/chat", json={"question": "hi"}).status_code == 502
 
     def test_storage_error_is_500(self, client, fakes, monkeypatch):

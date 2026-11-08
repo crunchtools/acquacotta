@@ -1264,7 +1264,7 @@ class TestSocialEndpoints:
 def test_gemini_generate_rejects_invalid_model_name(model):
     config = {"gemini_api_key": "k", "gemini_model": model}
     with pytest.raises(social_plugin.SocialError, match="Invalid Gemini model name"):
-        social_plugin._gemini_generate(config, "hi")
+        social_plugin.gemini_generate(config, "hi")
 
 
 @pytest.mark.parametrize("model", ["gemini-2.5-flash", "", None])
@@ -1274,5 +1274,5 @@ def test_gemini_generate_accepts_valid_and_default_model(monkeypatch, model):
 
     monkeypatch.setattr(social_plugin.requests, "post", fake_post)
     with pytest.raises(Exception) as exc:
-        social_plugin._gemini_generate({"gemini_api_key": "k", "gemini_model": model}, "hi")
+        social_plugin.gemini_generate({"gemini_api_key": "k", "gemini_model": model}, "hi")
     assert "Invalid Gemini model name" not in str(exc.value)
