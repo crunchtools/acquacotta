@@ -281,6 +281,12 @@ def delete_list(drive_service, folder_id, list_id):
     return True
 
 
+def assistant_context(drive_service, folder_id):
+    """Pending todos for the Assistant's prompt: read-only, capped."""
+    pending = query_todos(drive_service, folder_id, status="pending")[:50]
+    return [{"title": t.get("title"), "priority": t.get("priority"), "due_date": t.get("due_date")} for t in pending]
+
+
 def register_mcp_tools(mcp, require_ctx):
     """Register todos MCP tools on a FastMCP instance.
 

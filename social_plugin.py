@@ -989,7 +989,25 @@ _DRAFT_SCHEMA = {
 }
 
 
-def _gemini_generate(config, prompt):
+def _generation_config(schema):
+    """Schema-bound JSON output, or plain text when ``schema`` is None."""
+    if schema is None:
+        return {"responseMimeType": "text/plain"}
+    return {"responseMimeType": "application/json", "responseSchema": schema}
+
+
+def gemini_generate(config, prompt, system=VOICE_INSTRUCTIONS, schema=_DRAFT_SCHEMA):
+    """One ``generateContent`` call with the user's Gemini key and model.
+
+    Args:
+        config: the user's Social config; reads ``gemini_api_key`` and ``gemini_model``.
+        prompt: the user turn.
+        system: the system instruction; defaults to the Social drafting voice.
+        schema: a JSON response schema, or None for plain text (the Assistant's use).
+
+    Returns the decoded Gemini response body. Raises ValueError when no key is
+    configured and SocialError for an invalid model name or a failed upstream call.
+    """
     key = config.get("gemini_api_key") or ""
     if not key:
         raise ValueError("Gemini is not configured: add an API key in Social settings")
@@ -997,9 +1015,9 @@ def _gemini_generate(config, prompt):
     if not re.fullmatch(r"[A-Za-z0-9._-]+", model) or model in (".", ".."):
         raise SocialError("Invalid Gemini model name")
     body = {
-        "systemInstruction": {"parts": [{"text": VOICE_INSTRUCTIONS}]},
+        "systemInstruction": {"parts": [{"text": system}]},
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-        "generationConfig": {"responseMimeType": "application/json", "responseSchema": _DRAFT_SCHEMA},
+        "generationConfig": _generation_config(schema),
     }
     try:
         resp = requests.post(
@@ -1072,5 +1090,5 @@ def draft_posts(config, page, channels):
         SocialError: Gemini unreachable, an HTTP error, or an unreadable reply.
     """
     clean = _clean_channels_for_draft(channels)
-    response = _gemini_generate(config, build_draft_prompt(page, clean))
+    response = gemini_generate(config, build_draft_prompt(page, clean))
     return parse_draft_response(response, clean)

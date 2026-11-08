@@ -17,8 +17,10 @@ import pytest
 from googleapiclient.errors import HttpError
 
 import app as app_module
+import assistant_plugin
 import plugin_registry
 import rt_plugin
+import social_plugin
 import storage_api
 
 
@@ -749,3 +751,64 @@ class TestPluginEndpointsResolvePerUser:
         )
         response = client.get("/api/plugins", headers={"X-Credentials": self._creds_header("bob@example.com")})
         assert json.loads(response.data)["active_storage"] == app_module.DEFAULT_STORAGE_BACKEND
+
+
+class TestAssistantChatRoute:
+    """POST /api/assistant/chat with the caller's Drive and Gemini faked."""
+
+    @pytest.fixture
+    def fakes(self, monkeypatch):
+        seen = {}
+        monkeypatch.setattr(app_module, "_plugin_drive_context", lambda: ("svc", "folder"))
+        monkeypatch.setattr(
+            app_module.json_google_drive_storage, "get_settings", lambda _s, _f, _d: {"plugin_state_todos": False}
+        )
+
+        def fake_gather(service, folder, enabled):
+            seen["drive"] = (service, folder)
+            seen["todos_enabled"] = enabled("todos")
+            seen["pomodoro_enabled"] = enabled("pomodoro")
+            return {"pomodoro": {"minutes": 25}}
+
+        def fake_generate(config, prompt, system, schema):
+            seen["config"] = config
+            seen["prompt"] = prompt
+            seen["schema"] = schema
+            return {"candidates": [{"content": {"parts": [{"text": "25 minutes"}]}}]}
+
+        monkeypatch.setattr(assistant_plugin, "gather_context", fake_gather)
+        monkeypatch.setattr(social_plugin, "gemini_generate", fake_generate)
+        monkeypatch.setattr(social_plugin, "read_config", lambda _s, _f: {"gemini_api_key": "k"})
+        return seen
+
+    def test_requires_auth(self, client):
+        assert client.post("/api/assistant/chat", json={"question": "hi"}).status_code == 401
+
+    def test_answers_with_callers_settings_and_drive(self, client, fakes):
+        resp = client.post("/api/assistant/chat", json={"question": "How long?"})
+        assert resp.status_code == 200
+        assert resp.get_json() == {"answer": "25 minutes"}
+        assert fakes["drive"] == ("svc", "folder")
+        assert fakes["todos_enabled"] is False
+        assert fakes["pomodoro_enabled"] is True
+        assert fakes["config"] == {"gemini_api_key": "k"}
+        assert "How long?" in fakes["prompt"] and '"minutes": 25' in fakes["prompt"]
+        assert fakes["schema"] is None
+
+    def test_invalid_question_is_400(self, client, fakes):
+        assert client.post("/api/assistant/chat", json={"question": ""}).status_code == 400
+        assert client.post("/api/assistant/chat", json=["not", "an", "object"]).status_code == 400
+
+    def test_gemini_error_is_502(self, client, fakes, monkeypatch):
+        def boom(*_a, **_k):
+            raise social_plugin.SocialError("Gemini down")
+
+        monkeypatch.setattr(social_plugin, "gemini_generate", boom)
+        assert client.post("/api/assistant/chat", json={"question": "hi"}).status_code == 502
+
+    def test_storage_error_is_500(self, client, fakes, monkeypatch):
+        def boom(_s, _f, _d):
+            raise HttpError(MagicMock(status=500, reason="boom"), b"boom")
+
+        monkeypatch.setattr(app_module.json_google_drive_storage, "get_settings", boom)
+        assert client.post("/api/assistant/chat", json={"question": "hi"}).status_code == 500
