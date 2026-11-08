@@ -1015,6 +1015,22 @@ test("a late refresh never paints over another ticket's thread", THREADS, async 
     assert.equal(await thread(page), 'other ticket');
 });
 
+test('a reload on #rt/queue/<queue> keeps that queue, before and after the cache loads', {
+    ...RT_VIEW, path: '/#rt/queue/Web', rtSync: { ok: true, configured: true },
+}, async ({ page }) => {
+    await page.waitForFunction(() => document.querySelectorAll('#rt-queue-bar button').length > 1);
+    assert.equal(await page.$eval('#rt-queue-bar button.active', b => b.textContent), 'Web');
+    assert.equal(await page.evaluate(() => location.hash), '#rt/queue/Web');
+    assert.deepEqual(await ticketIds(page), ['#3', '#4']);
+});
+
+test('a queue that is gone once tickets load falls back to All', {
+    ...RT_VIEW, path: '/#rt/queue/Gone', rtSync: { ok: true, configured: true },
+}, async ({ page }) => {
+    await page.waitForFunction(() => document.querySelectorAll('#rt-queue-bar button').length > 1);
+    assert.equal(await page.$eval('#rt-queue-bar button.active', b => b.textContent), 'All');
+});
+
 test('a ticket shows its due date only when RT has one', RT_VIEW, async ({ page }) => {
     await showTickets(page);
     const dues = await page.$$eval('#rt-list-container > div', items => items.map(i => i.querySelector('[class$="-due"]')?.textContent || ''));

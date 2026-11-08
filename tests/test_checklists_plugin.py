@@ -80,8 +80,18 @@ class TestAfterCompletion:
     def test_weekly_waits_a_full_week(self):
         # Completed on a Sunday: fixed mode is due Monday, after_completion a week later.
         assert checklists_plugin.due_status(_doc("weekly", "2026-05-17"), date(2026, 5, 18))[0]["due"] is True
-        assert checklists_plugin.due_status(_doc("weekly", "2026-05-17", mode="after_completion"), date(2026, 5, 18))[0]["due"] is False
-        assert checklists_plugin.due_status(_doc("weekly", "2026-05-17", mode="after_completion"), date(2026, 5, 24))[0]["due"] is True
+        assert (
+            checklists_plugin.due_status(_doc("weekly", "2026-05-17", mode="after_completion"), date(2026, 5, 18))[0][
+                "due"
+            ]
+            is False
+        )
+        assert (
+            checklists_plugin.due_status(_doc("weekly", "2026-05-17", mode="after_completion"), date(2026, 5, 24))[0][
+                "due"
+            ]
+            is True
+        )
 
     def test_monthly_clamps_to_month_end(self):
         assert checklists_plugin.next_due("monthly", date(2026, 1, 31)) == date(2026, 2, 28)
