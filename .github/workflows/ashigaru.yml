@@ -1,7 +1,7 @@
 # Ashigaru — issues in, fixed bugs out. ONE file enrolls a repo.
 #
 # Drop this in at .github/workflows/ashigaru.yml. The organization supplies the
-# secrets (CLAUDE_CODE_OAUTH_TOKEN, ASHIGARU_APP_ID, ASHIGARU_APP_KEY,
+# secrets (CLAUDE_CODE_OAUTH_TOKEN, ASHIGARU_APP_KEY,
 # OPENROUTER_API_KEY) and the switch (variable ASHIGARU_ENABLED = true).
 #
 # What happens:
@@ -75,7 +75,6 @@ jobs:
     uses: crunchtools/ashigaru/.github/workflows/code.yml@v2
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-      ASHIGARU_APP_ID: ${{ secrets.ASHIGARU_APP_ID }}
       ASHIGARU_APP_KEY: ${{ secrets.ASHIGARU_APP_KEY }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
 
@@ -94,5 +93,4 @@ jobs:
     uses: crunchtools/ashigaru/.github/workflows/fix.yml@v2
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-      ASHIGARU_APP_ID: ${{ secrets.ASHIGARU_APP_ID }}
       ASHIGARU_APP_KEY: ${{ secrets.ASHIGARU_APP_KEY }}
