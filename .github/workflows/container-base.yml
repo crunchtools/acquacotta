@@ -6,8 +6,8 @@ on:
     paths:
       - 'Containerfile.base'
       - 'Containerfile.test'
-      - 'requirements.txt'
-      - 'requirements-dev.txt'
+      - 'pyproject.toml'
+      - 'uv.lock'
       - 'static/acquacotta-http.conf'
       - 'static/entrypoint.sh'
     tags:

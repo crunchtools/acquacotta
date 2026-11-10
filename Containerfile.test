@@ -7,6 +7,18 @@
 #
 # Build: podman build -f Containerfile.test -t quay.io/crunchtools/acquacotta-test .
 
+# RT#1564: uv.lock's dev dependency group is the single source for test/dev
+# tooling too, replacing the separately-compiled requirements-dev.txt. (That
+# group didn't carry ruff/pre-commit until this same ticket added them --
+# otherwise this stage would silently ship a test image without ruff.)
+FROM quay.io/hummingbird/python:3.14-builder AS lock
+USER 0
+RUN pip install --no-cache-dir uv==0.13.7
+WORKDIR /lock
+COPY pyproject.toml uv.lock ./
+RUN uv export --frozen --no-emit-project --python 3.12 \
+      --format requirements-txt -o /requirements-dev.txt
+
 FROM quay.io/crunchtools/acquacotta-base:latest
 
 # Gourmand comes from the pre-built image, not a source build.
@@ -23,23 +35,54 @@ FROM quay.io/crunchtools/acquacotta-base:latest
 COPY --from=quay.io/crunchtools/gourmand:latest \
      /usr/local/bin/gourmand /usr/local/bin/gourmand
 
-# Install Python dev/test dependencies
-COPY requirements-dev.txt .
-RUN pip3.12 install --no-cache-dir -r requirements-dev.txt
+# Install Python dev/test dependencies. Dependencies come from uv.lock, not a
+# separately-compiled requirements-dev.txt (RT#1564).
+COPY --from=lock /requirements-dev.txt /tmp/requirements-dev.txt
+RUN pip3.12 install --no-cache-dir --no-deps -r /tmp/requirements-dev.txt
 
 WORKDIR /app
 
-# Copy application code
+# Copy application code. Full module set, matching Containerfile -- not just
+# app.py/sheets_storage.py (the pre-existing list here). With only those two
+# present, `import app` (and every test module that imports a plugin) raised
+# ModuleNotFoundError, and ruff's first-party import detection -- which finds
+# first-party modules by their presence next to pyproject.toml, not just
+# `known-first-party` -- misclassified the rest as third-party and reordered
+# imports, failing `ruff check .`. Caught while verifying RT#1564's lock-stage
+# change; unrelated to it, but this CMD never ran in CI so it had gone unnoticed.
 COPY app.py .
+COPY plugin_registry.py .
+COPY storage_api.py .
 COPY sheets_storage.py .
+COPY json_storage_core.py .
+COPY json_google_drive_storage.py .
+COPY json_pcloud_storage.py .
+COPY todos_plugin.py .
+COPY discussions_plugin.py .
+COPY plugin_common.py .
+COPY deep_links.py .
+COPY rt_plugin.py .
+COPY social_plugin.py .
+COPY settings_plugin.py .
+COPY timer_sync_plugin.py .
+COPY assistant_plugin.py .
+COPY checklists_plugin.py .
+COPY pomodoro_tools.py .
+COPY mcp_server.py .
+COPY mcp_tokens.py .
+COPY transports/ transports/
 COPY templates/ templates/
 COPY static/ static/
 
-# Copy test code and config
+# Copy test code and config. Containerfile itself is needed too: tests/test_
+# container_image.py reads it from ROOT to check every imported local module
+# has a matching COPY line (the guard added after RT #168/#223 shipped a
+# container that died on boot with ModuleNotFoundError).
 COPY tests/ tests/
 COPY pyproject.toml .
 COPY gourmand.toml .
 COPY gourmand-exceptions.toml .
+COPY Containerfile .
 
 # Set test environment
 ENV FLASK_SECRET_KEY=test-secret-key

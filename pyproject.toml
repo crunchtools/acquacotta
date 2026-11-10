@@ -1,6 +1,6 @@
 [project]
 name = "acquacotta"
-version = "2.37.0"
+version = "2.37.1"
 description = "Pomodoro time tracking web application"
 requires-python = ">=3.10"
 
@@ -84,28 +84,29 @@ max-complexity = 10
 [tool.ruff.lint.isort]
 known-first-party = ["app", "sheets_storage"]
 
-# WHY THE DEPENDENCIES ARE WRITTEN TWICE, and what to do about it.
-#
-# This repo's dependencies have always lived in requirements.in, compiled by
-# `uv pip compile` into requirements.txt, which all three Containerfiles
-# pip-install. The gate reads pyproject.toml and uv.lock instead, so the direct
-# dependencies above are a second copy of requirements.in.
-#
-# They are a copy on purpose. Making pyproject the single source would mean
-# regenerating requirements.txt from uv.lock, and `uv export` does not
-# necessarily resolve to the versions `uv pip compile` already pinned -- which
-# would change what a DEPLOYED service installs, inside a pull request whose
-# subject is CI wiring. Not that.
-#
-# The cost is real and worth naming: the gate can test versions the image does
-# not ship. Collapsing the two to one source, and the Containerfiles with them,
-# is tracked separately. Until then these two lists move together.
+# RT#1564: requirements.in/requirements.txt (and the Dependabot pip block that
+# maintained them) are retired. pyproject.toml + uv.lock are now the single
+# dependency source; Containerfile and Containerfile.base export uv.lock via a
+# lock stage (`uv export --frozen --no-dev ...`) instead of installing a
+# separately-compiled requirements.txt.
 [dependency-groups]
 dev = [
   "mypy>=1.14",
   "pytest>=8.0",
   "pytest-cov>=4.0",
   "pytest-flask>=1.3",
+  # Added by RT#1564 so Containerfile.test's `ruff check`/`ruff format --check`
+  # and pre-commit hooks resolve from uv.lock too -- requirements-dev.in had
+  # these but pyproject's dev group didn't, which is exactly the kind of silent
+  # gap the single-source fix exists to close. Same floor requirements-dev.in
+  # used (ruff>=0.4); `uv lock` kept it at the already-locked 0.16.8, which
+  # `ruff check .`/`ruff format --check .` pass against -- once Containerfile.
+  # test copies the full module set (see that file: a separate, pre-existing
+  # gap found while verifying this change -- with only app.py/sheets_storage.py
+  # present, ruff's first-party import detection misclassified the rest as
+  # third-party and both pytest and ruff broke).
+  "ruff>=0.4",
+  "pre-commit>=3.0",
 ]
 
 # Flat modules at the root plus transports/ -- not a package, so by path.

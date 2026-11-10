@@ -6,6 +6,29 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.37.1] - 2026-11-10
+
+### Fixed
+- Containerfile, Containerfile.base, and Containerfile.test installed Python
+  dependencies from requirements.txt / requirements-dev.txt, compiled from
+  requirements.in / requirements-dev.in by a Dependabot `pip` block -- a second
+  dependency source alongside the committed uv.lock that the gate (pyproject.toml
+  + uv.lock) didn't see. Each Containerfile now exports uv.lock to a pinned
+  requirements list in a build-time lock stage and installs from that with
+  `--no-deps`, so uv.lock is the only source. requirements.in/.txt and
+  requirements-dev.in/.txt are removed, and `.github/dependabot.yml`'s `pip`
+  block is replaced with a `uv` block. pyproject.toml's dev dependency group
+  gained `ruff` and `pre-commit` (requirements-dev.in had them; the dev group
+  didn't), so Containerfile.test's `ruff check`/`ruff format --check` still
+  resolve from the lock. Verifying the rebuilt test image surfaced a separate,
+  pre-existing bug, fixed here too: Containerfile.test copied only app.py and
+  sheets_storage.py, so `pytest tests/` couldn't even collect (every other
+  module import error'd) and `ruff check .` misclassified the rest as
+  third-party imports -- invisible until now because no workflow actually
+  runs the test image's CMD. It now copies the full module set (matching
+  Containerfile) plus Containerfile itself, which tests/test_container_image.py
+  reads from disk (RT#1564).
+
 ## [2.37.0] - 2026-11-08
 
 ### Added
