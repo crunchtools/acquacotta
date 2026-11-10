@@ -4,13 +4,25 @@
 #
 # Build: podman build -t quay.io/crunchtools/acquacotta .
 
+# RT#1564: same lock stage as Containerfile.base. This file also pip-installs
+# from a requirements export (to pick up deps added since the base image was
+# last rebuilt), so it needs the same uv.lock -> requirements.txt conversion.
+FROM quay.io/hummingbird/python:3.14-builder AS lock
+USER 0
+RUN pip install --no-cache-dir uv==0.13.7
+WORKDIR /lock
+COPY pyproject.toml uv.lock ./
+RUN uv export --frozen --no-dev --no-emit-project --python 3.12 \
+      --format requirements-txt -o /requirements.txt
+
 FROM quay.io/crunchtools/acquacotta-base:latest
 
 WORKDIR /app
 
-# Install new dependencies not in base image
-COPY requirements.txt .
-RUN pip3 install --no-cache-dir -r requirements.txt
+# Install new dependencies not in base image. Dependencies come from uv.lock,
+# not a separately-compiled requirements.txt (RT#1564).
+COPY --from=lock /requirements.txt /tmp/requirements.txt
+RUN pip3 install --no-cache-dir --no-deps -r /tmp/requirements.txt
 
 # Copy only application code (fast)
 COPY app.py .

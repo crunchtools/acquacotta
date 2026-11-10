@@ -1,19 +1,19 @@
-# Dependabot config for crunchtools Python projects using pip-compile.
-# See constitution.md Section XV.
+# Canonical Dependabot config for crunchtools Python projects using uv.
+# Drop in as .github/dependabot.yml. See constitution.md Section XV.
 #
-# Dependency sources are the .in files; the .txt files are the generated,
-# fully pinned lockfiles that the Containerfile and CI actually install:
-#   - requirements.in      -> requirements.txt      (runtime, Containerfile)
-#   - requirements-dev.in  -> requirements-dev.txt  (tests, .github/workflows/test.yml)
+# Covers both ecosystems that go stale silently if left unpinned:
+#   - uv:            uv.lock (must be committed, never gitignored)
+#   - github-actions: `uses: some-action@vX.Y.Z` pins in .github/workflows/
 #
-# Dependabot understands this pair and updates both sides together.
-# Regenerate locally with:
-#   uv pip compile requirements.in     -o requirements.txt     --python-version 3.11
-#   uv pip compile requirements-dev.in -o requirements-dev.txt --python-version 3.11
+# RT#1564: this replaces the old "pip" block that tracked requirements.in/
+# requirements.txt and requirements-dev.in/requirements-dev.txt, which were a
+# second dependency source alongside this same uv.lock. Those files are
+# retired; pyproject.toml + uv.lock are now the single source, exported to a
+# requirements-txt format inside each Containerfile's lock stage.
 
 version: 2
 updates:
-  - package-ecosystem: "pip"
+  - package-ecosystem: "uv"
     directory: "/"
     schedule:
       interval: "weekly"

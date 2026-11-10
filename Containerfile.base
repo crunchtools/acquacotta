@@ -4,6 +4,18 @@
 #
 # Build: podman build -f Containerfile.base -t quay.io/crunchtools/acquacotta-base .
 
+# RT#1564: uv.lock is the single dependency source. This stage turns it into the
+# exact pinned set `pip3.12` installs below, instead of a separately-compiled
+# requirements.txt (the retired second source). acquacotta-base has no uv of its
+# own, so borrow one from a hummingbird Python builder image just for the export.
+FROM quay.io/hummingbird/python:3.14-builder AS lock
+USER 0
+RUN pip install --no-cache-dir uv==0.13.7
+WORKDIR /lock
+COPY pyproject.toml uv.lock ./
+RUN uv export --frozen --no-dev --no-emit-project --python 3.12 \
+      --format requirements-txt -o /requirements.txt
+
 FROM quay.io/crunchtools/ubi10-core:latest
 
 # Install system packages (slow)
@@ -11,9 +23,11 @@ RUN dnf install -y python3.12 python3.12-pip httpd procps-ng systemd && dnf clea
 
 WORKDIR /app
 
-# Install Python production dependencies (slow)
-COPY requirements.txt .
-RUN pip3.12 install --no-cache-dir -r requirements.txt
+# Install Python production dependencies (slow). Dependencies come from uv.lock
+# (hash-pinned), not a fresh resolve -- --no-deps stops pip re-resolving what the
+# lock already decided (same pattern as the fleet's other uv.lock Containerfiles).
+COPY --from=lock /requirements.txt /tmp/requirements.txt
+RUN pip3.12 install --no-cache-dir --no-deps -r /tmp/requirements.txt
 
 # Apache HTTP reverse proxy configuration (SSL handled by external reverse proxy)
 COPY static/acquacotta-http.conf /etc/httpd/conf.d/acquacotta.conf
