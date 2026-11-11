@@ -1,0 +1,37 @@
+# Container release for the app image: build once per change, gate the digest,
+# promote what was tested (constitution III, Container Image VII). Quay.io only.
+#
+# The boot gate starts the digest under systemd and requires / to answer 200
+# with gunicorn never restarted -- the check that would have stopped the
+# 2026-11-07 outage (it fails de5d922: 503, 23 restarts, ModuleNotFoundError).
+# :main moves on merge, :latest on a v* tag only (RT#1559).
+
+name: Container
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  # acquacotta-base was promoted: rebuild on it, gated before anything moves.
+  repository_dispatch:
+    types: [parent-image-updated]
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  container:
+    uses: crunchtools/constitution/.github/workflows/container-release.yml@c50e48f8a6502674a66c412977be3c9e69ca4a8c
+    permissions:
+      contents: read
+      pull-requests: read
+    with:
+      image: quay.io/crunchtools/acquacotta
+      boot: command
+      boot-command: tests/image/boot-gate.sh
+      contract-test: tests/image/cve-gate.sh
+      constitution-ref: c50e48f8a6502674a66c412977be3c9e69ca4a8c
+    secrets:
+      QUAY_USERNAME: ${{ secrets.QUAY_USERNAME }}
+      QUAY_PASSWORD: ${{ secrets.QUAY_PASSWORD }}

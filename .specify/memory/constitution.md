@@ -71,16 +71,19 @@ Sheets schema; MINOR for new features; PATCH for fixes and minor tweaks.
 
 ## Image Chain and Release
 
-- `Containerfile.base` builds `quay.io/crunchtools/acquacotta-base` (and
-  `Containerfile.test` the `acquacotta-test` image) from
-  `quay.io/crunchtools/ubi10-core`. **Parent image for cascade:**
+- `Containerfile.base` builds `quay.io/crunchtools/acquacotta-base` from
+  `quay.io/crunchtools/ubi10-core`. (`Containerfile.test` is for local runs
+  only; CI tests through python-sdlc and no longer publishes it.) **Parent image for cascade:**
   `quay.io/crunchtools/ubi10-core`; the base workflow listens for
   `parent-image-updated`.
 - `Containerfile` builds `quay.io/crunchtools/acquacotta` from
   `acquacotta-base`.
-- Every push to `main` publishes `:main`. Only a `v*` release tag moves
-  `:latest`, alongside an immutable `:vX.Y.Z`, so production runs what was
-  released, not whatever last merged (#239, RT#1559). `acquacotta-base` is the
+- Both images go through constitution's `container-release.yml`: a pull
+  request builds once and gates that digest (the app's boot gate boots it
+  under systemd and requires `/` to answer with gunicorn never restarted); the
+  merge promotes the gated digest to `:main` without rebuilding. Only a `v*`
+  release tag moves `:latest`, alongside an immutable `:X.Y.Z`, so production
+  runs what was released, not whatever last merged (#239, RT#1559, RT#1550). `acquacotta-base` is the
   exception: its `:latest` still tracks `main`, so a base erratum reaches the
   app's next build.
 - Image tags are unique to this repository. No other repo, including archived
