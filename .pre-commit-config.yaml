@@ -12,7 +12,7 @@ default_install_hook_types: [pre-commit, pre-push]
 
 repos:
   - repo: https://github.com/crunchtools/python-sdlc
-    rev: v0.6.2
+    rev: v0.6.3
     hooks:
       - id: sdlc-commit
       - id: sdlc-push
