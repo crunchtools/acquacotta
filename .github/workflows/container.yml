@@ -15,14 +15,14 @@ on:
     tags: ["v*"]
   # acquacotta-base was promoted: rebuild on it, gated before anything moves.
   repository_dispatch:
-    types: [parent-image-updated]
+    types: [acquacotta-base-updated]
   workflow_dispatch:
 
 permissions: {}
 
 jobs:
   container:
-    uses: crunchtools/constitution/.github/workflows/container-release.yml@c50e48f8a6502674a66c412977be3c9e69ca4a8c
+    uses: crunchtools/constitution/.github/workflows/container-release.yml@v1.39.1
     permissions:
       contents: read
       pull-requests: read
@@ -31,7 +31,6 @@ jobs:
       boot: command
       boot-command: tests/image/boot-gate.sh
       contract-test: tests/image/cve-gate.sh
-      constitution-ref: c50e48f8a6502674a66c412977be3c9e69ca4a8c
     secrets:
       QUAY_USERNAME: ${{ secrets.QUAY_USERNAME }}
       QUAY_PASSWORD: ${{ secrets.QUAY_PASSWORD }}

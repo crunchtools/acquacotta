@@ -1,6 +1,6 @@
 # Container release for acquacotta-base, the image the app builds FROM. A
 # cascade image: :latest tracks :main, and every promotion dispatches
-# parent-image-updated to acquacotta, whose own boot gate then tests the app on
+# acquacotta-base-updated to the app, whose own boot gate then tests it on
 # the new base before the app moves. ubi10-core dispatches here.
 
 name: Container (base)
@@ -21,7 +21,7 @@ permissions: {}
 
 jobs:
   base:
-    uses: crunchtools/constitution/.github/workflows/container-release.yml@c50e48f8a6502674a66c412977be3c9e69ca4a8c
+    uses: crunchtools/constitution/.github/workflows/container-release.yml@v1.39.1
     permissions:
       contents: read
       pull-requests: read
@@ -36,7 +36,8 @@ jobs:
         "import flask, gunicorn, fastmcp, gspread, cryptography, requests; print('base imports ok')"
       cascade: true
       downstream: acquacotta
-      constitution-ref: c50e48f8a6502674a66c412977be3c9e69ca4a8c
+      # Its own repo: a distinct event, or this workflow would fire itself.
+      downstream-event: acquacotta-base-updated
     secrets:
       QUAY_USERNAME: ${{ secrets.QUAY_USERNAME }}
       QUAY_PASSWORD: ${{ secrets.QUAY_PASSWORD }}

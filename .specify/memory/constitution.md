@@ -4,7 +4,7 @@
 > **Ratified:** 2025-12-27
 > **Amended:** 2026-11-08
 > **Status:** Active
-> **Inherits:** [crunchtools/constitution](https://github.com/crunchtools/constitution) v1.31.0
+> **Inherits:** [crunchtools/constitution](https://github.com/crunchtools/constitution) v1.39.1
 > **Profile:** Web Application
 
 This file holds what is specific to Acquacotta. The fleet rules and the Web
