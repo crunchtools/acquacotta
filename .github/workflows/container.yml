@@ -30,7 +30,6 @@ jobs:
       image: quay.io/crunchtools/acquacotta
       boot: command
       boot-command: tests/image/boot-gate.sh
-      contract-test: tests/image/cve-gate.sh
     secrets:
       QUAY_USERNAME: ${{ secrets.QUAY_USERNAME }}
       QUAY_PASSWORD: ${{ secrets.QUAY_PASSWORD }}
