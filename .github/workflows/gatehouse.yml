@@ -13,13 +13,18 @@
 # Three jobs with DIFFERENT authority:
 #   • guard   — a real blocking gate. Mark it a REQUIRED status check so a PR
 #               that tampers with your workflow files is rejected.
-#   • review  — ADVISORY. It posts findings as PR comments and always passes;
-#               do NOT mark it required. An LLM reviewer is non-deterministic,
+#   • review  — ADVISORY. It posts findings as PR comments and no finding
+#               fails it; it fails only when the review did not happen:
+#               fewer than half of the agents finished (provider down,
+#               key refused), or the reviewer could not run at all. Do
+#               NOT mark it required. An LLM reviewer is non-deterministic,
 #               so it must never hold merge authority. (Opt into blocking with
 #               `blocking: true` below only if you accept that tradeoff — and
 #               even then, keep it out of branch protection.)
-#   • triage  — deterministic. Fails while any finding has no reply
-#               (`fixed in <sha>` or `not a bug: <reason>`). Safe to mark
+#   • triage  — deterministic. Fails while any finding has no answer
+#               (`fixed in <sha>`, `not a bug: <reason>` or
+#               `deferred: <open issue URL>`), or while the
+#               last review did not finish. Safe to mark
 #               REQUIRED: it never judges code, only whether a human answered.
 
 name: Gatehouse
@@ -28,7 +33,7 @@ on:
   pull_request_target:
     types: [opened, synchronize, reopened]
   # A reply rings the doorbell: this run's own checks do not count toward
-  # branch rules, so examples/gatehouse-retriage.yml answers it by re-running
+  # branch rules, so gatehouse-retriage.yml answers it by re-running
   # triage inside the pull_request_target run. Add that file too.
   pull_request_review_comment:
     types: [created, edited, deleted]
@@ -37,7 +42,8 @@ permissions: {}   # default-deny; each job grants only what it needs
 
 jobs:
   # ── 1) Protect the workflow files themselves ────────────────────────────────
-  # Rejects PRs from forks that touch .github/workflows/. Safe under
+  # Rejects PRs from forks that touch .github/workflows/ or .sdlc/ (the
+  # launcher the required `sdlc ci` check runs). Safe under
   # pull_request_target because it only reads the changed-file LIST via the
   # API — it never checks out or runs your code. And because pull_request_target
   # runs the BASE version of this file, a PR can't edit this job to disable it.
@@ -66,11 +72,11 @@ jobs:
             echo "Head branch is in $GITHUB_REPOSITORY; allowing."; exit 0
           fi
           # Both sides of a rename: `gh pr diff --name-only` lists only the new
-          # path, so a fork could move a workflow out of .github/workflows/ unseen.
+          # path, so a fork could move a file out of .github/workflows/ or .sdlc/ unseen.
           changed="$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" \
             --jq '.[] | .filename, (.previous_filename // empty)')"
-          if echo "$changed" | grep -qE '^\.github/workflows/'; then
-            echo "::error::PR modifies .github/workflows/ — not accepted from external contributors."
+          if echo "$changed" | grep -qE '^(\.github/workflows|\.sdlc)/'; then
+            echo "::error::PR modifies .github/workflows/ or .sdlc/ — not accepted from external contributors."
             # Explain once, on the PR event; replies re-run the check, not the comment.
             if [ "$EVENT" = "pull_request_target" ]; then
               gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body \
@@ -82,7 +88,8 @@ jobs:
 
   # ── 2) Review the PR diff (no checkout, BYO key) ────────────────────────────
   # The reviewer is maintained centrally in gatehouse's reusable workflow and the
-  # pinned container — so security fixes reach you without copying logic around.
+  # container it names, called at the major tag — so a fix reaches you with no
+  # change to this file.
   # Scope OPENROUTER_API_KEY to this reusable workflow so only it can read the key.
   review:
     name: Gatehouse review
@@ -91,7 +98,7 @@ jobs:
       contents: read
       pull-requests: write
     uses: crunchtools/gatehouse/.github/workflows/review.yml@v0
-    # Advisory by default — findings post as comments, the check always passes.
+    # Advisory by default — findings post as comments and never fail the check.
     # Uncomment to let critical/high findings fail the check (still not required):
     #   with:
     #     blocking: true
@@ -100,7 +107,12 @@ jobs:
 
   # ── 3) Every finding answered ──────────────────────────────────────────────
   # Runs after the review on a push, and alone on a reply (review is skipped
-  # then, hence always()). Read-only, no secrets.
+  # then, hence always()). Read-only, no secrets. LOW findings need an answer
+  # only from Bug Hunter and Security Scan; other LOWs are advisory. To change
+  # which agents' LOWs are required (agent names, comma-separated), set the
+  # same list here and on the review job above, so the review posts them all:
+  #   with:
+  #     required_low_agents: "Bug Hunter,Security Scan,Test Coverage"
   triage:
     name: Gatehouse triage
     needs: review
