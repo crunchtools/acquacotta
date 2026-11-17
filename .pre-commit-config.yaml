@@ -1,9 +1,16 @@
-# Every check runs from python-sdlc, pinned here once (constitution XII,
-# v1.30.0). This `rev:` fixes the launcher, the image and every tool inside it,
-# for this laptop and for CI, which reads the same line.
+# Every check runs from quay.io/crunchtools/sdlc (constitution XII). Nothing
+# here pins it: .sdlc/bin/sdlc asks the image for its own launcher and runs it,
+# so the launcher, the image and every tool inside it float together on
+# :latest -- for this laptop and, through .github/workflows/ci.yml, for CI.
+# There is no `rev:` to bump, ever.
 #
-# What each hook runs is configured in pyproject.toml: [tool.sdlc.commit],
-# [tool.sdlc.push], [tool.sdlc.ci]. `sdlc tiers` prints it.
+#   SDLC_IMAGE=main git push   judges this push with what has merged to
+#                              python-sdlc and not been released. A repo opts
+#                              its CI in with the repository variable SDLC_IMAGE.
+#
+# What each hook runs is configured in pyproject.toml ([tool.sdlc.commit],
+# [tool.sdlc.push], [tool.sdlc.ci]) or, in a repo with no pyproject.toml,
+# sdlc.toml. `.sdlc/bin/sdlc tiers` prints it.
 #
 # `default_install_hook_types` must name both: without pre-push, `pre-commit
 # install` wires only the commit hook and every verdict silently stops running.
@@ -11,8 +18,19 @@
 default_install_hook_types: [pre-commit, pre-push]
 
 repos:
-  - repo: https://github.com/crunchtools/python-sdlc
-    rev: v0.8.0
+  - repo: local
     hooks:
       - id: sdlc-commit
+        name: sdlc commit
+        entry: .sdlc/bin/sdlc commit
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit, pre-merge-commit]
       - id: sdlc-push
+        name: sdlc push
+        entry: .sdlc/bin/sdlc push
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]

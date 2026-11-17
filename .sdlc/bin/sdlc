@@ -1,0 +1,62 @@
+#!/bin/sh
+# Run `sdlc` with no `rev:` to pin: get the launcher from the image, then run it.
+#
+# The launcher (bin/sdlc) ships inside quay.io/crunchtools/sdlc, so it floats
+# with the image tag exactly as the tools in the image do: `:latest` by
+# default, SDLC_IMAGE=main for what has merged and not been released, a
+# release such as SDLC_IMAGE=0.9.0, or SDLC_IMAGE=@sha256:<digest>. Nothing
+# else: this file runs whatever it pulls, so it pulls from that one repository.
+# A seat trying a local build runs a python-sdlc clone's bin/sdlc instead. The
+# image prints the launcher with its own ref written into it (`sdlc launcher
+# <ref>`), so the launcher and the image it starts cannot disagree.
+#
+# A converted repo carries this file as .sdlc/bin/sdlc, and its hooks and its
+# CI job run it (scripts/convert_repo.py writes it). Nothing in it names a
+# release, so nothing ever bumps it, and the constitution pins its bytes. An
+# `sdlc` RPM would install the same file as /usr/bin/sdlc.
+#
+# Host contract: podman and POSIX sh, nothing else. Never a pipe into `sh`: a
+# failed pull would hand sh nothing, and nothing runs and exits 0. An image
+# that cannot print its launcher is a 2 -- the gate could not run.
+
+set -u
+
+FLEET=quay.io/crunchtools/sdlc
+refuse() {
+  printf 'sdlc: GATE CANNOT RUN: SDLC_IMAGE=%s is not main, latest, X.Y.Z or @sha256:<64 hex> of %s\n' \
+    "${SDLC_IMAGE:-}" "$FLEET" >&2
+  exit 2
+}
+
+# The value, with the repository named in full or not at all.
+want=${SDLC_IMAGE:-latest}
+case $want in
+  "$FLEET":*) want=${want#"$FLEET":} ;;
+  "$FLEET"@*) want=${want#"$FLEET"} ;;
+esac
+case $want in
+  main|latest) image=$FLEET:$want ;;
+  @sha256:*)
+    hex=${want#@sha256:}
+    case $hex in *[!0-9a-f]*) refuse ;; esac
+    [ "${#hex}" -eq 64 ] || refuse
+    image=$FLEET$want ;;
+  *[!0-9.]*|.*|*.|*..*|*.*.*.*) refuse ;;
+  *.*.*) image=$FLEET:$want ;;
+  *) refuse ;;
+esac
+
+dir=$(mktemp -d) || exit 2
+trap 'rm -rf "$dir"' EXIT
+trap 'exit 2' HUP INT TERM
+
+# --pull=newer: :latest moves, and a stale local copy is how a two-week-old
+# reviewer once judged trentina. Offline, podman keeps the copy it has.
+if ! podman --events-backend=none run --rm --log-driver=none --network=none \
+       --cap-drop=all --security-opt=no-new-privileges --pull=newer \
+       -- "$image" launcher "$image" > "$dir/sdlc" || [ ! -s "$dir/sdlc" ]; then
+  printf 'sdlc: GATE CANNOT RUN: %s could not print its launcher\n' "$image" >&2
+  exit 2
+fi
+# The launcher reads SDLC_IMAGE too; it gets the full reference checked here.
+SDLC_IMAGE=$image sh "$dir/sdlc" "$@"
