@@ -9,6 +9,7 @@ on:
 jobs:
   sdlc:
     name: sdlc ci
+    timeout-minutes: 30
     # Same-repo PRs run on our cached runner, pushes and schedules on the uncached
     # one; forks and Dependabot stay on GitHub's. An empty variable falls back to
     # ubuntu-latest (crunchtools/trentina security.yml).
