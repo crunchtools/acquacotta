@@ -120,3 +120,5 @@ jobs:
     permissions:
       pull-requests: read
     uses: crunchtools/gatehouse/.github/workflows/triage.yml@v0
+    with:
+      review_result: ${{ needs.review.result }}
