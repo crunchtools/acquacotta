@@ -7,6 +7,8 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Changed
+- Gatehouse triage gets `review_result` from the review job, so a pull request
+  whose review died before posting anything is held instead of passing.
 - Promote signs the image with the fleet cosign key (`sign: true`), because
   bootc hosts are moving to trust only signed `quay.io/crunchtools` images
   (crunchtools/rhel10-bootc-server#47). Needs the repo's `cosign-signing`
