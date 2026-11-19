@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- The container releases run constitution v1.51.0's `container-release.yml`
+  (was v1.46.0) and grant it `issues: write`, so a failed scheduled rebuild
+  opens an issue instead of only warning.
+
 ## [2.37.1] - 2026-11-10
 
 ### Fixed

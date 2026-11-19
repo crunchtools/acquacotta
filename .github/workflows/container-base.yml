@@ -21,9 +21,10 @@ permissions: {}
 
 jobs:
   base:
-    uses: crunchtools/constitution/.github/workflows/container-release.yml@v1.46.0
+    uses: crunchtools/constitution/.github/workflows/container-release.yml@v1.51.0
     permissions:
       contents: read
+      issues: write   # the alert job files a failed schedule as an issue
       pull-requests: read
     with:
       image: quay.io/crunchtools/acquacotta-base
