@@ -90,7 +90,7 @@ jobs:
       pull-requests: read
       checks: read
       actions: read
-    uses: crunchtools/ashigaru/.github/workflows/fix.yml@v2
+    uses: crunchtools/ashigaru/.github/workflows/fix.yml@v3
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
       ASHIGARU_APP_KEY: ${{ secrets.ASHIGARU_APP_KEY }}
