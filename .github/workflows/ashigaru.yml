@@ -57,7 +57,7 @@ jobs:
     permissions:
       contents: read
       issues: write
-    uses: crunchtools/ashigaru/.github/workflows/triage.yml@v2
+    uses: crunchtools/ashigaru/.github/workflows/triage.yml@v3
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
