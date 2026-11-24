@@ -1,5 +1,6 @@
 #!/bin/sh
-# Run `sdlc` with no `rev:` to pin: get the launcher from the image, then run it.
+# Run `sdlc` with no `rev:` to pin: verify the image's signature, get the
+# launcher from it, then run that.
 #
 # The launcher (bin/sdlc) ships inside quay.io/crunchtools/sdlc, so it floats
 # with the image tag exactly as the tools in the image do: `:latest` by
@@ -18,6 +19,18 @@
 # Host contract: podman and POSIX sh, nothing else. Never a pipe into `sh`: a
 # failed pull would hand sh nothing, and nothing runs and exits 0. An image
 # that cannot print its launcher is a 2 -- the gate could not run.
+#
+# Nothing from the image runs before its signature is checked (python-sdlc#81).
+# The image decides every repo's required `sdlc ci` check, so a pushed tag is
+# not enough: the digest the tag resolves to must carry a cosign signature by
+# the fleet key, inlined below so the file the gate trusts carries its own
+# trust root. cosign runs from a digest-pinned image, as the host contract
+# needs; podman's own sigstore policy would need a registries.d that podman
+# cannot be pointed at without faking HOME, which moves its storage too. The
+# launcher and every check then run by that digest, so a tag moving mid-run
+# changes nothing. A digest verified once is remembered in the user's cache,
+# so an offline seat keeps working on what it already verified. Unsigned is a
+# 2, never a warning.
 
 set -u
 
@@ -27,6 +40,7 @@ refuse() {
     "${SDLC_IMAGE:-}" "$FLEET" >&2
   exit 2
 }
+cannot() { printf 'sdlc: GATE CANNOT RUN: %s\n' "$*" >&2; exit 2; }
 
 # The value, with the repository named in full or not at all.
 want=${SDLC_IMAGE:-latest}
@@ -46,17 +60,77 @@ case $want in
   *) refuse ;;
 esac
 
+# The fleet key: crunchtools/constitution keys/crunchtools-bootc.pub, whose
+# private half promote signs with (container.yml). KEY_ID names the key in the
+# cache path, so a new key trusts nothing the old one verified; the host
+# contract test checks it against the key's sha256.
+KEY_ID=9c300eea7ce2867d
+# cosign v2.6.5, the signer's version: v3 keeps signatures where podman and
+# bootc cannot read them. The index digest, so every architecture gets it.
+COSIGN=ghcr.io/sigstore/cosign/cosign@sha256:ad281047f85c5e1fc6ffbc30c2b55be3b07b4032bef715a12122ce5829619aca
+
 dir=$(mktemp -d) || exit 2
 trap 'rm -rf "$dir"' EXIT
 trap 'exit 2' HUP INT TERM
 
-# --pull=newer: :latest moves, and a stale local copy is how a two-week-old
-# reviewer once judged trentina. Offline, podman keeps the copy it has.
-if ! podman --events-backend=none run --rm --log-driver=none --network=none \
-       --cap-drop=all --security-opt=no-new-privileges --pull=newer \
-       -- "$image" launcher "$image" > "$dir/sdlc" || [ ! -s "$dir/sdlc" ]; then
-  printf 'sdlc: GATE CANNOT RUN: %s could not print its launcher\n' "$image" >&2
-  exit 2
+cat > "$dir/fleet.pub" <<'KEY'
+-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE5TlIf0f5VMBaCLJGtmh9fL3C/xYM
+nHVNg0KnBqqs/x+WThX8zEKaGmiZ2SM5336mPfJKZl68/lXBnoWlU0E9Tg==
+-----END PUBLIC KEY-----
+KEY
+
+# A tag is pulled every time: :latest moves, and a stale local copy is how a
+# two-week-old reviewer once judged trentina. Offline, the copy it has stands,
+# and is verified like any other. A digest is pulled only when it is missing.
+case $image in
+  *@sha256:*)
+    digest=${image#*@}
+    podman --events-backend=none image exists -- "$image" \
+      || podman --events-backend=none pull -q -- "$image" > /dev/null \
+      || cannot "$image could not be pulled" ;;
+  *)
+    podman --events-backend=none pull -q -- "$image" > /dev/null \
+      || podman --events-backend=none image exists -- "$image" \
+      || cannot "$image could not be pulled"
+    digest=$(podman --events-backend=none image inspect \
+               --format '{{.Digest}}' -- "$image") || digest= ;;
+esac
+hex=${digest#sha256:}
+case $digest in sha256:*) ;; *) cannot "$image has no sha256 digest to verify" ;; esac
+case $hex in *[!0-9a-f]*) cannot "$image has no sha256 digest to verify" ;; esac
+[ "${#hex}" -eq 64 ] || cannot "$image has no sha256 digest to verify"
+pinned=$FLEET@$digest
+
+# Verified once per digest and key, on a seat: the cache is the user's own,
+# and whoever can write it can already edit this file. It is a convenience for
+# an offline seat, never a verdict, so failing to write it is not a failure.
+# CI always verifies: a self-hosted runner outlives the jobs it runs, and CI is
+# never offline.
+seen=
+if [ -n "${CI:-}" ] || [ -n "${GITHUB_ACTIONS:-}" ]; then :
+elif [ -n "${XDG_CACHE_HOME:-}" ]; then seen=$XDG_CACHE_HOME/sdlc/verified/$KEY_ID
+elif [ -n "${HOME:-}" ]; then seen=$HOME/.cache/sdlc/verified/$KEY_ID
 fi
-# The launcher reads SDLC_IMAGE too; it gets the full reference checked here.
-SDLC_IMAGE=$image sh "$dir/sdlc" "$@"
+if [ -z "$seen" ] || [ ! -e "$seen/$hex" ]; then
+  if ! podman --events-backend=none run --rm --log-driver=none --pull=missing \
+         --cap-drop=all --security-opt=no-new-privileges --read-only \
+         -v "$dir/fleet.pub:/fleet.pub:ro,Z" \
+         -- "$COSIGN" verify --key /fleet.pub --insecure-ignore-tlog=true "$pinned" \
+         > /dev/null 2> "$dir/verify"; then
+    sed 's/^/sdlc:   /' "$dir/verify" >&2
+    cannot "$pinned ($image) could not be verified as signed by the crunchtools fleet key"
+  fi
+  [ -z "$seen" ] || { mkdir -p "$seen" && : > "$seen/$hex"; } 2> /dev/null || :
+fi
+
+# By digest from here on, and never pulled again: the bytes verified above are
+# the bytes that run.
+if ! podman --events-backend=none run --rm --log-driver=none --network=none \
+       --cap-drop=all --security-opt=no-new-privileges --pull=never \
+       -- "$pinned" launcher "$pinned" > "$dir/sdlc" || [ ! -s "$dir/sdlc" ]; then
+  cannot "$pinned ($image) could not print its launcher"
+fi
+# The launcher runs every check by the digest. SDLC_VERIFIED_FROM is the name
+# the digest was resolved from, which its not-the-release banner asks about.
+SDLC_IMAGE=$pinned SDLC_VERIFIED_FROM=$image sh "$dir/sdlc" "$@"

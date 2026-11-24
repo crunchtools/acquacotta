@@ -121,3 +121,9 @@ skip = ["semgrep"]
 
 [tool.sdlc]
 repo-kinds = ["web-application"]
+
+[tool.sdlc.image]
+# Written by crunchtools/sdlc's scripts/convert_repo.py: moved from the workflows.
+image = "quay.io/crunchtools/acquacotta"
+boot = "command"
+boot-command = "tests/image/boot-gate.sh"
