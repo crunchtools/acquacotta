@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.38.0] - 2026-11-24
+
 ### Changed
 - Gatehouse triage gets `review_result` from the review job, so a pull request
   whose review died before posting anything is held instead of passing.
