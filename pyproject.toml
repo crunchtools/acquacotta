@@ -149,7 +149,7 @@ checks = ["js-tests", "app-image", "app-boot"]
 # Replaces the test.yml JavaScript job (npm install puppeteer + inline node).
 # The pinned puppeteer image carries node, puppeteer and its Chrome.
 kind = "command"
-image = "ghcr.io/puppeteer/puppeteer:25.15.0"
+image = "ghcr.io/puppeteer/puppeteer:25.15.0@sha256:6fe165bf38791ad7bec3a276e29c2e167dd0a9b1c02bb4c8e8ac269bdf274b03"
 argv = ["node", "--test", "tests/js/run_utils.js", "tests/js/test_index.js", "tests/js/test_storage_sync.js"]
 env = { NODE_PATH = "/home/pptruser/node_modules", PUPPETEER_CACHE_DIR = "/home/pptruser/.cache/puppeteer" }
 

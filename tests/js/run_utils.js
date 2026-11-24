@@ -2,7 +2,6 @@
 // Loads test_utils.html in headless Chrome and exits with the page's test exit code.
 const puppeteer = require('puppeteer');
 const path = require('path');
-const fs = require('fs');
 
 (async () => {
   const browser = await puppeteer.launch({
