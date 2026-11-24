@@ -2,8 +2,8 @@
 # Built on top of acquacotta-base - includes all test frameworks
 # Used by CI/CD for running Python tests and code quality checks
 #
-# Note: JavaScript tests run natively in GitHub Actions (test.yml)
-# because Chromium isn't available in UBI10 repos
+# Note: JavaScript tests run in a puppeteer image, the js-tests check in
+# pyproject.toml's [tool.sdlc.ci], because Chromium isn't available in UBI10 repos
 #
 # Build: podman build -f Containerfile.test -t quay.io/crunchtools/acquacotta-test .
 

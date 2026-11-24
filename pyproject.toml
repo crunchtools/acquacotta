@@ -123,7 +123,37 @@ skip = ["semgrep"]
 repo-kinds = ["web-application"]
 
 [tool.sdlc.image]
-# Written by crunchtools/sdlc's scripts/convert_repo.py: moved from the workflows.
 image = "quay.io/crunchtools/acquacotta"
-boot = "command"
-boot-command = "tests/image/boot-gate.sh"
+# The published digest boots under systemd with both units up. The full gate
+# (/ answers 200, gunicorn never restarted) is `app-boot` below.
+boot = "systemd"
+boot-units = "gunicorn httpd"
+boot-env = """
+FLASK_SECRET_KEY=gate-only
+FLASK_HOST=127.0.0.1
+"""
+
+# The image the app builds FROM: runtime and locked dependencies, no app. The
+# app is built FROM the digest this run pushes and booted, which is what proves
+# a base works; the weekly and parent-poll rebuilds cascade to the app.
+[[tool.sdlc.images]]
+name = "acquacotta-base"
+containerfile = "Containerfile.base"
+boot = "none"
+boot-none-reason = "carries no app; the acquacotta image built FROM this digest in the same run is the boot gate"
+
+[tool.sdlc.ci]
+checks = ["app-image", "app-boot"]
+
+[tool.sdlc.ci.app-image]
+kind = "image-build"
+
+# The boot gate container-release ran (tests/image/boot-check.sh): systemd as
+# PID 1, as production runs it. Ready once boot reaches multi-user.target,
+# degraded or not; the script judges the units.
+[tool.sdlc.ci.app-boot]
+kind = "command"
+systemd = true
+image = "localhost/acquacotta:sdlc"
+ready = ["systemctl", "is-active", "multi-user.target"]
+argv = ["bash", "tests/image/boot-check.sh"]
