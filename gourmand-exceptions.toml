@@ -229,3 +229,9 @@ check = "copy_paste_detection"
 path = "checklists_plugin.py"
 justification = "_clean_template and timer_sync_plugin.validate_timer are both payload validators: a run of type check, enum membership check, raise ValueError. The fields, enums and messages differ; the shared part is the shape of validating one dict."
 classification = "by_design"
+
+[[exceptions]]
+check = "absolute_paths"
+path = "pyproject.toml"
+justification = "js-tests env names where the pinned puppeteer image installs node_modules and Chrome; the paths are inside that image"
+classification = "by_design"

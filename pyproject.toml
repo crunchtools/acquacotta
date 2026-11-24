@@ -143,7 +143,15 @@ boot = "none"
 boot-none-reason = "carries no app; the acquacotta image built FROM this digest in the same run is the boot gate"
 
 [tool.sdlc.ci]
-checks = ["app-image", "app-boot"]
+checks = ["js-tests", "app-image", "app-boot"]
+
+[tool.sdlc.ci.js-tests]
+# Replaces the test.yml JavaScript job (npm install puppeteer + inline node).
+# The pinned puppeteer image carries node, puppeteer and its Chrome.
+kind = "command"
+image = "ghcr.io/puppeteer/puppeteer:25.15.0"
+argv = ["node", "--test", "tests/js/run_utils.js", "tests/js/test_index.js", "tests/js/test_storage_sync.js"]
+env = { NODE_PATH = "/home/pptruser/node_modules", PUPPETEER_CACHE_DIR = "/home/pptruser/.cache/puppeteer" }
 
 [tool.sdlc.ci.app-image]
 kind = "image-build"
