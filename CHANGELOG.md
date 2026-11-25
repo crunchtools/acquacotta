@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.38.0] - 2026-11-24
+
 ### Changed
 - CI is the fleet's one `ci.yml` (sdlc 0.15); what this repo's own workflows ran is
   now `[tool.sdlc]` in pyproject.toml. The browser tests run as the `js-tests`
