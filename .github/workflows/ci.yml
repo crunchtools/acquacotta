@@ -1,7 +1,9 @@
 # One file, every repo, copied unchanged. A job is a trust level; `sdlc event`
 # routes inside it. The only version here is the bootstrap's digest: it resolves
 # quay.io/crunchtools/sdlc:<major>, verifies it against sdlc's own key and a
-# minimum version, and runs it through the runner's container socket. Every
+# minimum version, and runs it on the runner's own podman (no `container:`, no
+# Docker): the same engine on GitHub's runners and ours. One image build per
+# release; a pull request test-builds only when a Containerfile or lockfile changes. Every
 # secret is an org secret: a fork's PR gets none, pull_request_target runs the
 # default branch's copy of this file, and only Prime's credential may change a
 # workflow. Every job that holds one runs on our uncached runners, or GitHub's
@@ -29,7 +31,7 @@ jobs:
     steps: &event
       - id: e
         run: >-
-          sudo systemctl start podman.socket && sudo chmod 0711 /run/podman && sudo chmod 0666 /run/podman/podman.sock &&
+          sudo systemctl start podman.socket && sudo chmod 0711 /run/podman && sudo chown "$(id -u)" /run/podman/podman.sock &&
           podman --remote --url unix:///run/podman/podman.sock run --rm --user 0 --security-opt label=disable
           -v /run/podman/podman.sock:/var/run/docker.sock
           -v "${RUNNER_WORKSPACE%/*}:${RUNNER_WORKSPACE%/*}" -w "$GITHUB_WORKSPACE"
@@ -44,18 +46,17 @@ jobs:
     outputs: { p0: "${{ steps.e.outputs.p0 }}", p1: "${{ steps.e.outputs.p1 }}", p2: "${{ steps.e.outputs.p2 }}", p3: "${{ steps.e.outputs.p3 }}" }
     env: { GITHUB_TOKEN: "${{ github.token }}", CLAUDE_CODE_OAUTH_TOKEN: "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}", OPENROUTER_API_KEY: "${{ secrets.OPENROUTER_API_KEY }}" }
     steps: *event
-  image:  # verifies the parent itself, builds FROM @digest through the socket, gates, pushes; a PR's to candidates by OIDC, a merge adopts it
+  image:  # one build per release: verifies the parent itself, builds FROM @digest through the socket, gates, pushes gated-<sha>
     name: sdlc / image (${{ github.event_name }})
     needs: check
     if: >-
-      needs.check.result == 'success' && (github.event_name == 'pull_request' && fromJSON(needs.check.outputs.result || '{}').candidate
-      || github.event_name != 'pull_request' && fromJSON(needs.check.outputs.result || '{}').image)
+      needs.check.result == 'success' && github.event_name != 'pull_request' && fromJSON(needs.check.outputs.result || '{}').image
     runs-on: *secret
-    permissions: { contents: read, actions: read, checks: read, id-token: write }  # id-token: a PR's candidate by Quay robot federation, no secret; actions, checks: a merge reads the PR's record of it
+    permissions: { contents: read }
     outputs: { result: "${{ steps.e.outputs.result }}" }
-    env: { GITHUB_TOKEN: "${{ github.token }}", QUAY_USERNAME: "${{ github.event_name != 'pull_request' && secrets.QUAY_USERNAME || '' }}", QUAY_PASSWORD: "${{ github.event_name != 'pull_request' && secrets.QUAY_PASSWORD || '' }}",
-           RHSM_ACTIVATION_KEY: "${{ github.event_name != 'pull_request' && secrets.RHSM_ACTIVATION_KEY || '' }}", RHSM_ORG_ID: "${{ github.event_name != 'pull_request' && secrets.RHSM_ORG_ID || '' }}",
-           REGISTRY_REDHAT_IO_USER: "${{ github.event_name != 'pull_request' && secrets.REGISTRY_REDHAT_IO_USER || '' }}", REGISTRY_REDHAT_IO_PASSWORD: "${{ github.event_name != 'pull_request' && secrets.REGISTRY_REDHAT_IO_PASSWORD || '' }}" }
+    env: { GITHUB_TOKEN: "${{ github.token }}", QUAY_USERNAME: "${{ secrets.QUAY_USERNAME }}", QUAY_PASSWORD: "${{ secrets.QUAY_PASSWORD }}",
+           RHSM_ACTIVATION_KEY: "${{ secrets.RHSM_ACTIVATION_KEY }}", RHSM_ORG_ID: "${{ secrets.RHSM_ORG_ID }}",
+           REGISTRY_REDHAT_IO_USER: "${{ secrets.REGISTRY_REDHAT_IO_USER }}", REGISTRY_REDHAT_IO_PASSWORD: "${{ secrets.REGISTRY_REDHAT_IO_PASSWORD }}" }
     steps: *event
   write:  # the Ashigaru App key, no model: verifies and tags a release merge; comments, labels, PRs, leased pushes
     needs: [check, ai]
