@@ -23,8 +23,9 @@
 # Nothing from the image runs before its signature is checked (python-sdlc#81).
 # The image decides every repo's required `sdlc ci` check, so a pushed tag is
 # not enough: the digest the tag resolves to must carry a cosign signature by
-# the fleet key, inlined below so the file the gate trusts carries its own
-# trust root. cosign runs from a digest-pinned image, as the host contract
+# a key inlined below, so the file the gate trusts carries its own trust root.
+# A release is signed by sdlc's own key; main, and the releases before 0.15.2,
+# by the fleet key (see "Which key vouches" below). cosign runs from a digest-pinned image, as the host contract
 # needs; podman's own sigstore policy would need a registries.d that podman
 # cannot be pointed at without faking HOME, which moves its storage too. The
 # launcher and every check then run by that digest, so a tag moving mid-run
@@ -60,11 +61,18 @@ case $want in
   *) refuse ;;
 esac
 
+# Two keys, each named in the cache path by its ID (the first 16 hex of the
+# key's sha256), so a new key trusts nothing an old one verified; tests/test_bootstrap.sh
+# checks each ID against its key.
+#
+# sdlc's own key: boot/keys/sdlc.pub, whose private half lives only in sdlc's
+# sdlc-signing environment (scripts/self.sh's sign job). It signs every release
+# from 0.15.2 on, and it is the only key sdlc-bootstrap trusts in CI.
+SDLC_KEY_ID=06d55be78e4b1bac
 # The fleet key: crunchtools/constitution keys/crunchtools-bootc.pub, whose
-# private half promote signs with (container.yml). KEY_ID names the key in the
-# cache path, so a new key trusts nothing the old one verified; the host
-# contract test checks it against the key's sha256.
-KEY_ID=9c300eea7ce2867d
+# private half promote signs with (ci.yml's promote job, via sdlc event). It
+# still signs :main (container.yml) and signed the releases up to 0.15.1.
+FLEET_KEY_ID=9c300eea7ce2867d
 # cosign v2.6.5, the signer's version: v3 keeps signatures where podman and
 # bootc cannot read them. The index digest, so every architecture gets it.
 COSIGN=ghcr.io/sigstore/cosign/cosign@sha256:ad281047f85c5e1fc6ffbc30c2b55be3b07b4032bef715a12122ce5829619aca
@@ -73,12 +81,30 @@ dir=$(mktemp -d) || exit 2
 trap 'rm -rf "$dir"' EXIT
 trap 'exit 2' HUP INT TERM
 
-cat > "$dir/fleet.pub" <<'KEY'
+cat > "$dir/sdlc.pub" <<'SDLC_KEY'
+-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEIGts5za2uZSNyzQshbiqzKvyj0m0
+aZrLhD5a78Iqn3JzcWT/Oqz0QDLHy40QgB9J4tn9Nj5LlTPBxng0j4NL+w==
+-----END PUBLIC KEY-----
+SDLC_KEY
+cat > "$dir/fleet.pub" <<'FLEET_KEY'
 -----BEGIN PUBLIC KEY-----
 MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE5TlIf0f5VMBaCLJGtmh9fL3C/xYM
 nHVNg0KnBqqs/x+WThX8zEKaGmiZ2SM5336mPfJKZl68/lXBnoWlU0E9Tg==
 -----END PUBLIC KEY-----
-KEY
+FLEET_KEY
+
+# Which key vouches. A release (latest, X.Y.Z) only by sdlc's: every repo's
+# promote job holds the fleet key's private half, so a fleet key that could
+# vouch for :latest would let any fleet repo's CI forge the image every hook
+# runs. main is still signed by the fleet key alone, and a digest is one the
+# person typed, so either key will do for those two. A release before 0.15.2
+# is reached by its digest.
+case $want in
+  main|@sha256:*) keys='sdlc fleet' who="sdlc's key or the crunchtools fleet key" ;;
+  *)              keys=sdlc         who="sdlc's key" ;;
+esac
+key_id() { case $1 in sdlc) printf '%s' "$SDLC_KEY_ID" ;; fleet) printf '%s' "$FLEET_KEY_ID" ;; esac; }
 
 # A tag is pulled every time: :latest moves, and a stale local copy is how a
 # two-week-old reviewer once judged trentina. Offline, the copy it has stands,
@@ -94,7 +120,8 @@ case $image in
       || podman --events-backend=none image exists -- "$image" \
       || cannot "$image could not be pulled"
     digest=$(podman --events-backend=none image inspect \
-               --format '{{.Digest}}' -- "$image") || digest= ;;
+               --format '{{.Digest}}' -- "$image" 2> "$dir/inspect.err") \
+      || cannot "$image could not be inspected: $(cat "$dir/inspect.err")" ;;
 esac
 hex=${digest#sha256:}
 case $digest in sha256:*) ;; *) cannot "$image has no sha256 digest to verify" ;; esac
@@ -107,21 +134,35 @@ pinned=$FLEET@$digest
 # an offline seat, never a verdict, so failing to write it is not a failure.
 # CI always verifies: a self-hosted runner outlives the jobs it runs, and CI is
 # never offline.
-seen=
+verified_dir=
 if [ -n "${CI:-}" ] || [ -n "${GITHUB_ACTIONS:-}" ]; then :
-elif [ -n "${XDG_CACHE_HOME:-}" ]; then seen=$XDG_CACHE_HOME/sdlc/verified/$KEY_ID
-elif [ -n "${HOME:-}" ]; then seen=$HOME/.cache/sdlc/verified/$KEY_ID
+elif [ -n "${XDG_CACHE_HOME:-}" ]; then verified_dir=$XDG_CACHE_HOME/sdlc/verified
+elif [ -n "${HOME:-}" ]; then verified_dir=$HOME/.cache/sdlc/verified
 fi
-if [ -z "$seen" ] || [ ! -e "$seen/$hex" ]; then
-  if ! podman --events-backend=none run --rm --log-driver=none --pull=missing \
+verified=
+if [ -n "$verified_dir" ]; then
+  for k in $keys; do
+    [ ! -e "$verified_dir/$(key_id "$k")/$hex" ] || verified=$k
+  done
+fi
+if [ -z "$verified" ]; then
+  : > "$dir/verify"
+  for k in $keys; do
+    if podman --events-backend=none run --rm --log-driver=none --pull=missing \
          --cap-drop=all --security-opt=no-new-privileges --read-only \
-         -v "$dir/fleet.pub:/fleet.pub:ro,Z" \
-         -- "$COSIGN" verify --key /fleet.pub --insecure-ignore-tlog=true "$pinned" \
-         > /dev/null 2> "$dir/verify"; then
+         -v "$dir/$k.pub:/$k.pub:ro,Z" \
+         -- "$COSIGN" verify --key "/$k.pub" --insecure-ignore-tlog=true "$pinned" \
+         > /dev/null 2>> "$dir/verify"; then
+      verified=$k
+      break
+    fi
+  done
+  if [ -z "$verified" ]; then
     sed 's/^/sdlc:   /' "$dir/verify" >&2
-    cannot "$pinned ($image) could not be verified as signed by the crunchtools fleet key"
+    cannot "$pinned ($image) could not be verified as signed by $who"
   fi
-  [ -z "$seen" ] || { mkdir -p "$seen" && : > "$seen/$hex"; } 2> /dev/null || :
+  [ -z "$verified_dir" ] || { _d=$verified_dir/$(key_id "$verified") \
+    && mkdir -p "$_d" && : > "$_d/$hex"; } 2> /dev/null || :
 fi
 
 # By digest from here on, and never pulled again: the bytes verified above are
