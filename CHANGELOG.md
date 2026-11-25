@@ -7,6 +7,12 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Changed
+- CI is the fleet's one `ci.yml` (sdlc 0.15); what this repo's own workflows ran is
+  now `[tool.sdlc]` in pyproject.toml. The browser tests run as the `js-tests`
+  check in a pinned puppeteer image (the inline runner is `tests/js/run_utils.js`),
+  the boot gate as `app-boot` with systemd as PID 1 plus the image job's systemd
+  profile on the published digest, and acquacotta-base as a `[[tool.sdlc.images]]`
+  entry built before the app.
 - Gatehouse triage gets `review_result` from the review job, so a pull request
   whose review died before posting anything is held instead of passing.
 - Promote signs the image with the fleet cosign key (`sign: true`), because

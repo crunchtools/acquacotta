@@ -333,6 +333,8 @@ test("Social's localStorage copy moves into IndexedDB on upgrade", async ({ page
         const context = await browser.createBrowserContext();
         try {
             const page = await context.newPage();
+            // No network in the sandbox makes Chrome report offline; the pages only use 127.0.0.1.
+            await page.evaluateOnNewDocument(() => Object.defineProperty(navigator, 'onLine', { get: () => true, configurable: true }));
             page.setDefaultTimeout(10000);
             const errors = [];
             page.on('pageerror', err => errors.push(err.message));
