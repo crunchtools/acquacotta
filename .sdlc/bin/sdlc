@@ -101,33 +101,50 @@ FLEET_KEY
 # person typed, so either key will do for those two. A release before 0.15.2
 # is reached by its digest.
 case $want in
-  main|@sha256:*) keys='sdlc fleet' who="sdlc's key or the crunchtools fleet key" ;;
+  main)           keys='fleet sdlc' who="sdlc's key or the crunchtools fleet key" ;;
+  @sha256:*)      keys='sdlc fleet' who="sdlc's key or the crunchtools fleet key" ;;
   *)              keys=sdlc         who="sdlc's key" ;;
 esac
 key_id() { case $1 in sdlc) printf '%s' "$SDLC_KEY_ID" ;; fleet) printf '%s' "$FLEET_KEY_ID" ;; esac; }
 
-# A tag is pulled every time: :latest moves, and a stale local copy is how a
-# two-week-old reviewer once judged trentina. Offline, the copy it has stands,
-# and is verified like any other. A digest is pulled only when it is missing.
+# A tag is resolved at the registry every time, by the pinned cosign: :latest
+# moves, and a stale local copy is how a two-week-old reviewer once judged
+# trentina. Never by the local copy's digest while the registry answers: a seat
+# that once pulled a digest the tag pointed at before it was signed kept
+# verifying that digest after every later pull, and refused the signed one
+# until someone removed the image (a1569). The digest the registry names is
+# pulled when it is missing. Offline, the copy it has stands, and is verified
+# like any other. A digest is pulled only when it is missing.
+local_copy=
 case $image in
   *@sha256:*)
-    digest=${image#*@}
-    podman --events-backend=none image exists -- "$image" \
-      || podman --events-backend=none pull -q -- "$image" > /dev/null \
-      || cannot "$image could not be pulled" ;;
+    digest=${image#*@} ;;
   *)
-    podman --events-backend=none pull -q -- "$image" > /dev/null \
-      || podman --events-backend=none image exists -- "$image" \
-      || cannot "$image could not be pulled"
-    digest=$(podman --events-backend=none image inspect \
-               --format '{{.Digest}}' -- "$image" 2> "$dir/inspect.err") \
-      || cannot "$image could not be inspected: $(cat "$dir/inspect.err")" ;;
+    if resolved=$(podman --events-backend=none run --rm --log-driver=none --pull=missing \
+                    --cap-drop=all --security-opt=no-new-privileges --read-only \
+                    -- "$COSIGN" triangulate --type=digest "$image" 2> "$dir/resolve.err"); then
+      case $resolved in
+        "$FLEET"@*) digest=${resolved#"$FLEET"@} ;;
+        *) cannot "$image resolved to '$resolved', not a digest of $FLEET" ;;
+      esac
+    else
+      podman --events-backend=none image exists -- "$image" \
+        || cannot "$image could not be resolved at the registry and is not here: $(cat "$dir/resolve.err")"
+      digest=$(podman --events-backend=none image inspect \
+                 --format '{{.Digest}}' -- "$image" 2> "$dir/inspect.err") \
+        || cannot "$image could not be inspected: $(cat "$dir/inspect.err")"
+      local_copy=1
+    fi ;;
 esac
 hex=${digest#sha256:}
 case $digest in sha256:*) ;; *) cannot "$image has no sha256 digest to verify" ;; esac
 case $hex in *[!0-9a-f]*) cannot "$image has no sha256 digest to verify" ;; esac
 [ "${#hex}" -eq 64 ] || cannot "$image has no sha256 digest to verify"
 pinned=$FLEET@$digest
+[ -n "$local_copy" ] \
+  || podman --events-backend=none image exists -- "$pinned" \
+  || podman --events-backend=none pull -q -- "$pinned" > /dev/null \
+  || cannot "$pinned ($image) could not be pulled"
 
 # Verified once per digest and key, on a seat: the cache is the user's own,
 # and whoever can write it can already edit this file. It is a convenience for
@@ -146,19 +163,21 @@ if [ -n "$verified_dir" ]; then
   done
 fi
 if [ -z "$verified" ]; then
-  : > "$dir/verify"
   for k in $keys; do
     if podman --events-backend=none run --rm --log-driver=none --pull=missing \
          --cap-drop=all --security-opt=no-new-privileges --read-only \
          -v "$dir/$k.pub:/$k.pub:ro,Z" \
          -- "$COSIGN" verify --key "/$k.pub" --insecure-ignore-tlog=true "$pinned" \
-         > /dev/null 2>> "$dir/verify"; then
+         > /dev/null 2> "$dir/verify.$k"; then
       verified=$k
       break
     fi
   done
   if [ -z "$verified" ]; then
-    sed 's/^/sdlc:   /' "$dir/verify" >&2
+    for k in $keys; do
+      printf 'sdlc:   %s key:\n' "$k" >&2
+      while IFS= read -r _l || [ -n "$_l" ]; do printf 'sdlc:     %s\n' "$_l" >&2; done < "$dir/verify.$k"
+    done
     cannot "$pinned ($image) could not be verified as signed by $who"
   fi
   [ -z "$verified_dir" ] || { _d=$verified_dir/$(key_id "$verified") \
