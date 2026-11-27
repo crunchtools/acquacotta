@@ -7,7 +7,8 @@
 # secret is an org secret: a fork's PR gets none, pull_request_target runs the
 # default branch's copy of this file, and only Prime's credential may change a
 # workflow. Every job that holds one runs on our uncached runners, or GitHub's
-# for a fork.
+# for a fork. The Claude token never reaches a model reading a fork's PR or an
+# outsider's issue: ai gets it only for this repo's own PRs and members' issues.
 name: CI
 on:
   push:
@@ -44,7 +45,7 @@ jobs:
     runs-on: &secret ${{ (github.event_name == 'issues' && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association) || github.event_name != 'issues' && (github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository)) && vars.UNCACHED_RUNNER_LABEL == 'crunchtools-uncached' && 'crunchtools-uncached' || 'ubuntu-latest' }}
     permissions: { contents: read, issues: read, pull-requests: read }
     outputs: { p0: "${{ steps.e.outputs.p0 }}", p1: "${{ steps.e.outputs.p1 }}", p2: "${{ steps.e.outputs.p2 }}", p3: "${{ steps.e.outputs.p3 }}" }
-    env: { GITHUB_TOKEN: "${{ github.token }}", CLAUDE_CODE_OAUTH_TOKEN: "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}", OPENROUTER_API_KEY: "${{ secrets.OPENROUTER_API_KEY }}" }
+    env: { GITHUB_TOKEN: "${{ github.token }}", CLAUDE_CODE_OAUTH_TOKEN: "${{ (github.event_name == 'issues' && contains(fromJSON('[\"OWNER\",\"MEMBER\",\"COLLABORATOR\"]'), github.event.issue.author_association) || github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}", OPENROUTER_API_KEY: "${{ secrets.OPENROUTER_API_KEY }}" }
     steps: *event
   image:  # one build per release: verifies the parent itself, builds FROM @digest through the socket, gates, pushes gated-<sha>
     name: sdlc / image (${{ github.event_name }})
@@ -58,26 +59,40 @@ jobs:
            RHSM_ACTIVATION_KEY: "${{ secrets.RHSM_ACTIVATION_KEY }}", RHSM_ORG_ID: "${{ secrets.RHSM_ORG_ID }}",
            REGISTRY_REDHAT_IO_USER: "${{ secrets.REGISTRY_REDHAT_IO_USER }}", REGISTRY_REDHAT_IO_PASSWORD: "${{ secrets.REGISTRY_REDHAT_IO_PASSWORD }}" }
     steps: *event
-  write:  # the Ashigaru App key, no model: verifies and tags a release merge; comments, labels, PRs, leased pushes
-    needs: [check, ai]
+  write:  # the Ashigaru App key, no model: verifies and tags a release merge once image and boot pass; comments, labels, PRs, leased pushes
+    needs: [check, ai, image, boot]
     if: >-
       always() && !cancelled() && !inputs.digest
       && (github.event_name == 'pull_request_target' || github.event_name == 'issues'
-          || needs.check.result == 'success' && (github.event_name == 'workflow_dispatch' || fromJSON(needs.check.outputs.result || '{}').write))
+          || needs.check.result == 'success' && (github.event_name == 'workflow_dispatch' || fromJSON(needs.check.outputs.result || '{}').write)
+             && (!fromJSON(needs.check.outputs.result || '{}').release
+                 || (needs.image.result == 'success' || needs.image.result == 'skipped' && !fromJSON(needs.check.outputs.result || '{}').image)
+                    && (needs.boot.result == 'success' || needs.boot.result == 'skipped' && !fromJSON(needs.check.outputs.result || '{}').boot)))
     concurrency: { group: "write-${{ github.event.pull_request.number || github.event.issue.number || github.ref }}", queue: max }
     runs-on: *secret
     permissions: {}
     outputs: { release: "${{ steps.e.outputs.release }}" }
     env: { ASHIGARU_CLIENT_ID: "${{ vars.ASHIGARU_CLIENT_ID }}", ASHIGARU_APP_KEY: "${{ secrets.ASHIGARU_APP_KEY }}", VERSION: "${{ inputs.version }}", DIGEST: "${{ inputs.digest }}", SDLC_CHECK: "${{ needs.check.outputs.result }}",
+           SDLC_IMAGE: "${{ needs.image.result }}", SDLC_BOOT: "${{ needs.boot.result }}",
            SDLC_AI: "${{ needs.ai.result }}", SDLC_AI_0: "${{ needs.ai.outputs.p0 }}", SDLC_AI_1: "${{ needs.ai.outputs.p1 }}", SDLC_AI_2: "${{ needs.ai.outputs.p2 }}", SDLC_AI_3: "${{ needs.ai.outputs.p3 }}" }
     steps: *event
+  boot:  # no secret, a read token: a repo's boot-command and contract-test, shell run on the digest image pushed; promote needs it
+    name: sdlc / boot (${{ github.event_name }})
+    needs: [check, image]
+    if: needs.check.result == 'success' && needs.image.result == 'success' && fromJSON(needs.check.outputs.result || '{}').boot
+    runs-on: *secret  # the socket is the credential: crunchtools-uncached, one job per VM, or GitHub's
+    permissions: { contents: read }
+    env: { GITHUB_TOKEN: "${{ github.token }}", SDLC_IMAGE_RESULT: "${{ needs.image.outputs.result }}" }
+    steps: *event
   promote:  # the cosign key: signs, attests and moves tags on a digest it did not build; idempotent; version only from write
-    needs: [check, image, write]
-    if: always() && !cancelled() && needs.image.result == 'success' && github.event_name != 'pull_request'
+    needs: [check, image, boot, write]
+    if: >-
+      always() && !cancelled() && needs.image.result == 'success' && github.event_name != 'pull_request'
+      && (needs.boot.result == 'success' || needs.boot.result == 'skipped' && !fromJSON(needs.check.outputs.result || '{}').boot)
     concurrency: { group: "promote-${{ github.repository }}", queue: max }
     runs-on: *secret
     permissions: { contents: read }
-    env: { GITHUB_TOKEN: "${{ github.token }}", SDLC_CHECK: "${{ needs.check.outputs.result }}", SDLC_IMAGE_RESULT: "${{ needs.image.outputs.result }}", SDLC_WRITE: "${{ needs.write.result }}", SDLC_RELEASE: "${{ needs.write.outputs.release }}",
+    env: { GITHUB_TOKEN: "${{ github.token }}", SDLC_CHECK: "${{ needs.check.outputs.result }}", SDLC_IMAGE_RESULT: "${{ needs.image.outputs.result }}", SDLC_BOOT: "${{ needs.boot.result }}", SDLC_WRITE: "${{ needs.write.result }}", SDLC_RELEASE: "${{ needs.write.outputs.release }}",
            QUAY_USERNAME: "${{ secrets.QUAY_USERNAME }}", QUAY_PASSWORD: "${{ secrets.QUAY_PASSWORD }}", COSIGN_PRIVATE_KEY: "${{ secrets.COSIGN_PRIVATE_KEY }}", COSIGN_PASSWORD: "${{ secrets.COSIGN_PASSWORD }}" }
     steps: *event
   pypi:  # OIDC only; re-derives the release from the API itself and must agree with write
