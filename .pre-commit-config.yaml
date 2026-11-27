@@ -4,9 +4,9 @@
 # :latest -- for this laptop and, through .github/workflows/ci.yml, for CI.
 # There is no `rev:` to bump, ever.
 #
-#   SDLC_IMAGE=main git push   judges this push with what has merged to
-#                              python-sdlc and not been released. A repo opts
-#                              its CI in with the repository variable SDLC_IMAGE.
+#   SDLC_IMAGE=0.18.0 git push   judges this push with that release instead
+#                                of :latest. A repo pins its CI with the
+#                                repository variable SDLC_IMAGE.
 #
 # What each hook runs is configured in pyproject.toml ([tool.sdlc.commit],
 # [tool.sdlc.push], [tool.sdlc.ci]) or, in a repo with no pyproject.toml,
