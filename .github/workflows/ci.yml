@@ -39,7 +39,7 @@ jobs:
           --env 'GITHUB_*' --env 'RUNNER_*' --env 'ACTIONS_*' --env CI --env 'SDLC_*' --env VERSION --env DIGEST
           --env 'QUAY_*' --env 'RHSM_*' --env 'REGISTRY_REDHAT_IO_*' --env 'COSIGN_*' --env 'ASHIGARU_*'
           --env 'RENOVATE_*' --env CLAUDE_CODE_OAUTH_TOKEN --env OPENROUTER_API_KEY
-          quay.io/crunchtools/sdlc-bootstrap@sha256:5f25b7968ff9f14e0fa363ea3c25e0df4f6159abf43549653fff74eb674de060 event
+          quay.io/crunchtools/sdlc-bootstrap@sha256:abf7da909c14ae7b32d0a325fce912ec1a955d7bf4032365015b0ec46d9b3296 event
   ai:  # model keys and a read token, never an App key; hands its result on in four chunks of at most 112,500 bytes
     if: github.event_name == 'issues' || github.event_name == 'pull_request_target'
     runs-on: &secret ${{ (github.event_name == 'issues' && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association) || github.event_name != 'issues' && (github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository)) && vars.UNCACHED_RUNNER_LABEL == 'crunchtools-uncached' && 'crunchtools-uncached' || 'ubuntu-latest' }}
@@ -102,6 +102,27 @@ jobs:
     environment: pypi
     permissions: { contents: read, id-token: write }
     env: { GITHUB_TOKEN: "${{ github.token }}", SDLC_WRITE: "${{ needs.write.result }}", SDLC_RELEASE: "${{ needs.write.outputs.release }}" }
+    steps: *event
+  assets:  # GITHUB_TOKEN with contents: write, no stored secret: builds a release's digest-pinned package stages, attaches their files to the Release write made
+    needs: [check, write]
+    if: >-
+      always() && !cancelled() && needs.check.result == 'success' && github.event_name == 'push'
+      && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && fromJSON(needs.check.outputs.result || '{}').assets
+    concurrency: { group: "assets-${{ github.repository }}", queue: max }
+    runs-on: *secret
+    permissions: { contents: write }
+    env: { GITHUB_TOKEN: "${{ github.token }}", SDLC_WRITE: "${{ needs.write.result }}", SDLC_RELEASE: "${{ needs.write.outputs.release }}" }
+    steps: *event
+  pages:  # the package site's GPG key, held only in pages-signing (default branch only); signs other repos' release assets as data, pushes gh-pages
+    needs: check
+    if: >-
+      needs.check.result == 'success' && fromJSON(needs.check.outputs.result || '{}').pages
+      && (github.event_name == 'schedule' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch))
+    concurrency: { group: "pages-${{ github.repository }}", queue: max }
+    runs-on: *secret
+    environment: ${{ fromJSON(needs.check.outputs.result || '{}').pages && 'pages-signing' || '' }}  # an expression: a bare name makes GitHub refuse the whole file in repos without it
+    permissions: { contents: write, pages: write }
+    env: { GITHUB_TOKEN: "${{ github.token }}", SDLC_PAGES_GPG_KEY: "${{ secrets.PACKAGES_GPG_KEY }}" }
     steps: *event
   gate:  # required: guard, review done on this head, every finding answered; no secret. A collaborator's reply re-runs it where it counts
     name: sdlc / gate (${{ github.event_name }})  # required as "(pull_request_target)"
